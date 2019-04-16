@@ -1,0 +1,19 @@
+#ifndef _DMG_H
+#define _DMG_H
+
+#include "cpu.h"
+#include "rom.h"
+
+struct dmg {
+    struct cpu *cpu;
+    struct rom *rom;
+    u8 main_ram[0x2000];
+    u8 video_ram[0x2000];
+};
+
+void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom);
+
+u8 dmg_read(void *dmg, u16 address);
+void dmg_write(void *dmg, u16 address, u8 data);
+
+#endif
