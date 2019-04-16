@@ -1,1 +1,6 @@
 *.swp
+emu
+*.gb
+*.img
+vMac*
+.vscode
