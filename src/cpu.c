@@ -66,11 +66,34 @@ void cpu_panic(struct cpu *cpu)
     exit(0);
 }
 
+static inline u8 read8(struct cpu *cpu, u16 address)
+{
+    return cpu->mem_read(cpu->mem_model, address);
+}
+
+static inline u16 read16(struct cpu *cpu, u16 address)
+{
+    u8 low = read8(cpu, address);
+    u8 high = read8(cpu, address + 1);
+    return high << 8 | low;
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
     switch (opc) {
         case 0: // NOP
+            cpu->pc++;
+            break;
+        case 0x21: // LD HL, d16
+            write_hl(cpu, read16(cpu, cpu->pc + 1));
+            cpu->pc += 3;
+            break;
+        case 0xc3: // JP a16
+            cpu->pc = read16(cpu, cpu->pc + 1);
+            break;
+        case 0xaf: // XOR A
+            cpu->a = 0;
             cpu->pc++;
             break;
         default:
