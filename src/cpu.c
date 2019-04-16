@@ -78,6 +78,11 @@ static inline u16 read16(struct cpu *cpu, u16 address)
     return high << 8 | low;
 }
 
+static inline void write8(struct cpu *cpu, u16 address, u8 data)
+{
+    cpu->mem_write(cpu->mem_model, address, data);
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
@@ -85,9 +90,22 @@ void cpu_step(struct cpu *cpu)
         case 0: // NOP
             cpu->pc++;
             break;
+        case 0x06: // LD B, d8
+            cpu->b = read8(cpu, cpu->pc + 1);
+            cpu->pc += 2;
+            break;
+        case 0x0e: // LD C, d8
+            cpu->c = read8(cpu, cpu->pc + 1);
+            cpu->pc += 2;
+            break;
         case 0x21: // LD HL, d16
             write_hl(cpu, read16(cpu, cpu->pc + 1));
             cpu->pc += 3;
+            break;
+        case 0x32: // LD (HL-), A
+            write8(cpu, read_hl(cpu), cpu->a);
+            write_hl(cpu, read_hl(cpu) - 1);
+            cpu->pc++;
             break;
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc + 1);
