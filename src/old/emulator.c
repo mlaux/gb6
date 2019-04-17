@@ -8,6 +8,11 @@
 #include <Windows.h>
 #include <Quickdraw.h>
 #include <StandardFile.h>
+#include <Dialogs.h>
+#include <Menus.h>
+#include <ToolUtils.h>
+#include <Devices.h>
+#include <Memory.h>
 
 #include "gb_types.h"
 #include "z80.h"
@@ -66,7 +71,7 @@ bool LoadRom(FSSpec *fp)
 	
 	if(theState.rom != NULL) {
 		// unload existing ROM
-		DisposPtr((char *) theState.rom);
+		free((char *) theState.rom);
 		theState.romLength = 0;
 	}
 	
@@ -77,7 +82,7 @@ bool LoadRom(FSSpec *fp)
 	}
 	
 	GetEOF(fileNo, (long *) &theState.romLength);
-	theState.rom = (unsigned char *) NewPtr(theState.romLength);
+	theState.rom = (unsigned char *) malloc(theState.romLength);
 	if(theState.rom == NULL) {
 		Alert(ALRT_NOT_ENOUGH_RAM, NULL);
 		return false;
@@ -117,7 +122,7 @@ void ShowAboutBox(void)
 	while(!GetNextEvent(mDownMask, &e));
 	while(WaitMouseUp());
 	
-	DisposDialog(dp);
+	DisposeDialog(dp);
 }
 
 // -- EVENT FUNCTIONS --

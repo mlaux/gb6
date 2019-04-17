@@ -69,10 +69,10 @@ z80_state *z80_create(void)
 {
 	z80_state *state;
 	
-	state = (z80_state *) NewPtr(sizeof(z80_state));
+	state = (z80_state *) malloc(sizeof(z80_state));
 	
-	state->regs = (z80_regs *) NewPtr(sizeof(z80_regs));
-	state->ram = (u8 *) NewPtr(GB_RAM_SIZE);
+	state->regs = (z80_regs *) malloc(sizeof(z80_regs));
+	state->ram = (u8 *) malloc(GB_RAM_SIZE);
 	state->regs->pc = 0;
 	
 	return state;
@@ -80,9 +80,9 @@ z80_state *z80_create(void)
 
 void z80_destroy(z80_state *state)
 {
-	DisposPtr((char *) state->regs);
-	DisposPtr((char *) state->ram);
-	DisposPtr((char *) state);
+	free((char *) state->regs);
+	free((char *) state->ram);
+	free((char *) state);
 }
 
 void z80_dump_regs(z80_state *state)
@@ -100,8 +100,8 @@ void z80_dump_regs(z80_state *state)
 	line3[0] = strlen(line3);
 	line4[0] = strlen(line4);
 	
-	ParamText((void *) line1, (void *) line2, (void *) line3, (void *) line4);
-	Alert(129, NULL);
+	//ParamText((void *) line1, (void *) line2, (void *) line3, (void *) line4);
+	//Alert(129, NULL);
 }
 
 #define load(dst, src) ((dst) = (src))

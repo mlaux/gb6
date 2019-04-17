@@ -4,3 +4,4 @@ emu
 *.img
 vMac*
 .vscode
+build
