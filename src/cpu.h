@@ -30,9 +30,9 @@ void cpu_bind_mem_model(
 
 void cpu_step(struct cpu *cpu);
 
-#define FLAG_Z(cpu) ((cpu)->f >> 7 & 1)
-#define FLAG_N(cpu) ((cpu)->f >> 6 & 1)
-#define FLAG_H(cpu) ((cpu)->f >> 5 & 1)
-#define FLAG_C(cpu) ((cpu)->f >> 4 & 1)
+#define FLAG_ZERO       0x80
+#define FLAG_SIGN       0x40
+#define FLAG_HALF_CARRY 0x20
+#define FLAG_CARRY      0x10
 
 #endif
