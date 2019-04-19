@@ -228,8 +228,8 @@ void cpu_step(struct cpu *cpu)
         case 0x2d: dec_with_carry(cpu, &cpu->l); break;
 
         case 0x33: cpu->sp++; break;
-        case 0x34: temp = read16(cpu, read_hl(cpu)); inc_with_carry(cpu, &temp); break;
-        case 0x35: temp = read16(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); break;
+        case 0x34: temp = read8(cpu, read_hl(cpu)); inc_with_carry(cpu, &temp); break;
+        case 0x35: temp = read8(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); break;
 
         case 0x3b: cpu->sp--; break;
         case 0x3c: inc_with_carry(cpu, &cpu->a); break;
@@ -242,8 +242,89 @@ void cpu_step(struct cpu *cpu)
         case 0x1e: cpu->e = read8(cpu, cpu->pc); cpu->pc++; break;
         case 0x26: cpu->h = read8(cpu, cpu->pc); cpu->pc++; break;
         case 0x2e: cpu->l = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x36: write16(cpu, read_hl(cpu), read8(cpu, cpu->pc)); cpu->pc++; break;
+        case 0x36: write8(cpu, read_hl(cpu), read8(cpu, cpu->pc)); cpu->pc++; break;
         case 0x3e: cpu->a = read8(cpu, cpu->pc); cpu->pc++; break;
+
+        // 8-bit register -> register copies
+        // dest = B
+        case 0x40: break; // copy B to B
+        case 0x41: cpu->b = cpu->c; break;
+        case 0x42: cpu->b = cpu->d; break;
+        case 0x43: cpu->b = cpu->e; break;
+        case 0x44: cpu->b = cpu->h; break;
+        case 0x45: cpu->b = cpu->l; break;
+        case 0x46: cpu->b = read8(cpu, read_hl(cpu)); break;
+        case 0x47: cpu->b = cpu->a; break;
+        
+        // dest = C
+        case 0x48: cpu->c = cpu->b; break;
+        case 0x49: break; // copy C to C
+        case 0x4a: cpu->c = cpu->d; break;
+        case 0x4b: cpu->c = cpu->e; break;
+        case 0x4c: cpu->c = cpu->h; break;
+        case 0x4d: cpu->c = cpu->l; break;
+        case 0x4e: cpu->c = read8(cpu, read_hl(cpu)); break;
+        case 0x4f: cpu->c = cpu->a; break;
+        
+        // dest = D
+        case 0x50: cpu->d = cpu->b; break;
+        case 0x51: cpu->d = cpu->c; break;
+        case 0x52: break; // copy D to D
+        case 0x53: cpu->d = cpu->e; break;
+        case 0x54: cpu->d = cpu->h; break;
+        case 0x55: cpu->d = cpu->l; break;
+        case 0x56: cpu->d = read8(cpu, read_hl(cpu)); break;
+        case 0x57: cpu->d = cpu->a; break;
+        
+        // dest = E
+        case 0x58: cpu->e = cpu->b; break;
+        case 0x59: cpu->e = cpu->c; break;
+        case 0x5a: cpu->e = cpu->d; break;
+        case 0x5b: break; // copy E to E
+        case 0x5c: cpu->e = cpu->h; break;
+        case 0x5d: cpu->e = cpu->l; break;
+        case 0x5e: cpu->e = read8(cpu, read_hl(cpu)); break;
+        case 0x5f: cpu->e = cpu->a; break;
+        
+        // dest = H
+        case 0x60: cpu->h = cpu->b; break;
+        case 0x61: cpu->h = cpu->c; break;
+        case 0x62: cpu->h = cpu->d; break;
+        case 0x63: cpu->h = cpu->e; break;
+        case 0x64: break; // copy H to H
+        case 0x65: cpu->h = cpu->l; break;
+        case 0x66: cpu->h = read8(cpu, read_hl(cpu)); break;
+        case 0x67: cpu->h = cpu->a; break;
+        
+        // dest = L
+        case 0x68: cpu->l = cpu->b; break;
+        case 0x69: cpu->l = cpu->c; break;
+        case 0x6a: cpu->l = cpu->d; break;
+        case 0x6b: cpu->l = cpu->e; break;
+        case 0x6c: cpu->l = cpu->h; break;
+        case 0x6d: break; // copy L to L
+        case 0x6e: cpu->l = read8(cpu, read_hl(cpu)); break;
+        case 0x6f: cpu->l = cpu->a; break;
+                
+        // dest = *HL
+        case 0x70: write8(cpu, read_hl(cpu), cpu->b); break;
+        case 0x71: write8(cpu, read_hl(cpu), cpu->c); break;
+        case 0x72: write8(cpu, read_hl(cpu), cpu->d); break;
+        case 0x73: write8(cpu, read_hl(cpu), cpu->e); break;
+        case 0x74: write8(cpu, read_hl(cpu), cpu->h); break;
+        case 0x75: write8(cpu, read_hl(cpu), cpu->l); break;
+        // 0x76 is HALT
+        case 0x77: write8(cpu, read_hl(cpu), cpu->a); break;
+        
+        // dest = A
+        case 0x78: cpu->a = cpu->b; break;
+        case 0x79: cpu->a = cpu->c; break;
+        case 0x7a: cpu->a = cpu->d; break;
+        case 0x7b: cpu->a = cpu->e; break;
+        case 0x7c: cpu->a = cpu->h; break;
+        case 0x7d: cpu->a = cpu->l; break;
+        case 0x7e: cpu->a = read8(cpu, read_hl(cpu)); break;
+        case 0x7f: break; // copy A to A
 
         // A = r16
         case 0x0a: cpu->a = read8(cpu, read_bc(cpu)); break; // A = *BC
