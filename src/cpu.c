@@ -188,11 +188,30 @@ static u16 pop(struct cpu *cpu)
     return read16(cpu, cpu->sp - 1) << 8 | read16(cpu, cpu->sp - 2);
 }
 
+static u16 add16(struct cpu *cpu, u16 src)
+{
+    clear_flag(cpu, FLAG_SIGN);
+    int total = read_hl(cpu) + src; // promoted to int
+    if (total > 0xffff) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    if (((cpu->h & 0xf) + ((src >> 8) & 0xf)) & 0x10) {
+        // true if carry from bit 11 to bit 12
+        set_flag(cpu, FLAG_HALF_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_HALF_CARRY);
+    }
+
+    return total & 0xffff;
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
-
+    printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
     cpu->pc++;
     switch (opc) {
         case 0: // NOP
@@ -344,6 +363,9 @@ void cpu_step(struct cpu *cpu)
             write_hl(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
             break;
+        case 0x29: // ADD HL,HL
+            add16(cpu, read_hl(cpu));
+            break;
         case 0x31: // LD SP,d16
             cpu->sp = read16(cpu, cpu->pc);
             cpu->pc += 2;
@@ -354,6 +376,14 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0x94:
             subtract(cpu, cpu->h);
+            break;
+        case 0xc0: // RET NZ
+            if (!flag_isset(cpu, FLAG_ZERO)) {
+                cpu->pc = pop(cpu);
+            }
+            break;
+        case 0xc9: // RET
+            cpu->pc = pop(cpu);
             break;
         case 0xcd: // CALL a16
             temp = read16(cpu, cpu->pc);
@@ -397,7 +427,6 @@ void cpu_step(struct cpu *cpu)
             cpu->pc++;
             break;
         case 0xf3: // DI
-            printf("disable interrupts\n");
             break;
         default:
             printf("unknown opcode 0x%02x %s\n", opc, instructions[opc].format);
