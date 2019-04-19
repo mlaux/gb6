@@ -175,6 +175,19 @@ static void xor(struct cpu *regs, u8 value)
 	clear_flag(regs, FLAG_CARRY);
 }
 
+static void push(struct cpu *cpu, u16 value)
+{
+    write16(cpu, cpu->sp - 2, value & 0xff);
+    write16(cpu, cpu->sp - 1, value >> 8);
+    cpu->sp -= 2;
+}
+
+static u16 pop(struct cpu *cpu)
+{
+    cpu->sp += 2;
+    return read16(cpu, cpu->sp - 1) << 8 | read16(cpu, cpu->sp - 2);
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
@@ -260,6 +273,12 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0x94:
             subtract(cpu, cpu->h);
+            break;
+        case 0xcd: // CALL a16
+            temp = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            push(cpu, cpu->pc);
+            cpu->pc = temp;
             break;
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc);
