@@ -87,7 +87,11 @@ void cpu_panic(struct cpu *cpu)
 {
     printf("a=%02x f=%02x b=%02x c=%02x\n", cpu->a, cpu->f, cpu->b, cpu->c);
     printf("d=%02x e=%02x h=%02x l=%02x\n", cpu->d, cpu->e, cpu->h, cpu->l);
-    printf("sp=%04x pc=%04x\n", cpu->sp, cpu->pc);
+    printf("sp=%04x pc=%04x flags=%s%s%s%s\n", cpu->sp, cpu->pc,
+            flag_isset(cpu, FLAG_ZERO) ? "Z" : "-",
+            flag_isset(cpu, FLAG_SIGN) ? "S" : "-",
+            flag_isset(cpu, FLAG_HALF_CARRY) ? "H" : "-",
+            flag_isset(cpu, FLAG_CARRY) ? "C" : "-");
     exit(0);
 }
 
@@ -153,6 +157,14 @@ static void rotate_right(struct cpu *regs, u8 *reg)
 	*reg |= (regs->f & FLAG_CARRY) << 3;
 }
 
+static void subtract(struct cpu *cpu, u8 value)
+{
+    cpu->a -= value;
+    if (cpu->a > 0x80) {
+        set_flag(cpu, FLAG_SIGN);
+    }
+}
+
 static void xor(struct cpu *regs, u8 value)
 {
 	regs->a ^= value;
@@ -165,7 +177,9 @@ static void xor(struct cpu *regs, u8 value)
 
 void cpu_step(struct cpu *cpu)
 {
+    u8 temp;
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
+
     cpu->pc++;
     switch (opc) {
         case 0: // NOP
@@ -174,36 +188,116 @@ void cpu_step(struct cpu *cpu)
             write_bc(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
             break;
-        case 0x03: // INC BC
-            write_bc(cpu, read_bc(cpu) + 1);
-            break;
-        case 0x04: // INC B
-            inc_with_carry(cpu, &cpu->b);
-            break;
-        case 0x05: // DEC B
-            dec_with_carry(cpu, &cpu->b);
-            break;
-        case 0x06: // LD B, d8
-            cpu->b = read8(cpu, cpu->pc);
-            cpu->pc += 1;
-            break;
-        case 0x0e: // LD C, d8
-            cpu->c = read8(cpu, cpu->pc);
-            cpu->pc += 1;
+
+        // incs and decs
+        case 0x03: write_bc(cpu, read_bc(cpu) + 1); break;
+        case 0x04: inc_with_carry(cpu, &cpu->b); break;
+        case 0x05: dec_with_carry(cpu, &cpu->b); break;
+
+        case 0x0b: write_bc(cpu, read_bc(cpu) - 1); break;
+        case 0x0c: inc_with_carry(cpu, &cpu->c); break;
+        case 0x0d: dec_with_carry(cpu, &cpu->c); break;
+
+        case 0x13: write_de(cpu, read_de(cpu) + 1); break;
+        case 0x14: inc_with_carry(cpu, &cpu->d); break;
+        case 0x15: dec_with_carry(cpu, &cpu->d); break;
+
+        case 0x1b: write_de(cpu, read_de(cpu) - 1); break;
+        case 0x1c: inc_with_carry(cpu, &cpu->e); break;
+        case 0x1d: dec_with_carry(cpu, &cpu->e); break;
+
+        case 0x23: write_hl(cpu, read_hl(cpu) + 1); break;
+        case 0x24: inc_with_carry(cpu, &cpu->h); break;
+        case 0x25: dec_with_carry(cpu, &cpu->h); break;
+
+        case 0x2b: write_hl(cpu, read_hl(cpu) - 1); break;
+        case 0x2c: inc_with_carry(cpu, &cpu->l); break;
+        case 0x2d: dec_with_carry(cpu, &cpu->l); break;
+
+        case 0x33: cpu->sp++; break;
+        case 0x34: temp = read16(cpu, read_hl(cpu)); inc_with_carry(cpu, &temp); break;
+        case 0x35: temp = read16(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); break;
+
+        case 0x3b: cpu->sp--; break;
+        case 0x3c: inc_with_carry(cpu, &cpu->a); break;
+        case 0x3d: dec_with_carry(cpu, &cpu->a); break;
+
+        // 8-bit immediate loads
+        case 0x06: cpu->b = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x0e: cpu->c = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x16: cpu->d = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x1e: cpu->e = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x26: cpu->h = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x2e: cpu->l = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x36: write16(cpu, read_hl(cpu), read8(cpu, cpu->pc)); cpu->pc++; break;
+        case 0x3e: cpu->a = read8(cpu, cpu->pc); cpu->pc++; break;
+
+        // A = r16
+        case 0x0a: cpu->a = read8(cpu, read_bc(cpu)); break; // A = *BC
+        case 0x1a: cpu->a = read8(cpu, read_de(cpu)); break; // A = *DE
+        case 0x2a: cpu->a = read8(cpu, read_hl(cpu)); write_hl(cpu, read_hl(cpu) + 1); break;
+        case 0x3a: cpu->a = read8(cpu, read_hl(cpu)); write_hl(cpu, read_hl(cpu) - 1); break;
+
+        case 0x20: // JR NZ,r8
+            temp = read8(cpu, cpu->pc);
+            if (!flag_isset(cpu, FLAG_ZERO)) {
+                cpu->pc += *((signed char *) &temp);
+            } else {
+                cpu->pc++;
+            }
             break;
         case 0x21: // LD HL, d16
             write_hl(cpu, read16(cpu, cpu->pc));
+            cpu->pc += 2;
+            break;
+        case 0x31: // LD SP,d16
+            cpu->sp = read16(cpu, cpu->pc);
             cpu->pc += 2;
             break;
         case 0x32: // LD (HL-), A
             write8(cpu, read_hl(cpu), cpu->a);
             write_hl(cpu, read_hl(cpu) - 1);
             break;
+        case 0x94:
+            subtract(cpu, cpu->h);
+            break;
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc);
             break;
-        case 0xaf: // XOR A
-            cpu->a = 0;
+
+        // XOR
+        case 0xa8: xor(cpu, cpu->b); break;
+        case 0xa9: xor(cpu, cpu->c); break;
+        case 0xaa: xor(cpu, cpu->d); break;
+        case 0xab: xor(cpu, cpu->e); break;
+        case 0xac: xor(cpu, cpu->h); break;
+        case 0xad: xor(cpu, cpu->l); break;
+        case 0xae: xor(cpu, read8(cpu, read_hl(cpu))); break;
+        case 0xaf: xor(cpu, cpu->a); break;
+        case 0xee: xor(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
+        
+        case 0xe0: // LDH (a8),A
+            write16(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
+            cpu->pc++;
+            break;
+        case 0xe2: // LD (C),A
+            write8(cpu, cpu->c, cpu->a);
+            break;
+        case 0xea: // LD (a16),A
+            write16(cpu, read16(cpu, cpu->pc), cpu->a);
+            cpu->pc += 2;
+            break;
+        case 0xf0: // LDH A,(a8)
+            cpu->a = read16(cpu, 0xff00 + read8(cpu, cpu->pc));
+            cpu->pc++;
+        case 0xfe: // CP d8
+            if (cpu->a - read8(cpu, cpu->pc) > 0x80) {
+                set_flag(cpu, FLAG_SIGN);
+            }
+            cpu->pc++;
+            break;
+        case 0xf3: // DI
+            printf("disable interrupts\n");
             break;
         default:
             printf("unknown opcode 0x%02x %s\n", opc, instructions[opc].format);
