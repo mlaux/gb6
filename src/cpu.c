@@ -175,6 +175,16 @@ static void xor(struct cpu *regs, u8 value)
 	clear_flag(regs, FLAG_CARRY);
 }
 
+static void or(struct cpu *regs, u8 value)
+{
+	regs->a |= value;
+	if(regs->a == 0)
+		set_flag(regs, FLAG_ZERO);
+	clear_flag(regs, FLAG_SIGN);
+	clear_flag(regs, FLAG_HALF_CARRY);
+	clear_flag(regs, FLAG_CARRY);
+}
+
 static void push(struct cpu *cpu, u16 value)
 {
     write16(cpu, cpu->sp - 2, value & 0xff);
@@ -207,12 +217,71 @@ static u16 add16(struct cpu *cpu, u16 src)
     return total & 0xffff;
 }
 
+static u8 read_reg(struct cpu *cpu, int index)
+{
+    switch (index) {
+        case 0: return cpu->b;
+        case 1: return cpu->c;
+        case 2: return cpu->d;
+        case 3: return cpu->e;
+        case 4: return cpu->h;
+        case 5: return cpu->l;
+        case 6: return read8(cpu, read_hl(cpu));
+        case 7: return cpu->a;
+        default: cpu_panic(cpu);
+    }
+}
+
+static u8 write_reg(struct cpu *cpu, int index, u8 val)
+{
+    switch (index) {
+        case 0: cpu->b = val; break;
+        case 1: cpu->c = val; break;
+        case 2: cpu->d = val; break;
+        case 3: cpu->e = val; break;
+        case 4: cpu->h = val; break;
+        case 5: cpu->l = val; break;
+        case 6: write8(cpu, read_hl(cpu), val); break;
+        case 7: cpu->a = val; break;
+        default: cpu_panic(cpu);
+    }
+}
+
+static void extended_insn(struct cpu *cpu, u8 insn)
+{
+    u8 temp;
+    int op = insn >> 6;
+    int bit = (insn >> 3) & 0x7;
+    int reg = insn & 0x7;
+
+    switch (op) {
+        case 0:
+            break;
+        case 1: // BIT
+            temp = read_reg(cpu, reg);
+            if ((temp & (1 << bit)) == 0) {
+                set_flag(cpu, FLAG_ZERO);
+            } else {
+                clear_flag(cpu, FLAG_ZERO);
+            }
+            clear_flag(cpu, FLAG_SIGN);
+            set_flag(cpu, FLAG_HALF_CARRY);
+            break;
+        case 2: // RES
+            break;
+        case 3: // SET
+            break;
+    }
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
+    u16 temp16;
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
     cpu->pc++;
+    if (cpu->pc == 0x100) exit(0);
     switch (opc) {
         case 0: // NOP
             break;
@@ -386,14 +455,24 @@ void cpu_step(struct cpu *cpu)
             cpu->pc = pop(cpu);
             break;
         case 0xcd: // CALL a16
-            temp = read16(cpu, cpu->pc);
+            temp16 = read16(cpu, cpu->pc);
             cpu->pc += 2;
             push(cpu, cpu->pc);
-            cpu->pc = temp;
+            cpu->pc = temp16;
             break;
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc);
             break;
+
+        // OR
+        case 0xb0: or(cpu, cpu->b); break;
+        case 0xb1: or(cpu, cpu->c); break;
+        case 0xb2: or(cpu, cpu->d); break;
+        case 0xb3: or(cpu, cpu->e); break;
+        case 0xb4: or(cpu, cpu->h); break;
+        case 0xb5: or(cpu, cpu->l); break;
+        case 0xb6: or(cpu, read8(cpu, read_hl(cpu))); break;
+        case 0xb7: or(cpu, cpu->a); break;
 
         // XOR
         case 0xa8: xor(cpu, cpu->b); break;
@@ -405,7 +484,21 @@ void cpu_step(struct cpu *cpu)
         case 0xae: xor(cpu, read8(cpu, read_hl(cpu))); break;
         case 0xaf: xor(cpu, cpu->a); break;
         case 0xee: xor(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
-        
+
+        // RST
+        case 0xc7: push(cpu, cpu->pc); cpu->pc = 0x00; break;
+        case 0xcf: push(cpu, cpu->pc); cpu->pc = 0x08; break;
+        case 0xd7: push(cpu, cpu->pc); cpu->pc = 0x10; break;
+        case 0xdf: push(cpu, cpu->pc); cpu->pc = 0x18; break;
+        case 0xe7: push(cpu, cpu->pc); cpu->pc = 0x20; break;
+        case 0xef: push(cpu, cpu->pc); cpu->pc = 0x28; break;
+        case 0xf7: push(cpu, cpu->pc); cpu->pc = 0x30; break;
+        case 0xff: push(cpu, cpu->pc); cpu->pc = 0x38; break;
+
+        case 0xcb:
+            extended_insn(cpu, read8(cpu, cpu->pc));
+            cpu->pc++;
+            break;
         case 0xe0: // LDH (a8),A
             write16(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
             cpu->pc++;
@@ -427,6 +520,8 @@ void cpu_step(struct cpu *cpu)
             cpu->pc++;
             break;
         case 0xf3: // DI
+            break;
+        case 0xfb: // EI
             break;
         default:
             printf("unknown opcode 0x%02x %s\n", opc, instructions[opc].format);
