@@ -327,6 +327,10 @@ void cpu_step(struct cpu *cpu)
             write_bc(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
             break;
+        case 0x11: // LD DE,d16
+            write_de(cpu, read16(cpu, cpu->pc));
+            cpu->pc += 2;
+            break;
         case 0x07: // RLCA
             rotate_left(cpu, &cpu->a);
             break;
@@ -516,6 +520,11 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc);
+            break;
+        case 0xd2: // JP NC,a16
+            if (flag_isset(cpu, FLAG_CARRY)) {
+                cpu->pc = read16(cpu, cpu->pc);
+            }
             break;
 
         case 0x80: add(cpu, cpu->b, 0); break;
