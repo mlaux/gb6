@@ -157,22 +157,6 @@ static void rotate_right(struct cpu *regs, u8 *reg)
 	*reg |= (regs->f & FLAG_CARRY) << 3;
 }
 
-static void add8(struct cpu *cpu, u8 value)
-{
-    cpu->a += value;
-    clear_flag(cpu, FLAG_SIGN);
-    set_flag(cpu, cpu->a == 0 ? FLAG_ZERO : 0);
-    // TODO H, C
-}
-
-static void subtract(struct cpu *cpu, u8 value)
-{
-    cpu->a -= value;
-    set_flag(cpu, FLAG_SIGN);
-    set_flag(cpu, cpu->a == 0 ? FLAG_ZERO : 0);
-    // TODO H, C
-}
-
 static void xor(struct cpu *regs, u8 value)
 {
 	regs->a ^= value;
@@ -204,6 +188,39 @@ static void and(struct cpu *cpu, u8 value)
     clear_flag(cpu, FLAG_CARRY);
 }
 
+static void add(struct cpu *cpu, u8 value, int with_carry)
+{
+    u8 sum_trunc;
+    int sum_full = cpu->a + value;
+    if (with_carry && flag_isset(cpu, FLAG_CARRY)) {
+        sum_full++;
+    }
+    sum_trunc = (u8) sum_full;
+    set_flag(cpu, sum_trunc == 0 ? FLAG_ZERO : 0);
+    clear_flag(cpu, FLAG_SIGN);
+    set_flag(cpu, sum_full > sum_trunc ? FLAG_CARRY : 0);
+    // TODO H
+    cpu->a = sum_trunc;
+}
+
+static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare)
+{
+    u8 sum_trunc;
+    int sum_full = cpu->a - value;
+    if (with_carry && flag_isset(cpu, FLAG_CARRY)) {
+        sum_full--;
+    }
+    sum_trunc = (u8) sum_full;
+    set_flag(cpu, sum_trunc == 0 ? FLAG_ZERO : 0);
+    set_flag(cpu, FLAG_SIGN);
+    set_flag(cpu, sum_full < sum_trunc ? FLAG_CARRY : 0);
+    // TODO H
+
+    if (!just_compare) {
+        cpu->a = sum_trunc;
+    }
+}
+
 static void push(struct cpu *cpu, u16 value)
 {
     write16(cpu, cpu->sp - 2, value & 0xff);
@@ -217,7 +234,7 @@ static u16 pop(struct cpu *cpu)
     return read16(cpu, cpu->sp - 1) << 8 | read16(cpu, cpu->sp - 2);
 }
 
-static u16 add16(struct cpu *cpu, u16 src)
+static void add16(struct cpu *cpu, u16 src)
 {
     clear_flag(cpu, FLAG_SIGN);
     int total = read_hl(cpu) + src; // promoted to int
@@ -233,7 +250,7 @@ static u16 add16(struct cpu *cpu, u16 src)
         clear_flag(cpu, FLAG_HALF_CARRY);
     }
 
-    return total & 0xffff;
+    write_hl(cpu, total & 0xffff);
 }
 
 static u8 read_reg(struct cpu *cpu, int index)
@@ -309,6 +326,19 @@ void cpu_step(struct cpu *cpu)
         case 0x01: // LD BC, 0xNNNN
             write_bc(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
+            break;
+        case 0x07: // RLCA
+            rotate_left(cpu, &cpu->a);
+            break;
+        case 0x08: // LD (a16),SP
+            write16(cpu, read16(cpu, cpu->pc), cpu->sp);
+            cpu->pc += 2;
+            break;
+        case 0x19: // ADD HL,DE
+            add16(cpu, read_de(cpu));
+            break;
+        case 0x1f: // RRA
+            rotate_right(cpu, &cpu->a);
             break;
 
         // incs and decs
@@ -441,6 +471,9 @@ void cpu_step(struct cpu *cpu)
         case 0x2a: cpu->a = read8(cpu, read_hl(cpu)); write_hl(cpu, read_hl(cpu) + 1); break;
         case 0x3a: cpu->a = read8(cpu, read_hl(cpu)); write_hl(cpu, read_hl(cpu) - 1); break;
 
+        case 0x12: // LD (DE),A
+            write8(cpu, read_de(cpu), cpu->a);
+            break;
         case 0x20: // JR NZ,r8
             temp = read8(cpu, cpu->pc);
             if (!flag_isset(cpu, FLAG_ZERO)) {
@@ -467,9 +500,6 @@ void cpu_step(struct cpu *cpu)
             write8(cpu, read_hl(cpu), cpu->a);
             write_hl(cpu, read_hl(cpu) - 1);
             break;
-        case 0x94:
-            subtract(cpu, cpu->h);
-            break;
         case 0xc0: // RET NZ
             if (!flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc = pop(cpu);
@@ -488,6 +518,40 @@ void cpu_step(struct cpu *cpu)
             cpu->pc = read16(cpu, cpu->pc);
             break;
 
+        case 0x80: add(cpu, cpu->b, 0); break;
+        case 0x81: add(cpu, cpu->c, 0); break;
+        case 0x82: add(cpu, cpu->d, 0); break;
+        case 0x83: add(cpu, cpu->e, 0); break;
+        case 0x84: add(cpu, cpu->h, 0); break;
+        case 0x85: add(cpu, cpu->l, 0); break;
+        case 0x86: add(cpu, read8(cpu, read_hl(cpu)), 0); break;
+        case 0x87: add(cpu, cpu->a, 0); break;
+        case 0x88: add(cpu, cpu->b, 1); break;
+        case 0x89: add(cpu, cpu->c, 1); break;
+        case 0x8a: add(cpu, cpu->d, 1); break;
+        case 0x8b: add(cpu, cpu->e, 1); break;
+        case 0x8c: add(cpu, cpu->h, 1); break;
+        case 0x8d: add(cpu, cpu->l, 1); break;
+        case 0x8e: add(cpu, read8(cpu, read_hl(cpu)), 1); break;
+        case 0x8f: add(cpu, cpu->a, 1); break;
+
+        case 0x90: subtract(cpu, cpu->b, 0, 0); break;
+        case 0x91: subtract(cpu, cpu->c, 0, 0); break;
+        case 0x92: subtract(cpu, cpu->d, 0, 0); break;
+        case 0x93: subtract(cpu, cpu->e, 0, 0); break;
+        case 0x94: subtract(cpu, cpu->h, 0, 0); break;
+        case 0x95: subtract(cpu, cpu->l, 0, 0); break;
+        case 0x96: subtract(cpu, read8(cpu, read_hl(cpu)), 0, 0); break;
+        case 0x97: subtract(cpu, cpu->a, 0, 0); break;
+        case 0x98: subtract(cpu, cpu->b, 1, 0); break;
+        case 0x99: subtract(cpu, cpu->c, 1, 0); break;
+        case 0x9a: subtract(cpu, cpu->d, 1, 0); break;
+        case 0x9b: subtract(cpu, cpu->e, 1, 0); break;
+        case 0x9c: subtract(cpu, cpu->h, 1, 0); break;
+        case 0x9d: subtract(cpu, cpu->l, 1, 0); break;
+        case 0x9e: subtract(cpu, read8(cpu, read_hl(cpu)), 1, 0); break;
+        case 0x9f: subtract(cpu, cpu->a, 1, 0); break;
+
         // AND
         case 0xa0: and(cpu, cpu->b); break;
         case 0xa1: and(cpu, cpu->c); break;
@@ -499,16 +563,6 @@ void cpu_step(struct cpu *cpu)
         case 0xa7: and(cpu, cpu->a); break;
         case 0xe6: and(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
 
-        // OR
-        case 0xb0: or(cpu, cpu->b); break;
-        case 0xb1: or(cpu, cpu->c); break;
-        case 0xb2: or(cpu, cpu->d); break;
-        case 0xb3: or(cpu, cpu->e); break;
-        case 0xb4: or(cpu, cpu->h); break;
-        case 0xb5: or(cpu, cpu->l); break;
-        case 0xb6: or(cpu, read8(cpu, read_hl(cpu))); break;
-        case 0xb7: or(cpu, cpu->a); break;
-
         // XOR
         case 0xa8: xor(cpu, cpu->b); break;
         case 0xa9: xor(cpu, cpu->c); break;
@@ -519,6 +573,26 @@ void cpu_step(struct cpu *cpu)
         case 0xae: xor(cpu, read8(cpu, read_hl(cpu))); break;
         case 0xaf: xor(cpu, cpu->a); break;
         case 0xee: xor(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
+
+        // OR
+        case 0xb0: or(cpu, cpu->b); break;
+        case 0xb1: or(cpu, cpu->c); break;
+        case 0xb2: or(cpu, cpu->d); break;
+        case 0xb3: or(cpu, cpu->e); break;
+        case 0xb4: or(cpu, cpu->h); break;
+        case 0xb5: or(cpu, cpu->l); break;
+        case 0xb6: or(cpu, read8(cpu, read_hl(cpu))); break;
+        case 0xb7: or(cpu, cpu->a); break;
+
+        // CP
+        case 0xb8: subtract(cpu, cpu->b, 0, 1); break;
+        case 0xb9: subtract(cpu, cpu->c, 0, 1); break;
+        case 0xba: subtract(cpu, cpu->d, 0, 1); break;
+        case 0xbb: subtract(cpu, cpu->e, 0, 1); break;
+        case 0xbc: subtract(cpu, cpu->h, 0, 1); break;
+        case 0xbd: subtract(cpu, cpu->l, 0, 1); break;
+        case 0xbe: subtract(cpu, read8(cpu, read_hl(cpu)), 0, 1); break;
+        case 0xbf: subtract(cpu, cpu->a, 0, 1); break;
 
         // RST
         case 0xc7: push(cpu, cpu->pc); cpu->pc = 0x00; break;
@@ -532,6 +606,10 @@ void cpu_step(struct cpu *cpu)
 
         case 0xcb:
             extended_insn(cpu, read8(cpu, cpu->pc));
+            cpu->pc++;
+            break;
+        case 0xce:
+            add(cpu, read8(cpu, cpu->pc), 1);
             cpu->pc++;
             break;
         case 0xe0: // LDH (a8),A
