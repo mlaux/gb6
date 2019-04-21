@@ -15,9 +15,6 @@ void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom)
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
-    if (address < 0x100) {
-        return dmg_boot_rom[address];
-    }
     if (address < 0x4000) {
         return dmg->rom->data[address];
     } else if (address < 0x8000) {

@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
     dmg_new(&dmg, &cpu, &rom);
     cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
-    cpu.pc = 0;
+    cpu.pc = 0x100;
 
     while (1) {
         cpu_step(&cpu);

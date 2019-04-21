@@ -157,12 +157,20 @@ static void rotate_right(struct cpu *regs, u8 *reg)
 	*reg |= (regs->f & FLAG_CARRY) << 3;
 }
 
+static void add8(struct cpu *cpu, u8 value)
+{
+    cpu->a += value;
+    clear_flag(cpu, FLAG_SIGN);
+    set_flag(cpu, cpu->a == 0 ? FLAG_ZERO : 0);
+    // TODO H, C
+}
+
 static void subtract(struct cpu *cpu, u8 value)
 {
     cpu->a -= value;
-    if (cpu->a > 0x80) {
-        set_flag(cpu, FLAG_SIGN);
-    }
+    set_flag(cpu, FLAG_SIGN);
+    set_flag(cpu, cpu->a == 0 ? FLAG_ZERO : 0);
+    // TODO H, C
 }
 
 static void xor(struct cpu *regs, u8 value)
@@ -183,6 +191,17 @@ static void or(struct cpu *regs, u8 value)
 	clear_flag(regs, FLAG_SIGN);
 	clear_flag(regs, FLAG_HALF_CARRY);
 	clear_flag(regs, FLAG_CARRY);
+}
+
+static void and(struct cpu *cpu, u8 value)
+{
+    cpu->a &= value;
+	if(cpu->a == 0) {
+		set_flag(cpu, FLAG_ZERO);
+    }
+    clear_flag(cpu, FLAG_SIGN);
+    set_flag(cpu, FLAG_HALF_CARRY);
+    clear_flag(cpu, FLAG_CARRY);
 }
 
 static void push(struct cpu *cpu, u16 value)
@@ -268,8 +287,10 @@ static void extended_insn(struct cpu *cpu, u8 insn)
             set_flag(cpu, FLAG_HALF_CARRY);
             break;
         case 2: // RES
+            write_reg(cpu, reg, read_reg(cpu, reg) & ~(1 << bit));
             break;
         case 3: // SET
+            write_reg(cpu, reg, read_reg(cpu, reg) | (1 << bit));
             break;
     }
 }
@@ -435,6 +456,9 @@ void cpu_step(struct cpu *cpu)
         case 0x29: // ADD HL,HL
             add16(cpu, read_hl(cpu));
             break;
+        case 0x2f: // CPL
+            cpu->a = ~cpu->a;
+            break;
         case 0x31: // LD SP,d16
             cpu->sp = read16(cpu, cpu->pc);
             cpu->pc += 2;
@@ -463,6 +487,17 @@ void cpu_step(struct cpu *cpu)
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc);
             break;
+
+        // AND
+        case 0xa0: and(cpu, cpu->b); break;
+        case 0xa1: and(cpu, cpu->c); break;
+        case 0xa2: and(cpu, cpu->d); break;
+        case 0xa3: and(cpu, cpu->e); break;
+        case 0xa4: and(cpu, cpu->h); break;
+        case 0xa5: and(cpu, cpu->l); break;
+        case 0xa6: and(cpu, read8(cpu, read_hl(cpu))); break;
+        case 0xa7: and(cpu, cpu->a); break;
+        case 0xe6: and(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
 
         // OR
         case 0xb0: or(cpu, cpu->b); break;
