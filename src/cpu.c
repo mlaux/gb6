@@ -137,24 +137,41 @@ static void dec_with_carry(struct cpu *regs, u8 *reg)
 		set_flag(regs, FLAG_ZERO);
 }
 
-static void rotate_left(struct cpu *regs, u8 *reg)
+static u8 rotate_left(struct cpu *regs, u8 reg)
 {
 	// copy old leftmost bit to carry flag
-	regs->f = (*reg & 0x80) >> 3 | (regs->f & ~FLAG_CARRY);
+	regs->f = (reg & 0x80) >> 3 | (regs->f & ~FLAG_CARRY);
 	// rotate
-	*reg <<= 1;
+	int result = reg << 1;
 	// restore leftmost (now rightmost) bit
-	*reg |= (regs->f & FLAG_CARRY) >> 4;
+	result |= (regs->f & FLAG_CARRY) >> 4;
+    return result;
 }
 
-static void rotate_right(struct cpu *regs, u8 *reg)
+static u8 rotate_right(struct cpu *regs, u8 reg)
 {
 	// copy old rightmost bit to carry flag
-	regs->f = (*reg & 0x01) << 4 | (regs->f & ~FLAG_CARRY);
+	regs->f = (reg & 0x01) << 4 | (regs->f & ~FLAG_CARRY);
 	// rotate
-	*reg >>= 1;
+	int result = reg >> 1;
 	// restore rightmost bit to left
-	*reg |= (regs->f & FLAG_CARRY) << 3;
+	result |= (regs->f & FLAG_CARRY) << 3;
+    return result;
+}
+
+static u8 shift_left(struct cpu *cpu, u8 value)
+{
+    return 0;
+}
+
+static u8 shift_right(struct cpu *cpu, u8 value)
+{
+    return 0;
+}
+
+static u8 swap(struct cpu *cpu, u8 value)
+{
+    return ((value & 0xf0) >> 4) | ((value & 0x0f) << 4);
 }
 
 static void xor(struct cpu *regs, u8 value)
@@ -223,15 +240,21 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
 
 static void push(struct cpu *cpu, u16 value)
 {
-    write16(cpu, cpu->sp - 2, value & 0xff);
-    write16(cpu, cpu->sp - 1, value >> 8);
+    printf("sp=%04x\n", cpu->sp);
+    printf("memory[sp-2] = %02x\n", value & 0xff);
+    printf("memory[sp-1] = %02x\n", value >> 8);
+    write8(cpu, cpu->sp - 2, value & 0xff);
+    write8(cpu, cpu->sp - 1, value >> 8);
     cpu->sp -= 2;
 }
 
 static u16 pop(struct cpu *cpu)
 {
     cpu->sp += 2;
-    return read16(cpu, cpu->sp - 1) << 8 | read16(cpu, cpu->sp - 2);
+    printf("sp=%04x\n", cpu->sp);
+    printf("read memory[sp-2] = %02x\n", read8(cpu, cpu->sp - 2));
+    printf("read memory[sp-1] = %02x\n", read8(cpu, cpu->sp - 1));
+    return read8(cpu, cpu->sp - 1) << 8 | read8(cpu, cpu->sp - 2);
 }
 
 static void add16(struct cpu *cpu, u16 src)
@@ -290,8 +313,20 @@ static void extended_insn(struct cpu *cpu, u8 insn)
     int bit = (insn >> 3) & 0x7;
     int reg = insn & 0x7;
 
+    u8 (*funcs[8])(struct cpu *, u8) = {
+        rotate_left,
+        rotate_right,
+        rotate_left, // TODO non-carry version
+        rotate_right,
+        shift_left,
+        shift_right,
+        swap,
+        shift_right // TODO SRL
+    };
+
     switch (op) {
         case 0:
+            write_reg(cpu, reg, funcs[bit](cpu, read_reg(cpu, reg)));
             break;
         case 1: // BIT
             temp = read_reg(cpu, reg);
@@ -332,7 +367,7 @@ void cpu_step(struct cpu *cpu)
             cpu->pc += 2;
             break;
         case 0x07: // RLCA
-            rotate_left(cpu, &cpu->a);
+            cpu->a = rotate_left(cpu, cpu->a);
             break;
         case 0x08: // LD (a16),SP
             write16(cpu, read16(cpu, cpu->pc), cpu->sp);
@@ -341,8 +376,11 @@ void cpu_step(struct cpu *cpu)
         case 0x19: // ADD HL,DE
             add16(cpu, read_de(cpu));
             break;
+        case 0x17: // RLA
+            cpu->a = rotate_left(cpu, cpu->a);
+            break;
         case 0x1f: // RRA
-            rotate_right(cpu, &cpu->a);
+            cpu->a = rotate_right(cpu, cpu->a);
             break;
 
         // incs and decs
@@ -481,7 +519,7 @@ void cpu_step(struct cpu *cpu)
         case 0x20: // JR NZ,r8
             temp = read8(cpu, cpu->pc);
             if (!flag_isset(cpu, FLAG_ZERO)) {
-                cpu->pc += *((signed char *) &temp);
+                cpu->pc += *((signed char *) &temp) + 1;
             } else {
                 cpu->pc++;
             }
@@ -499,6 +537,10 @@ void cpu_step(struct cpu *cpu)
         case 0x31: // LD SP,d16
             cpu->sp = read16(cpu, cpu->pc);
             cpu->pc += 2;
+            break;
+        case 0x22: // LD (HL+), A
+            write8(cpu, read_hl(cpu), cpu->a);
+            write_hl(cpu, read_hl(cpu) + 1);
             break;
         case 0x32: // LD (HL-), A
             write8(cpu, read_hl(cpu), cpu->a);
@@ -613,6 +655,12 @@ void cpu_step(struct cpu *cpu)
         case 0xf7: push(cpu, cpu->pc); cpu->pc = 0x30; break;
         case 0xff: push(cpu, cpu->pc); cpu->pc = 0x38; break;
 
+        case 0xc1: // POP BC
+            write_bc(cpu, pop(cpu));
+            break;
+        case 0xc5: // PUSH BC
+            push(cpu, read_bc(cpu));
+            break;
         case 0xcb:
             extended_insn(cpu, read8(cpu, cpu->pc));
             cpu->pc++;
@@ -626,7 +674,7 @@ void cpu_step(struct cpu *cpu)
             cpu->pc++;
             break;
         case 0xe2: // LD (C),A
-            write8(cpu, cpu->c, cpu->a);
+            write8(cpu, 0xff00 + cpu->c, cpu->a);
             break;
         case 0xea: // LD (a16),A
             write16(cpu, read16(cpu, cpu->pc), cpu->a);
@@ -640,6 +688,9 @@ void cpu_step(struct cpu *cpu)
                 set_flag(cpu, FLAG_SIGN);
             }
             cpu->pc++;
+            break;
+        case 0xf2: // LD A,(C)
+            cpu->a = read8(cpu, 0xff00 + cpu->c);
             break;
         case 0xf3: // DI
             break;

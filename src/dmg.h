@@ -7,8 +7,10 @@
 struct dmg {
     struct cpu *cpu;
     struct rom *rom;
+    struct lcd *lcd;
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
+    u8 zero_page[0x80];
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom);

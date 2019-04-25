@@ -15,6 +15,9 @@ void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom)
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
+    if (address < 0x100) {
+        return dmg_boot_rom[address];
+    }
     if (address < 0x4000) {
         return dmg->rom->data[address];
     } else if (address < 0x8000) {
@@ -27,6 +30,8 @@ u8 dmg_read(void *_dmg, u16 address)
         return 0;
     } else if (address < 0xe000) {
         return dmg->main_ram[address - 0xc000];
+    } else if (address >= 0xff80 && address <= 0xfffe) {
+        return dmg->zero_page[address - 0xff80];
     } else {
         // not sure about any of this yet
         return 0;
@@ -49,6 +54,8 @@ void dmg_write(void *_dmg, u16 address, u8 data)
         // TODO switchable ram bank
     } else if (address < 0xe000) {
         dmg->main_ram[address - 0xc000] = data;
+    } else if (address >= 0xff80 && address <= 0xfffe) {
+        dmg->zero_page[address - 0xff80] = data;
     } else {
         // not sure about any of this yet
     }

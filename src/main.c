@@ -9,6 +9,7 @@ int main(int argc, char *argv[])
     struct cpu cpu;
     struct rom rom;
     struct dmg dmg;
+    int executed = 0;
 
     if (argc < 2) {
         printf("no rom specified\n");
@@ -26,9 +27,9 @@ int main(int argc, char *argv[])
     dmg_new(&dmg, &cpu, &rom);
     cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
-    cpu.pc = 0x100;
+    cpu.pc = 0;
 
-    while (1) {
+    for (; executed < 100000; executed++) {
         cpu_step(&cpu);
     }
 
