@@ -240,9 +240,10 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
 
 static void push(struct cpu *cpu, u16 value)
 {
-    printf("sp=%04x\n", cpu->sp);
-    printf("memory[sp-2] = %02x\n", value & 0xff);
-    printf("memory[sp-1] = %02x\n", value >> 8);
+    // todo #if DEBUG or something
+    //printf("sp=%04x\n", cpu->sp);
+    //printf("memory[sp-2] = %02x\n", value & 0xff);
+    //printf("memory[sp-1] = %02x\n", value >> 8);
     write8(cpu, cpu->sp - 2, value & 0xff);
     write8(cpu, cpu->sp - 1, value >> 8);
     cpu->sp -= 2;
@@ -251,9 +252,9 @@ static void push(struct cpu *cpu, u16 value)
 static u16 pop(struct cpu *cpu)
 {
     cpu->sp += 2;
-    printf("sp=%04x\n", cpu->sp);
-    printf("read memory[sp-2] = %02x\n", read8(cpu, cpu->sp - 2));
-    printf("read memory[sp-1] = %02x\n", read8(cpu, cpu->sp - 1));
+    //printf("sp=%04x\n", cpu->sp);
+    //printf("read memory[sp-2] = %02x\n", read8(cpu, cpu->sp - 2));
+    //printf("read memory[sp-1] = %02x\n", read8(cpu, cpu->sp - 1));
     return read8(cpu, cpu->sp - 1) << 8 | read8(cpu, cpu->sp - 2);
 }
 
@@ -516,9 +517,14 @@ void cpu_step(struct cpu *cpu)
         case 0x12: // LD (DE),A
             write8(cpu, read_de(cpu), cpu->a);
             break;
-        case 0x20: // JR NZ,r8
+        case 0x18: // JR r8
             temp = read8(cpu, cpu->pc);
-            if (!flag_isset(cpu, FLAG_ZERO)) {
+            cpu->pc += *((signed char *) &temp) + 1;
+            break;
+        case 0x20: // JR NZ,r8
+        case 0x28: // JR Z,r8
+            temp = read8(cpu, cpu->pc);
+            if ((opc == 0x20) ^ flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc += *((signed char *) &temp) + 1;
             } else {
                 cpu->pc++;
