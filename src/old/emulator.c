@@ -5,6 +5,7 @@
    emulator.c - entry point */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <Windows.h>
 #include <Quickdraw.h>
 #include <StandardFile.h>
@@ -63,7 +64,7 @@ void StartEmulation(void)
 	z80_run(theState.cpu);
 }
 
-bool LoadRom(FSSpec *fp)
+bool LoadRom(StrFileName fileName, short vRefNum)
 {
 	int err;
 	short fileNo;
@@ -75,7 +76,8 @@ bool LoadRom(FSSpec *fp)
 		theState.romLength = 0;
 	}
 	
-	err = FSpOpenDF(fp, fsRdWrPerm, &fileNo);
+
+	err = FSOpen(fileName, vRefNum, &fileNo);
 	
 	if(err != noErr) {
 		return false;
@@ -98,13 +100,17 @@ bool LoadRom(FSSpec *fp)
 
 bool ShowOpenBox(void)
 {
-	StandardFileReply reply;
+	SFReply reply;
 	Point pt = { 0, 0 };
+	const int stdWidth = 348;
+	Rect rect;
 	
-	StandardGetFile(NULL, -1, NULL, &reply);
+	pt.h = qd.screenBits.bounds.right / 2 - stdWidth / 2;
 	
-	if(reply.sfGood) {
-		return LoadRom(&reply.sfFile);
+	SFGetFile(pt, NULL, NULL, -1, NULL, NULL, &reply);
+	
+	if(reply.good) {
+		return LoadRom(reply.fName, reply.vRefNum);
 	}
 	
 	return false;
