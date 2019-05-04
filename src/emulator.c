@@ -15,8 +15,6 @@
 #include <Devices.h>
 #include <Memory.h>
 
-#include "gb_types.h"
-#include "z80.h"
 #include "emulator.h"
 
 WindowPtr g_wp;
@@ -58,10 +56,8 @@ void StartEmulation(void)
 	g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true, 
 				noGrowDocProc, (WindowPtr) -1, true, 0);
 	SetPort(g_wp);
+
 	
-	theState.cpu = z80_create();
-	theState.cpu->regs->pc = 0x100;
-	z80_run(theState.cpu);
 }
 
 bool LoadRom(StrFileName fileName, short vRefNum)

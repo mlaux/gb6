@@ -1,6 +1,10 @@
 add_application(Emulator
-    src/old/emulator.c
-    src/old/mem_model.c
-    src/old/z80.c
+    src/bootstrap.c
+    src/cpu.c
+    src/dmg.c
+    src/emulator.c
+    src/instructions.c
+    src/lcd.c
+    src/rom.c
     resources.r
 )

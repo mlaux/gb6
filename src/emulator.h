@@ -7,6 +7,9 @@
 #ifndef EMULATOR_H
 #define EMULATOR_H
 
+#include "types.h"
+#include "dmg.h"
+
 #define WINDOW_TITLE "\pEmulator"
 
 #define WINDOW_X 100
@@ -40,7 +43,7 @@ typedef unsigned char bool;
 #define false 0
 
 typedef struct _emu_state {
-	z80_state *cpu;
+	struct dmg *cpu;
 	u8 *rom;
 	unsigned long int romLength;
 } emu_state;
