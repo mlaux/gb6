@@ -2,14 +2,16 @@
 
 #include "cpu.h"
 #include "rom.h"
+#include "lcd.h"
 #include "dmg.h"
 #include "types.h"
 #include "bootstrap.h"
 
-void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom)
+void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {
     dmg->cpu = cpu;
     dmg->rom = rom;
+    dmg->lcd = lcd;
 }
 
 u8 dmg_read(void *_dmg, u16 address)
@@ -30,10 +32,13 @@ u8 dmg_read(void *_dmg, u16 address)
         return 0;
     } else if (address < 0xe000) {
         return dmg->main_ram[address - 0xc000];
+    } else if (lcd_is_valid_addr(address)) {
+        return lcd_read(dmg->lcd, address);
     } else if (address >= 0xff80 && address <= 0xfffe) {
         return dmg->zero_page[address - 0xff80];
     } else {
         // not sure about any of this yet
+        fprintf(stderr, "don't know how to read 0x%04x\n", address);
         return 0;
     }
 }
@@ -54,9 +59,22 @@ void dmg_write(void *_dmg, u16 address, u8 data)
         // TODO switchable ram bank
     } else if (address < 0xe000) {
         dmg->main_ram[address - 0xc000] = data;
+    } else if (lcd_is_valid_addr(address)) {
+        lcd_write(dmg->lcd, address, data);
     } else if (address >= 0xff80 && address <= 0xfffe) {
         dmg->zero_page[address - 0xff80] = data;
     } else {
         // not sure about any of this yet
     }
+}
+
+void dmg_step(void *_dmg)
+{
+    struct dmg *dmg = (struct dmg *) _dmg;
+
+    // order of dependencies? i think cpu needs to step first then update
+    // all other hw
+    cpu_step(dmg->cpu);
+
+    lcd_step(dmg->lcd);
 }

@@ -3,13 +3,16 @@
 #include "dmg.h"
 #include "cpu.h"
 #include "rom.h"
+#include "lcd.h"
 
 int main(int argc, char *argv[])
 {
     struct cpu cpu;
     struct rom rom;
     struct dmg dmg;
-    int executed = 0;
+    struct lcd lcd;
+
+    int executed;
 
     if (argc < 2) {
         printf("no rom specified\n");
@@ -24,12 +27,12 @@ int main(int argc, char *argv[])
     // this might be too much abstraction but it'll let me
     // test the cpu, rom, and dmg independently and use the cpu
     // for other non-GB stuff
-    dmg_new(&dmg, &cpu, &rom);
+    dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
     cpu.pc = 0;
 
-    for (; executed < 100000; executed++) {
+    for (executed = 0; executed < 100000; executed++) {
         cpu_step(&cpu);
     }
 

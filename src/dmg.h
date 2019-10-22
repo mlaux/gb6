@@ -13,9 +13,12 @@ struct dmg {
     u8 zero_page[0x80];
 };
 
-void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom);
+void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);
 
+// why did i make these void *
 u8 dmg_read(void *dmg, u16 address);
 void dmg_write(void *dmg, u16 address, u8 data);
+
+void dmg_step(void *dmg);
 
 #endif
