@@ -25,10 +25,6 @@ u8 lcd_read(struct lcd *lcd, u16 addr)
 
 void lcd_write(struct lcd *lcd, u16 addr, u8 value)
 {
-    if (addr == REG_LY) {
-        // writing to this register always resets it
-        value = 0;
-    }
     lcd->regs[addr - REG_LCD_BASE] = value;
 }
 

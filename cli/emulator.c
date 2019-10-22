@@ -32,8 +32,8 @@ int main(int argc, char *argv[])
 
     cpu.pc = 0;
 
-    for (executed = 0; executed < 100000; executed++) {
-        cpu_step(&cpu);
+    for (executed = 0; executed < 1000000; executed++) {
+        dmg_step(&dmg);
     }
 
     rom_free(&rom);

@@ -125,6 +125,7 @@ static void inc_with_carry(struct cpu *regs, u8 *reg)
 	(*reg)++;
 	if(*reg == 0)
 		set_flag(regs, FLAG_ZERO);
+    else clear_flag(regs, FLAG_ZERO);
 }
 
 static void dec_with_carry(struct cpu *regs, u8 *reg)
@@ -135,6 +136,7 @@ static void dec_with_carry(struct cpu *regs, u8 *reg)
 	(*reg)--;
 	if(*reg == 0)
 		set_flag(regs, FLAG_ZERO);
+    else clear_flag(regs, FLAG_ZERO);
 }
 
 static u8 rotate_left(struct cpu *regs, u8 reg)
@@ -179,6 +181,7 @@ static void xor(struct cpu *regs, u8 value)
 	regs->a ^= value;
 	if(regs->a == 0)
 		set_flag(regs, FLAG_ZERO);
+    else clear_flag(regs, FLAG_ZERO);
 	clear_flag(regs, FLAG_SIGN);
 	clear_flag(regs, FLAG_HALF_CARRY);
 	clear_flag(regs, FLAG_CARRY);
@@ -189,6 +192,7 @@ static void or(struct cpu *regs, u8 value)
 	regs->a |= value;
 	if(regs->a == 0)
 		set_flag(regs, FLAG_ZERO);
+    else clear_flag(regs, FLAG_ZERO);
 	clear_flag(regs, FLAG_SIGN);
 	clear_flag(regs, FLAG_HALF_CARRY);
 	clear_flag(regs, FLAG_CARRY);
@@ -199,6 +203,8 @@ static void and(struct cpu *cpu, u8 value)
     cpu->a &= value;
 	if(cpu->a == 0) {
 		set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
     }
     clear_flag(cpu, FLAG_SIGN);
     set_flag(cpu, FLAG_HALF_CARRY);
@@ -650,6 +656,7 @@ void cpu_step(struct cpu *cpu)
         case 0xbd: subtract(cpu, cpu->l, 0, 1); break;
         case 0xbe: subtract(cpu, read8(cpu, read_hl(cpu)), 0, 1); break;
         case 0xbf: subtract(cpu, cpu->a, 0, 1); break;
+        case 0xfe: subtract(cpu, read8(cpu, cpu->pc), 0, 1); cpu->pc++; break;
 
         // RST
         case 0xc7: push(cpu, cpu->pc); cpu->pc = 0x00; break;
@@ -689,11 +696,7 @@ void cpu_step(struct cpu *cpu)
         case 0xf0: // LDH A,(a8)
             cpu->a = read16(cpu, 0xff00 + read8(cpu, cpu->pc));
             cpu->pc++;
-        case 0xfe: // CP d8
-            if (cpu->a - read8(cpu, cpu->pc) > 0x80) {
-                set_flag(cpu, FLAG_SIGN);
-            }
-            cpu->pc++;
+            printf("scanline was %d\n", cpu->a);
             break;
         case 0xf2: // LD A,(C)
             cpu->a = read8(cpu, 0xff00 + cpu->c);
