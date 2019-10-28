@@ -3,10 +3,23 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_memory_editor.h"
 #include <stdio.h>
+#include <iostream>
 #include <GL/gl3w.h>    // Initialize with gl3wInit()
 #include <GLFW/glfw3.h>
 
+extern "C" {
+#include "dmg.h"
+#include "cpu.h"
+#include "rom.h"
+#include "lcd.h"
+}
+
 static MemoryEditor memory_editor;
+
+static struct cpu cpu;
+static struct rom rom;
+static struct dmg dmg;
+static struct lcd lcd;
 
 const int window_width = 1280;
 const int window_height = 720;
@@ -38,10 +51,10 @@ static void emulation_stop()
 
 static void emulation_step()
 {
-
+    dmg_step(&dmg);
 }
 
-int main(int, char **)
+int main(int argc, char **argv)
 {
     // Setup window
     glfwSetErrorCallback(glfw_error_callback);
@@ -99,6 +112,19 @@ int main(int, char **)
 
     gen_output_texture();
 
+    if (!rom_load(&rom, argv[1])) {
+        std::cout << "error loading rom\n";
+        return 1;
+    }
+
+    // this might be too much abstraction but it'll let me
+    // test the cpu, rom, and dmg independently and use the cpu
+    // for other non-GB stuff
+    dmg_new(&dmg, &cpu, &rom, &lcd);
+    cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
+
+    cpu.pc = 0;
+
     // Main loop
     while (!glfwWindowShouldClose(window))
     {
@@ -131,6 +157,10 @@ int main(int, char **)
                 emulation_step();
             }
 
+            if (cpu.pc < 0x200) {
+                emulation_step();
+            }
+
             ImGui::Image((void *) (uintptr_t) output_texture, ImVec2(160, 144));
 
             // ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
@@ -140,7 +170,7 @@ int main(int, char **)
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
 
-            memory_editor.DrawWindow("Memory Editor", mem_block, mem_block_size, 0x0000);
+            memory_editor.DrawWindow("Memory Editor", dmg.main_ram, 0x2000, 0x0000);
         }
 
         // Rendering
@@ -162,6 +192,8 @@ int main(int, char **)
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    rom_free(&rom);
 
     return 0;
 }
