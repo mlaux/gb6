@@ -5,7 +5,7 @@
 #include "rom.h"
 #include "lcd.h"
 
-int cli_main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     struct cpu cpu;
     struct rom rom;
