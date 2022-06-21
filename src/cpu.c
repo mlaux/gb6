@@ -31,57 +31,26 @@ static inline void clear_flag(struct cpu *cpu, int flag)
     cpu->f &= ~flag;
 }
 
-static inline u16 read_af(struct cpu *cpu)
-{
-    return cpu->a << 8 | cpu->f;
-}
-
-static inline u16 read_bc(struct cpu *cpu)
-{
-    return cpu->b << 8 | cpu->c;
-}
-
-static inline u16 read_de(struct cpu *cpu)
-{
-    return cpu->d << 8 | cpu->e;
-}
-
-static inline u16 read_hl(struct cpu *cpu)
-{
-    return cpu->h << 8 | cpu->l;
-}
-
 static inline u16 read_double_reg(struct cpu *cpu, u8 *rh, u8 *rl)
 {
     return *rh << 8 | *rl;
 }
 
-static inline void write_af(struct cpu *cpu, int value)
-{
-    cpu->a = value >> 8;
-    cpu->f = value & 0xff;
-}
+#define read_af(cpu) read_double_reg((cpu), &(cpu)->a, &(cpu)->f)
+#define read_bc(cpu) read_double_reg((cpu), &(cpu)->b, &(cpu)->c)
+#define read_de(cpu) read_double_reg((cpu), &(cpu)->d, &(cpu)->e)
+#define read_hl(cpu) read_double_reg((cpu), &(cpu)->h, &(cpu)->l)
 
-static inline void write_bc(struct cpu *cpu, int value)
-{
-    cpu->b = value >> 8;
-    cpu->c = value & 0xff;
-}
-
-static inline void write_de(struct cpu *cpu, int value)
-{
-    cpu->d = value >> 8;
-    cpu->e = value & 0xff;
-}
-
-// TODO figure out if I like this style better and convert write_af, etc to this
 static inline void write_double_reg(struct cpu *cpu, u8 *rh, u8 *rl, int value)
 {
     *rh = value >> 8;
     *rl = value & 0xff;
 }
 
-#define write_hl(cpu, value) write_double_reg((cpu), &cpu->h, &cpu->l, value)
+#define write_af(cpu, value) write_double_reg((cpu), &(cpu)->a, &(cpu)->f, value)
+#define write_bc(cpu, value) write_double_reg((cpu), &(cpu)->b, &(cpu)->c, value)
+#define write_de(cpu, value) write_double_reg((cpu), &(cpu)->d, &(cpu)->e, value)
+#define write_hl(cpu, value) write_double_reg((cpu), &(cpu)->h, &(cpu)->l, value)
 
 void cpu_panic(struct cpu *cpu)
 {
@@ -361,7 +330,6 @@ void cpu_step(struct cpu *cpu)
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
     cpu->pc++;
-    if (cpu->pc == 0x100) exit(0);
     switch (opc) {
         case 0: // NOP
             break;
@@ -696,7 +664,6 @@ void cpu_step(struct cpu *cpu)
         case 0xf0: // LDH A,(a8)
             cpu->a = read16(cpu, 0xff00 + read8(cpu, cpu->pc));
             cpu->pc++;
-            printf("scanline was %d\n", cpu->a);
             break;
         case 0xf2: // LD A,(C)
             cpu->a = read8(cpu, 0xff00 + cpu->c);

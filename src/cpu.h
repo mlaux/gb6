@@ -15,6 +15,7 @@ struct cpu
     u8 l;
     u16 sp;
     u16 pc;
+    u32 cycle_count;
 
     u8 (*mem_read)(void *, u16);
     void (*mem_write)(void *, u16, u8);

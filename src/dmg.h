@@ -3,6 +3,7 @@
 
 #include "cpu.h"
 #include "rom.h"
+#include "lcd.h"
 
 struct dmg {
     struct cpu *cpu;

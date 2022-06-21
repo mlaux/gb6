@@ -12,4 +12,5 @@ cmake_install.cmake
 include
 lib
 imgui.ini
-
+.DS_Store
+roms
