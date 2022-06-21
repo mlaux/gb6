@@ -30,6 +30,7 @@ struct lcd {
     u8 *pixels;
 };
 
+void lcd_new(struct lcd *lcd);
 u8 lcd_is_valid_addr(u16 addr);
 u8 lcd_read(struct lcd *lcd, u16 addr);
 void lcd_write(struct lcd *lcd, u16 addr, u8 value);

@@ -265,6 +265,9 @@ static u8 read_reg(struct cpu *cpu, int index)
         case 7: return cpu->a;
         default: cpu_panic(cpu);
     }
+
+    // unreachable
+    return 0;
 }
 
 static u8 write_reg(struct cpu *cpu, int index, u8 val)
@@ -280,6 +283,9 @@ static u8 write_reg(struct cpu *cpu, int index, u8 val)
         case 7: cpu->a = val; break;
         default: cpu_panic(cpu);
     }
+
+    // unreachable
+    return 0;
 }
 
 static void extended_insn(struct cpu *cpu, u8 insn)

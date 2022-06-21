@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "types.h"
 #include "lcd.h"
@@ -11,6 +12,12 @@ static void set_bit(struct lcd *lcd, u16 addr, u8 bit)
 static void clear_bit(struct lcd *lcd, u16 addr, u8 bit)
 {
     lcd_write(lcd, addr, lcd_read(lcd, addr) & ~(1 << bit));
+}
+
+void lcd_new(struct lcd *lcd)
+{
+    // todo < 8 bpp
+    lcd->pixels = malloc(LCD_WIDTH * LCD_HEIGHT);
 }
 
 u8 lcd_is_valid_addr(u16 addr)
