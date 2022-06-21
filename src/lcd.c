@@ -49,4 +49,5 @@ void lcd_step(struct lcd *lcd)
     // step to next scanline 0-153
     u8 next_scanline = (lcd_read(lcd, REG_LY) + 1) % 154;
     lcd_write(lcd, REG_LY, next_scanline);
+    // printf("update lcd %d\n", next_scanline);
 }

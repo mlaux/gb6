@@ -75,8 +75,8 @@ void dmg_step(void *_dmg)
     // all other hw
     cpu_step(dmg->cpu);
 
-    if (dmg->cpu->pc % 456 == 0) {
-        // each line takes 456 cycles
+    // each line takes 456 cycles
+    if (dmg->cpu->cycle_count % 456 == 0) {
         lcd_step(dmg->lcd);
     }
 }

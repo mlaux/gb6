@@ -300,6 +300,9 @@ static void extended_insn(struct cpu *cpu, u8 insn)
         shift_right // TODO SRL
     };
 
+    printf("       %s\n", instructions[insn + 0x100].format);
+    cpu->cycle_count += instructions[insn + 0x100].cycles;
+
     switch (op) {
         case 0:
             write_reg(cpu, reg, funcs[bit](cpu, read_reg(cpu, reg)));
@@ -330,6 +333,7 @@ void cpu_step(struct cpu *cpu)
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
     cpu->pc++;
+    cpu->cycle_count += instructions[opc].cycles;
     switch (opc) {
         case 0: // NOP
             break;
@@ -500,6 +504,7 @@ void cpu_step(struct cpu *cpu)
             temp = read8(cpu, cpu->pc);
             if ((opc == 0x20) ^ flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc += *((signed char *) &temp) + 1;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             } else {
                 cpu->pc++;
             }
@@ -650,19 +655,19 @@ void cpu_step(struct cpu *cpu)
             add(cpu, read8(cpu, cpu->pc), 1);
             cpu->pc++;
             break;
-        case 0xe0: // LDH (a8),A
-            write16(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
+        case 0xe0: // LD (a8),A
+            write8(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
             cpu->pc++;
             break;
         case 0xe2: // LD (C),A
             write8(cpu, 0xff00 + cpu->c, cpu->a);
             break;
         case 0xea: // LD (a16),A
-            write16(cpu, read16(cpu, cpu->pc), cpu->a);
+            write8(cpu, read16(cpu, cpu->pc), cpu->a);
             cpu->pc += 2;
             break;
-        case 0xf0: // LDH A,(a8)
-            cpu->a = read16(cpu, 0xff00 + read8(cpu, cpu->pc));
+        case 0xf0: // LD A,(a8)
+            cpu->a = read8(cpu, 0xff00 + read8(cpu, cpu->pc));
             cpu->pc++;
             break;
         case 0xf2: // LD A,(C)

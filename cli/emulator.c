@@ -32,7 +32,8 @@ int main(int argc, char *argv[])
 
     cpu.pc = 0;
 
-    for (executed = 0; executed < 100000; executed++) {
+    // for (executed = 0; executed < 100000; executed++) {
+    while (1) {
         dmg_step(&dmg);
     }
 
