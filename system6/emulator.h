@@ -21,6 +21,7 @@
 #define ALRT_4_LINE 129
 
 #define DLOG_ABOUT 128
+#define DLOG_STATE 129
 
 #define MBAR_DEFAULT 128
 
@@ -35,8 +36,9 @@
 #define FILE_QUIT 4
 
 #define EMULATION_PAUSE 1
-#define EMULATION_PREFERENCES 3
-#define EMULATION_KEY_MAPPINGS 4
+#define EMULATION_STATE 2
+#define EMULATION_PREFERENCES 4
+#define EMULATION_KEY_MAPPINGS 5
 
 typedef unsigned char bool;
 #define true 1

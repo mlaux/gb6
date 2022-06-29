@@ -28,185 +28,212 @@ emu_state theState;
 
 void InitEverything(void)
 {	
-	Handle mbar;
-	
-	InitGraf(&qd.thePort);
-	InitFonts();
-	InitWindows();
-	InitMenus();
-	TEInit();
-	InitDialogs(0L);
-	InitCursor();
-	
-	mbar = GetNewMBar(MBAR_DEFAULT);
-	SetMenuBar(mbar);
-	DrawMenuBar();
-	
-	g_running = 1;
+  Handle mbar;
+  
+  InitGraf(&qd.thePort);
+  InitFonts();
+  InitWindows();
+  InitMenus();
+  TEInit();
+  InitDialogs(0L);
+  InitCursor();
+  
+  mbar = GetNewMBar(MBAR_DEFAULT);
+  SetMenuBar(mbar);
+  DrawMenuBar();
+  
+  g_running = 1;
 }
 
 void Render(void)
 {
-	MoveTo(10, 10);
-	DrawString("\pTest 123");
+  MoveTo(10, 10);
+  DrawString("\pTest 123");
 }
 
 void StartEmulation(void)
 {
-	g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true, 
-				noGrowDocProc, (WindowPtr) -1, true, 0);
-	SetPort(g_wp);
+  g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true, 
+        noGrowDocProc, (WindowPtr) -1, true, 0);
+  SetPort(g_wp);
 
-	
+  
 }
 
 bool LoadRom(StrFileName fileName, short vRefNum)
 {
-	int err;
-	short fileNo;
-	long amtRead;
-	
-	if(theState.rom != NULL) {
-		// unload existing ROM
-		free((char *) theState.rom);
-		theState.romLength = 0;
-	}
-	
+  int err;
+  short fileNo;
+  long amtRead;
+  
+  if(theState.rom != NULL) {
+    // unload existing ROM
+    free((char *) theState.rom);
+    theState.romLength = 0;
+  }
+  
 
-	err = FSOpen(fileName, vRefNum, &fileNo);
-	
-	if(err != noErr) {
-		return false;
-	}
-	
-	GetEOF(fileNo, (long *) &theState.romLength);
-	theState.rom = (unsigned char *) malloc(theState.romLength);
-	if(theState.rom == NULL) {
-		Alert(ALRT_NOT_ENOUGH_RAM, NULL);
-		return false;
-	}
-	
-	amtRead = theState.romLength;
-	
-	FSRead(fileNo, &amtRead, theState.rom);
-	return true;
+  err = FSOpen(fileName, vRefNum, &fileNo);
+  
+  if(err != noErr) {
+    return false;
+  }
+  
+  GetEOF(fileNo, (long *) &theState.romLength);
+  theState.rom = (unsigned char *) malloc(theState.romLength);
+  if(theState.rom == NULL) {
+    Alert(ALRT_NOT_ENOUGH_RAM, NULL);
+    return false;
+  }
+  
+  amtRead = theState.romLength;
+  
+  FSRead(fileNo, &amtRead, theState.rom);
+  return true;
 }
 
 // -- DIALOG BOX FUNCTIONS --
 
 bool ShowOpenBox(void)
 {
-	SFReply reply;
-	Point pt = { 0, 0 };
-	const int stdWidth = 348;
-	Rect rect;
-	
-	pt.h = qd.screenBits.bounds.right / 2 - stdWidth / 2;
-	
-	SFGetFile(pt, NULL, NULL, -1, NULL, NULL, &reply);
-	
-	if(reply.good) {
-		return LoadRom(reply.fName, reply.vRefNum);
-	}
-	
-	return false;
+  SFReply reply;
+  Point pt = { 0, 0 };
+  const int stdWidth = 348;
+  Rect rect;
+  
+  pt.h = qd.screenBits.bounds.right / 2 - stdWidth / 2;
+  
+  SFGetFile(pt, NULL, NULL, -1, NULL, NULL, &reply);
+  
+  if(reply.good) {
+    return LoadRom(reply.fName, reply.vRefNum);
+  }
+  
+  return false;
+}
+
+DialogPtr stateDialog;
+void ShowStateDialog(void)
+{
+  DialogPtr dp;
+
+  if (!stateDialog) {
+    stateDialog = GetNewDialog(DLOG_STATE, 0L, (WindowPtr) -1L);
+  }
+
+  ShowWindow(stateDialog);
+  SelectWindow(stateDialog);
 }
 
 void ShowAboutBox(void)
 {
-	DialogPtr dp;
-	EventRecord e;
-	
-	dp = GetNewDialog(DLOG_ABOUT, 0L, (WindowPtr) -1L);
-	
-	DrawDialog(dp);
-	
-	while(!GetNextEvent(mDownMask, &e));
-	while(WaitMouseUp());
-	
-	DisposeDialog(dp);
+  DialogPtr dp;
+  EventRecord e;
+  DialogItemIndex hitItem;
+  
+  dp = GetNewDialog(DLOG_ABOUT, 0L, (WindowPtr) -1L);
+  
+  ModalDialog(NULL, &hitItem);
+
+  // DrawDialog(dp);
+  // while(!GetNextEvent(mDownMask, &e));
+  // while(WaitMouseUp());
+  
+  DisposeDialog(dp);
 }
 
 // -- EVENT FUNCTIONS --
 
 void OnMenuAction(long action)
 {
-	short menu, item;
-	
-	if(action <= 0)
-		return;
+  short menu, item;
+  
+  if(action <= 0)
+    return;
 
-	HiliteMenu(0);
-	
-	menu = HiWord(action);
-	item = LoWord(action);
-	
-	if(menu == MENU_APPLE) {
-		if(item == APPLE_ABOUT) {
-			ShowAboutBox();
-		}	
-	}
-	
-	else if(menu == MENU_FILE) {
-		if(item == FILE_OPEN) {
-			if(ShowOpenBox())
-				StartEmulation();
-		}
-		else if(item == FILE_QUIT) {
-			g_running = 0;
-		}
-	}
+  HiliteMenu(0);
+  
+  menu = HiWord(action);
+  item = LoWord(action);
+  
+  if(menu == MENU_APPLE) {
+    if(item == APPLE_ABOUT) {
+      ShowAboutBox();
+    }	
+  }
+  
+  else if(menu == MENU_FILE) {
+    if(item == FILE_OPEN) {
+      if(ShowOpenBox())
+        StartEmulation();
+    }
+    else if(item == FILE_QUIT) {
+      g_running = 0;
+    }
+  }
+
+  else if (menu == MENU_EMULATION) {
+    if (item == EMULATION_STATE) {
+      ShowStateDialog();
+    }
+  }
 }
 
 void OnMouseDown(EventRecord *pEvt)
 {
-	short part;
-	WindowPtr clicked;
-	long action;
-	
-	part = FindWindow(pEvt->where, &clicked);
-	
-	switch(part) {
-		case inDrag:
-			DragWindow(clicked, pEvt->where, &qd.screenBits.bounds);
-			break;
-		case inGoAway:
-			if(TrackGoAway(clicked, pEvt->where))
-				DisposeWindow(clicked);
-			break;
-		case inContent:
-			if(clicked != FrontWindow())
-				SelectWindow(clicked);
-			break;
-		case inMenuBar:
-			action = MenuSelect(pEvt->where);
-			OnMenuAction(action);
-			break;
-	}
+  short part;
+  WindowPtr clicked;
+  long action;
+  
+  part = FindWindow(pEvt->where, &clicked);
+  
+  switch(part) {
+    case inDrag:
+      DragWindow(clicked, pEvt->where, &qd.screenBits.bounds);
+      break;
+    case inGoAway:
+      if(TrackGoAway(clicked, pEvt->where))
+        DisposeWindow(clicked);
+      break;
+    case inContent:
+      if(clicked != FrontWindow())
+        SelectWindow(clicked);
+      break;
+    case inMenuBar:
+      action = MenuSelect(pEvt->where);
+      OnMenuAction(action);
+      break;
+  }
 }
 
 // -- ENTRY POINT --
 
 int main(int argc, char *argv[])
 {
-	EventRecord evt;
-	
-	InitEverything();
-	
-	while(g_running) {
-		if(WaitNextEvent(everyEvent, &evt, 10, 0) != nullEvent) {
-			switch(evt.what) {
-				case mouseDown:
-					OnMouseDown(&evt);
-					break;
-				case updateEvt:
-					BeginUpdate((WindowPtr) evt.message);
-					Render();
-					EndUpdate((WindowPtr) evt.message);
-					break;
-			}
-		}
-	}
-	
-	return 0;
+  EventRecord evt;
+  
+  InitEverything();
+  
+  while(g_running) {
+    if(WaitNextEvent(everyEvent, &evt, 10, 0) != nullEvent) {
+      if (IsDialogEvent(&evt)) {
+        DialogRef hitBox;
+        DialogItemIndex hitItem;
+        if (DialogSelect(&evt, &hitBox, &hitItem)) {
+          stateDialog = NULL;
+        }
+      } else switch(evt.what) {
+        case mouseDown:
+          OnMouseDown(&evt);
+          break;
+        case updateEvt:
+          BeginUpdate((WindowPtr) evt.message);
+          Render();
+          EndUpdate((WindowPtr) evt.message);
+          break;
+      }
+    }
+  }
+  
+  return 0;
 }
