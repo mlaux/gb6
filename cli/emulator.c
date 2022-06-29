@@ -32,9 +32,9 @@ int main(int argc, char *argv[])
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
-    cpu.pc = 0;
+    cpu.pc = 0x100;
 
-    // for (executed = 0; executed < 100000; executed++) {
+    // for (executed = 0; executed < 1000; executed++) {
     while (1) {
         dmg_step(&dmg);
     }

@@ -77,6 +77,13 @@ void dmg_step(void *_dmg)
 
     // each line takes 456 cycles
     if (dmg->cpu->cycle_count % 456 == 0) {
-        lcd_step(dmg->lcd);
+        int next_scanline = lcd_step(dmg->lcd);
+        if (next_scanline == 144) {
+            // vblank has started, draw all the stuff from ram into the lcd
+
+            // now copy 256x256 buf to 160x144 based on window registers
+            lcd_copy(dmg->lcd);
+            lcd_draw(dmg->lcd);
+        }
     }
 }

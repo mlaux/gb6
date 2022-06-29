@@ -25,9 +25,20 @@
 
 #define STAT_FLAG_MATCH 2
 
+#define LCDC_ENABLE_BG (1 << 0)
+#define LCDC_ENABLE_OBJ (1 << 1)
+#define LCDC_OBJ_SIZE (1 << 2)
+#define LCDC_BG_TILE_MAP (1 << 3)
+#define LCDC_BG_TILE_DATA (1 << 4)
+#define LCDC_ENABLE_WINDOW (1 << 5)
+#define LCDC_WINDOW_TILE_MAP (1 << 6)
+#define LCDC_ENABLE (1 << 7)
+
 struct lcd {
+    u8 oam[0xa0];
     u8 regs[0x0c];
-    u8 *pixels;
+    u8 *buf; // 256x256
+    u8 *pixels; // the actual 160x144 visible area
 };
 
 void lcd_new(struct lcd *lcd);
@@ -38,8 +49,10 @@ void lcd_write(struct lcd *lcd, u16 addr, u8 value);
 void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value);
 
 // i feel like i'm going to need to call this every cycle and update regs
-void lcd_step(struct lcd *lcd);
+int lcd_step(struct lcd *lcd);
+void lcd_copy(struct lcd *lcd);
 
+// output the pixels to the screen
 void lcd_draw(struct lcd *lcd);
 
 #endif

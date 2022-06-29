@@ -306,7 +306,9 @@ static void extended_insn(struct cpu *cpu, u8 insn)
         shift_right // TODO SRL
     };
 
+#ifdef GB6_DEBUG
     printf("       %s\n", instructions[insn + 0x100].format);
+#endif
     cpu->cycle_count += instructions[insn + 0x100].cycles;
 
     switch (op) {
@@ -337,7 +339,9 @@ void cpu_step(struct cpu *cpu)
     u8 temp;
     u16 temp16;
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
+#ifdef GB6_DEBUG
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
+#endif
     cpu->pc++;
     cpu->cycle_count += instructions[opc].cycles;
     switch (opc) {
