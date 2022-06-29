@@ -40,4 +40,6 @@ void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value);
 // i feel like i'm going to need to call this every cycle and update regs
 void lcd_step(struct lcd *lcd);
 
+void lcd_draw(struct lcd *lcd);
+
 #endif

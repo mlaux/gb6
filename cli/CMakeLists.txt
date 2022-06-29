@@ -13,6 +13,7 @@ add_executable(gb6
     ../src/lcd.c
     ../src/rom.c
     emulator.c
+    lcd_sixel.c
 )
 
 target_link_libraries(gb6 
