@@ -5,7 +5,7 @@
 #include "rom.h"
 #include "lcd.h"
 
-int main(int argc, char *argv[])
+int emulator_main(int argc, char *argv[])
 {
     struct cpu cpu;
     struct rom rom;
