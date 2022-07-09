@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
     SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
-    SDL_GL_SetSwapInterval(1); // Enable vsync
+    SDL_GL_SetSwapInterval(0); // disable vsync
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -187,23 +187,28 @@ int main(int argc, char *argv[])
 
         dmg_step(&dmg);
 
+        z_flag = flag_isset(dmg.cpu, FLAG_ZERO);
+        n_flag = flag_isset(dmg.cpu, FLAG_SIGN);
+        h_flag = flag_isset(dmg.cpu, FLAG_HALF_CARRY);
+        c_flag = flag_isset(dmg.cpu, FLAG_CARRY);
+
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
         {
             ImGui::Begin("State");                          // Create a window called "Hello, world!" and append into it.
 
-            ImGui::Text(A_FORMAT);
-            ImGui::Text(B_FORMAT);
+            ImGui::Text(A_FORMAT, dmg.cpu->a);
+            ImGui::Text(B_FORMAT, dmg.cpu->b);
             ImGui::SameLine();
-            ImGui::Text(C_FORMAT);
-            ImGui::Text(D_FORMAT);
+            ImGui::Text(C_FORMAT, dmg.cpu->c);
+            ImGui::Text(D_FORMAT, dmg.cpu->d);
             ImGui::SameLine();
-            ImGui::Text(E_FORMAT);
-            ImGui::Text(H_FORMAT);
+            ImGui::Text(E_FORMAT, dmg.cpu->e);
+            ImGui::Text(H_FORMAT, dmg.cpu->h);
             ImGui::SameLine();
-            ImGui::Text(L_FORMAT);
-            ImGui::Text(SP_FORMAT);
+            ImGui::Text(L_FORMAT, dmg.cpu->l);
+            ImGui::Text(SP_FORMAT, dmg.cpu->sp);
             ImGui::SameLine();
-            ImGui::Text(PC_FORMAT);
+            ImGui::Text(PC_FORMAT, dmg.cpu->pc);
 
             ImGui::Checkbox("Z", &z_flag);
             ImGui::SameLine();

@@ -21,7 +21,7 @@ add_executable(gb6
     ../src/lcd.c
     ../src/rom.c
     emulator.c
-    lcd_sixel.c
+    lcd_imgui.c
     imgui/imgui_demo.cpp
     imgui/imgui_draw.cpp
     imgui/imgui_impl_sdl.cpp
