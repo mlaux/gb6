@@ -16,7 +16,7 @@ void cpu_bind_mem_model(
     cpu->mem_write = mem_write;
 }
 
-static inline int flag_isset(struct cpu *cpu, int flag)
+int flag_isset(struct cpu *cpu, int flag)
 {
     return (cpu->f & flag) != 0;
 }

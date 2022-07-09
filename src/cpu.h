@@ -30,6 +30,7 @@ void cpu_bind_mem_model(
 );
 
 void cpu_step(struct cpu *cpu);
+int flag_isset(struct cpu *cpu, int flag);
 
 #define FLAG_ZERO       0x80
 #define FLAG_SIGN       0x40

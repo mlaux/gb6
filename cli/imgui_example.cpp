@@ -6,6 +6,7 @@
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_opengl3.h"
+#include "imgui/imgui_memory_editor.h"
 #include <stdio.h>
 #include <SDL.h>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -31,6 +32,8 @@ static const char *H_FORMAT = "H: 0x%02x";
 static const char *L_FORMAT = "L: 0x%02x";
 static const char *SP_FORMAT = "SP: 0x%02x";
 static const char *PC_FORMAT = "PC: 0x%02x";
+
+static MemoryEditor editor;
 
 GLuint make_output_texture() {
     GLuint image_texture;
@@ -232,6 +235,9 @@ int main(int argc, char *argv[])
 
             ImGui::End();
         }
+
+        editor.DrawWindow("Main RAM", dmg.main_ram, 0x2000, 0x0000);
+        editor.DrawWindow("Video RAM", dmg.video_ram, 0x2000, 0x0000);
 
         // Rendering
         ImGui::Render();
