@@ -15,6 +15,13 @@
 #endif
 #include <string>
 
+extern "C" {
+#include "dmg.h"
+#include "cpu.h"
+#include "rom.h"
+#include "lcd.h"
+}
+
 static const char *A_FORMAT = "A: 0x%02x";
 static const char *B_FORMAT = "B: 0x%02x";
 static const char *C_FORMAT = "C: 0x%02x";
@@ -25,9 +32,66 @@ static const char *L_FORMAT = "L: 0x%02x";
 static const char *SP_FORMAT = "SP: 0x%02x";
 static const char *PC_FORMAT = "PC: 0x%02x";
 
+GLuint make_output_texture() {
+    GLuint image_texture;
+    glGenTextures(1, &image_texture);
+    glBindTexture(GL_TEXTURE_2D, image_texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+
+    return image_texture;
+}
+
+unsigned char output_image[160 * 144 * 4];
+
+void convert_output(struct lcd *lcd) {
+    int x, y;
+    int out_index = 0;
+    for (y = 0; y < 144; y++) {
+        for (x = 0; x < 160; x++) {
+            int val = lcd->pixels[y * 160 + x];
+            int fill = val ? 255 : 0;
+            output_image[out_index++] = val;
+            output_image[out_index++] = val;
+            output_image[out_index++] = val;
+            output_image[out_index++] = 255;
+        }
+    }
+}
+
 // Main code
-int main(int, char**)
+int main(int argc, char *argv[])
 {
+    struct cpu cpu;
+    struct rom rom;
+    struct dmg dmg;
+    struct lcd lcd;
+
+    int executed;
+
+    if (argc < 2) {
+        printf("no rom specified\n");
+        return 1;
+    }
+
+    if (!rom_load(&rom, argv[1])) {
+        printf("error loading rom\n");
+        return 1;
+    }
+
+    lcd_new(&lcd);
+
+    // this might be too much abstraction but it'll let me
+    // test the cpu, rom, and dmg independently and use the cpu
+    // for other non-GB stuff
+    dmg_new(&dmg, &cpu, &rom, &lcd);
+    cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
+
+    cpu.pc = 0x100;
+
     // Setup SDL
     // (Some versions of SDL before <2.0.10 appears to have performance/stalling issues on a minority of Windows systems,
     // depending on whether SDL_INIT_GAMECONTROLLER is enabled or disabled.. updating to latest version of SDL is recommended!)
@@ -86,6 +150,9 @@ int main(int, char**)
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
+    // setup output
+    GLuint texture = make_output_texture();
+
     // Our state
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
@@ -117,6 +184,8 @@ int main(int, char**)
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
+
+        dmg_step(&dmg);
 
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
         {
@@ -151,6 +220,11 @@ int main(int, char**)
         {
             ImGui::Begin("Output");
 
+            convert_output(dmg.lcd);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 160, 144, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
+            ImGui::Image((void*)(intptr_t) texture, ImVec2(160, 144));
+
             ImGui::End();
         }
 
@@ -162,6 +236,8 @@ int main(int, char**)
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
     }
+
+    rom_free(&rom);
 
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
