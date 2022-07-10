@@ -59,7 +59,7 @@ void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value)
 void lcd_copy(struct lcd *lcd)
 {
     // use all the registers to compute the pixel data
-
+    
 }
 
 int lcd_step(struct lcd *lcd)

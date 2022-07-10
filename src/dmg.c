@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "cpu.h"
 #include "rom.h"
@@ -81,6 +82,36 @@ void dmg_step(void *_dmg)
         int next_scanline = lcd_step(dmg->lcd);
         if (next_scanline == 144) {
             // vblank has started, draw all the stuff from ram into the lcd
+
+            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+            int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
+            int window_base = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
+            int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
+            int tilebase = use_unsigned ? 0x8000 : 0x9000;
+
+            printf("base is %04x\n", bg_base);
+
+            int k, off = 0;
+            for (k = 0; k < 1024; k++) {
+                int tile = dmg_read(dmg, bg_base + k);
+                int eff_addr;
+                if (use_unsigned) {
+                    eff_addr = tilebase + 16 * tile;
+                } else {
+                    eff_addr = tilebase + 16 * (signed char) tile;
+                }
+                int b, i;
+                for (b = 0; b < 16; b += 2) {
+                    int data1 = dmg_read(dmg, eff_addr + b);
+                    int data2 = dmg_read(dmg, eff_addr + b + 1);
+                    for (i = 0; i < 8; i++) {
+                        // monochrome for now
+                        dmg->lcd->buf[off] |= (data1 & (1 << i)) ? 1 : 0;
+                        dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                        off++;
+                    }
+                }
+            }
 
             // now copy 256x256 buf to 160x144 based on window registers
             lcd_copy(dmg->lcd);

@@ -48,14 +48,14 @@ GLuint make_output_texture() {
     return image_texture;
 }
 
-unsigned char output_image[160 * 144 * 4];
+unsigned char output_image[256 * 256 * 4];
 
 void convert_output(struct lcd *lcd) {
     int x, y;
     int out_index = 0;
-    for (y = 0; y < 144; y++) {
-        for (x = 0; x < 160; x++) {
-            int val = lcd->pixels[y * 160 + x];
+    for (y = 0; y < 256; y++) {
+        for (x = 0; x < 256; x++) {
+            int val = lcd->buf[y * 256 + x];
             int fill = val ? 255 : 0;
             output_image[out_index++] = val;
             output_image[out_index++] = val;
@@ -77,10 +77,10 @@ void fill_memory_editor(struct dmg *dmg)
 // Main code
 int main(int argc, char *argv[])
 {
-    struct cpu cpu;
-    struct rom rom;
-    struct dmg dmg;
-    struct lcd lcd;
+    struct cpu cpu = { 0 };
+    struct rom rom = { 0 };
+    struct dmg dmg = { 0 };
+    struct lcd lcd = { 0 };
 
     int executed;
 
@@ -237,8 +237,8 @@ int main(int argc, char *argv[])
 
             convert_output(dmg.lcd);
             glBindTexture(GL_TEXTURE_2D, texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 160, 144, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
-            ImGui::Image((void*)(intptr_t) texture, ImVec2(160, 144));
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
+            ImGui::Image((void*)(intptr_t) texture, ImVec2(256, 256));
 
             ImGui::End();
         }
@@ -246,6 +246,7 @@ int main(int argc, char *argv[])
         fill_memory_editor(&dmg);
 
         editor.DrawWindow("Memory", full_address_space, 0x10000, 0x0000);
+        editor.DrawWindow("LCD", dmg.lcd->buf, 0x2000, 0);
 
         // Rendering
         ImGui::Render();
