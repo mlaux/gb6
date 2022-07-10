@@ -65,6 +65,15 @@ void convert_output(struct lcd *lcd) {
     }
 }
 
+char full_address_space[0x10000];
+void fill_memory_editor(struct dmg *dmg)
+{
+    int k;
+    for (k = 0; k < 0x10000; k++) {
+        full_address_space[k] = dmg_read(dmg, k);
+    }
+}
+
 // Main code
 int main(int argc, char *argv[])
 {
@@ -133,7 +142,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, window_flags);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(0); // disable vsync
@@ -157,8 +166,6 @@ int main(int argc, char *argv[])
     GLuint texture = make_output_texture();
 
     // Our state
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
     bool z_flag = false;
     bool n_flag = false;
     bool h_flag = false;
@@ -236,13 +243,14 @@ int main(int argc, char *argv[])
             ImGui::End();
         }
 
-        editor.DrawWindow("Main RAM", dmg.main_ram, 0x2000, 0x0000);
-        editor.DrawWindow("Video RAM", dmg.video_ram, 0x2000, 0x0000);
+        fill_memory_editor(&dmg);
+
+        editor.DrawWindow("Memory", full_address_space, 0x10000, 0x0000);
 
         // Rendering
         ImGui::Render();
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
-        glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);

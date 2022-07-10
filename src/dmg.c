@@ -37,7 +37,8 @@ u8 dmg_read(void *_dmg, u16 address)
         return dmg->zero_page[address - 0xff80];
     } else {
         // not sure about any of this yet
-        fprintf(stderr, "don't know how to read 0x%04x\n", address);
+        // commented out bc of memory view window
+        // fprintf(stderr, "don't know how to read 0x%04x\n", address);
         return 0;
     }
 }
