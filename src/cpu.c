@@ -582,6 +582,7 @@ void cpu_step(struct cpu *cpu)
         case 0xc0: // RET NZ
             if (!flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc = pop(cpu);
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
         case 0xc9: // RET
@@ -599,6 +600,7 @@ void cpu_step(struct cpu *cpu)
         case 0xd2: // JP NC,a16
             if (flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = read16(cpu, cpu->pc);
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
 
@@ -695,6 +697,18 @@ void cpu_step(struct cpu *cpu)
         case 0xc5: // PUSH BC
             push(cpu, read_bc(cpu));
             break;
+        case 0xc8: // RET Z
+            if (flag_isset(cpu, FLAG_ZERO)) {
+                cpu->pc = pop(cpu);
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
+        case 0xca: // JP Z, u16
+            if (flag_isset(cpu, FLAG_ZERO)) {
+                cpu->pc = read16(cpu, cpu->pc);
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
         case 0xcb:
             extended_insn(cpu, read8(cpu, cpu->pc));
             cpu->pc++;
@@ -703,12 +717,27 @@ void cpu_step(struct cpu *cpu)
             add(cpu, read8(cpu, cpu->pc), 1);
             cpu->pc++;
             break;
+        case 0xd1: // POP DE
+            write_de(cpu, pop(cpu));
+            break;
+        case 0xd5: // PUSH DE
+            push(cpu, read_de(cpu));
+            break;
         case 0xe0: // LD (a8),A
             write8(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
             cpu->pc++;
             break;
+        case 0xe1: // POP HL
+            write_hl(cpu, pop(cpu));
+            break;
         case 0xe2: // LD (C),A
             write8(cpu, 0xff00 + cpu->c, cpu->a);
+            break;
+        case 0xe5: // PUSH HL
+            push(cpu, read_hl(cpu));
+            break;
+        case 0xe9: // JP HL
+            cpu->pc = read_hl(cpu);
             break;
         case 0xea: // LD (a16),A
             write8(cpu, read16(cpu, cpu->pc), cpu->a);
@@ -718,10 +747,20 @@ void cpu_step(struct cpu *cpu)
             cpu->a = read8(cpu, 0xff00 + read8(cpu, cpu->pc));
             cpu->pc++;
             break;
+        case 0xf1: // POP AF
+            write_af(cpu, pop(cpu));
+            break;
         case 0xf2: // LD A,(C)
             cpu->a = read8(cpu, 0xff00 + cpu->c);
             break;
         case 0xf3: // DI
+            break;
+        case 0xf5: // PUSH AF
+            push(cpu, read_af(cpu));
+            break;
+        case 0xfa: // LD A,(u16)
+            cpu->a = read8(cpu, read16(cpu, cpu->pc));
+            cpu->pc += 2;
             break;
         case 0xfb: // EI
             break;

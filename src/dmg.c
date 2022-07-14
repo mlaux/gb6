@@ -18,9 +18,10 @@ void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
-    if (address < 0x100) {
-        return dmg_boot_rom[address];
-    } else if (address < 0x4000) {
+//    if (address < 0x100) {
+//        return dmg_boot_rom[address];
+//    } else if (address < 0x4000) {
+    if (address < 0x4000) {
         return dmg->rom->data[address];
     } else if (address < 0x8000) {
         // TODO switchable rom bank
@@ -79,7 +80,8 @@ void dmg_step(void *_dmg)
     cpu_step(dmg->cpu);
 
     // each line takes 456 cycles
-    if (dmg->cpu->cycle_count % 456 == 0) {
+    if (dmg->cpu->cycle_count - dmg->last_lcd_update >= 456) {
+        dmg->last_lcd_update = dmg->cpu->cycle_count;
         int next_scanline = lcd_step(dmg->lcd);
         if (next_scanline == 144) {
             // vblank has started, draw all the stuff from ram into the lcd

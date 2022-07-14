@@ -12,6 +12,7 @@ struct dmg {
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
     u8 zero_page[0x80];
+    u32 last_lcd_update;
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);
