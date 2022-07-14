@@ -11,7 +11,7 @@ execute_process(COMMAND sdl2-config --libs
                 OUTPUT_VARIABLE SDL_LIBS 
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-set(CMAKE_CXX_FLAGS "-std=c++14 ${SDL_CFLAGS}")
+set(CMAKE_CXX_FLAGS "-std=c++14 -g -DGB6_DEBUG ${SDL_CFLAGS}")
 
 add_executable(gb6
     ../src/bootstrap.c

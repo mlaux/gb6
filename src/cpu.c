@@ -110,23 +110,53 @@ static void dec_with_carry(struct cpu *regs, u8 *reg)
 
 static u8 rotate_left(struct cpu *regs, u8 reg)
 {
-	// copy old leftmost bit to carry flag
-	regs->f = (reg & 0x80) >> 3 | (regs->f & ~FLAG_CARRY);
+    int old_carry = flag_isset(regs, FLAG_CARRY);
+	// copy old leftmost bit to carry flag, clear Z, N, H
+	regs->f = (reg & 0x80) >> 3;
 	// rotate
-	int result = reg << 1;
-	// restore leftmost (now rightmost) bit
-	result |= (regs->f & FLAG_CARRY) >> 4;
+	int result = reg << 1 | old_carry;
+    if (!result) set_flag(regs, FLAG_ZERO);
+    return result;
+}
+
+static u8 rlc(struct cpu *cpu, u8 val)
+{
+    int old_msb = (val & 0x80) >> 7;
+    int result = (val & 0x7f) << 1 | old_msb;
+    if (!result)
+        set_flag(cpu, FLAG_ZERO);
+    else clear_flag(cpu, FLAG_ZERO);
+    clear_flag(cpu, FLAG_SIGN);
+    clear_flag(cpu, FLAG_HALF_CARRY);
+    if (old_msb) 
+        set_flag(cpu, FLAG_CARRY);
+    else clear_flag(cpu, FLAG_CARRY);
     return result;
 }
 
 static u8 rotate_right(struct cpu *regs, u8 reg)
 {
 	// copy old rightmost bit to carry flag
-	regs->f = (reg & 0x01) << 4 | (regs->f & ~FLAG_CARRY);
+	regs->f = (reg & 0x01) << 4;
 	// rotate
 	int result = reg >> 1;
 	// restore rightmost bit to left
 	result |= (regs->f & FLAG_CARRY) << 3;
+    return result;
+}
+
+static u8 rrc(struct cpu *cpu, u8 val)
+{
+    int old_lsb = (val & 1) << 7;
+    int result = old_lsb | (val & 0xfe) >> 1;
+    if (!result)
+        set_flag(cpu, FLAG_ZERO);
+    else clear_flag(cpu, FLAG_ZERO);
+    clear_flag(cpu, FLAG_SIGN);
+    clear_flag(cpu, FLAG_HALF_CARRY);
+    if (old_lsb) 
+        set_flag(cpu, FLAG_CARRY);
+    else clear_flag(cpu, FLAG_CARRY);
     return result;
 }
 
@@ -202,10 +232,18 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
     if (with_carry && flag_isset(cpu, FLAG_CARRY)) {
         sum_full--;
     }
-    sum_trunc = (u8) sum_full;
-    set_flag(cpu, sum_trunc == 0 ? FLAG_ZERO : 0);
+    sum_trunc = (u8) (sum_full & 0xff);
+    if (!sum_trunc) {
+        set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
     set_flag(cpu, FLAG_SIGN);
-    set_flag(cpu, sum_full < sum_trunc ? FLAG_CARRY : 0);
+    if (sum_full < sum_trunc) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
     // TODO H
 
     if (!just_compare) {
@@ -296,9 +334,9 @@ static void extended_insn(struct cpu *cpu, u8 insn)
     int reg = insn & 0x7;
 
     u8 (*funcs[8])(struct cpu *, u8) = {
+        rlc,
+        rrc,
         rotate_left,
-        rotate_right,
-        rotate_left, // TODO non-carry version
         rotate_right,
         shift_left,
         shift_right,
@@ -356,7 +394,7 @@ void cpu_step(struct cpu *cpu)
             cpu->pc += 2;
             break;
         case 0x07: // RLCA
-            cpu->a = rotate_left(cpu, cpu->a);
+            cpu->a = rlc(cpu, cpu->a);
             break;
         case 0x08: // LD (a16),SP
             write16(cpu, read16(cpu, cpu->pc), cpu->sp);

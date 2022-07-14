@@ -68,6 +68,7 @@ void dmg_write(void *_dmg, u16 address, u8 data)
         // not sure about any of this yet
     }
 }
+void exit(int);
 
 void dmg_step(void *_dmg)
 {
@@ -89,26 +90,31 @@ void dmg_step(void *_dmg)
             int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
             int tilebase = use_unsigned ? 0x8000 : 0x9000;
 
-            printf("base is %04x\n", bg_base);
+            printf("bg_base %04x, tilebase %04x\n", bg_base, tilebase);
 
-            int k, off = 0;
-            for (k = 0; k < 1024; k++) {
-                int tile = dmg_read(dmg, bg_base + k);
-                int eff_addr;
-                if (use_unsigned) {
-                    eff_addr = tilebase + 16 * tile;
-                } else {
-                    eff_addr = tilebase + 16 * (signed char) tile;
-                }
-                int b, i;
-                for (b = 0; b < 16; b += 2) {
-                    int data1 = dmg_read(dmg, eff_addr + b);
-                    int data2 = dmg_read(dmg, eff_addr + b + 1);
-                    for (i = 0; i < 8; i++) {
-                        // monochrome for now
-                        dmg->lcd->buf[off] |= (data1 & (1 << i)) ? 1 : 0;
-                        dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
-                        off++;
+            int k = 0, off = 0;
+            int tile_y = 0, tile_x = 0;
+            for (tile_y = 0; tile_y < 32; tile_y++) {
+                for (tile_x = 0; tile_x < 32; tile_x++) {
+                    off = 256 * 8 * tile_y + 8 * tile_x;
+                    int tile = dmg_read(dmg, bg_base + (tile_y * 32 + tile_x));
+                    int eff_addr;
+                    if (use_unsigned) {
+                        eff_addr = tilebase + 16 * tile;
+                    } else {
+                        eff_addr = tilebase + 16 * (signed char) tile;
+                    }
+                    int b, i;
+                    for (b = 0; b < 16; b += 2) {
+                        int data1 = dmg_read(dmg, eff_addr + b);
+                        int data2 = dmg_read(dmg, eff_addr + b + 1);
+                        for (i = 7; i >= 0; i--) {
+                            // monochrome for now
+                            dmg->lcd->buf[off] = (data1 & (1 << i)) ? 1 : 0;
+                            //dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                            off++;
+                        }
+                        off += 248;
                     }
                 }
             }

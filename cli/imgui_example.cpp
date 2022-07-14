@@ -9,6 +9,7 @@
 #include "imgui/imgui_memory_editor.h"
 #include <stdio.h>
 #include <SDL.h>
+#include <SDL_timer.h>
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <SDL_opengles2.h>
 #else
@@ -57,9 +58,9 @@ void convert_output(struct lcd *lcd) {
         for (x = 0; x < 256; x++) {
             int val = lcd->buf[y * 256 + x];
             int fill = val ? 255 : 0;
-            output_image[out_index++] = val;
-            output_image[out_index++] = val;
-            output_image[out_index++] = val;
+            output_image[out_index++] = fill;
+            output_image[out_index++] = fill;
+            output_image[out_index++] = fill;
             output_image[out_index++] = 255;
         }
     }
@@ -102,7 +103,7 @@ int main(int argc, char *argv[])
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
-    cpu.pc = 0x100;
+    cpu.pc = 0;//0x100;
 
     // Setup SDL
     // (Some versions of SDL before <2.0.10 appears to have performance/stalling issues on a minority of Windows systems,
@@ -173,6 +174,7 @@ int main(int argc, char *argv[])
 
     // Main loop
     bool done = false;
+    unsigned int lastDrawTime = 0, currentTime;
     while (!done)
     {
         // Poll and handle events (inputs, window resize, etc.)
@@ -190,71 +192,75 @@ int main(int argc, char *argv[])
                 done = true;
         }
 
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
         dmg_step(&dmg);
 
-        z_flag = flag_isset(dmg.cpu, FLAG_ZERO);
-        n_flag = flag_isset(dmg.cpu, FLAG_SIGN);
-        h_flag = flag_isset(dmg.cpu, FLAG_HALF_CARRY);
-        c_flag = flag_isset(dmg.cpu, FLAG_CARRY);
+        currentTime = SDL_GetTicks();
+        if (currentTime >= lastDrawTime + 16) {
+            // Start the Dear ImGui frame
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
 
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
-        {
-            ImGui::Begin("State");                          // Create a window called "Hello, world!" and append into it.
+            z_flag = flag_isset(dmg.cpu, FLAG_ZERO);
+            n_flag = flag_isset(dmg.cpu, FLAG_SIGN);
+            h_flag = flag_isset(dmg.cpu, FLAG_HALF_CARRY);
+            c_flag = flag_isset(dmg.cpu, FLAG_CARRY);
 
-            ImGui::Text(A_FORMAT, dmg.cpu->a);
-            ImGui::Text(B_FORMAT, dmg.cpu->b);
-            ImGui::SameLine();
-            ImGui::Text(C_FORMAT, dmg.cpu->c);
-            ImGui::Text(D_FORMAT, dmg.cpu->d);
-            ImGui::SameLine();
-            ImGui::Text(E_FORMAT, dmg.cpu->e);
-            ImGui::Text(H_FORMAT, dmg.cpu->h);
-            ImGui::SameLine();
-            ImGui::Text(L_FORMAT, dmg.cpu->l);
-            ImGui::Text(SP_FORMAT, dmg.cpu->sp);
-            ImGui::SameLine();
-            ImGui::Text(PC_FORMAT, dmg.cpu->pc);
+            // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
+            {
+                ImGui::Begin("State");                          // Create a window called "Hello, world!" and append into it.
 
-            ImGui::Checkbox("Z", &z_flag);
-            ImGui::SameLine();
-            ImGui::Checkbox("N", &n_flag);
-            ImGui::SameLine();
-            ImGui::Checkbox("H", &h_flag);
-            ImGui::SameLine();
-            ImGui::Checkbox("C", &c_flag);
+                ImGui::Text(A_FORMAT, dmg.cpu->a);
+                ImGui::Text(B_FORMAT, dmg.cpu->b);
+                ImGui::SameLine();
+                ImGui::Text(C_FORMAT, dmg.cpu->c);
+                ImGui::Text(D_FORMAT, dmg.cpu->d);
+                ImGui::SameLine();
+                ImGui::Text(E_FORMAT, dmg.cpu->e);
+                ImGui::Text(H_FORMAT, dmg.cpu->h);
+                ImGui::SameLine();
+                ImGui::Text(L_FORMAT, dmg.cpu->l);
+                ImGui::Text(SP_FORMAT, dmg.cpu->sp);
+                ImGui::SameLine();
+                ImGui::Text(PC_FORMAT, dmg.cpu->pc);
 
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
+                ImGui::Checkbox("Z", &z_flag);
+                ImGui::SameLine();
+                ImGui::Checkbox("N", &n_flag);
+                ImGui::SameLine();
+                ImGui::Checkbox("H", &h_flag);
+                ImGui::SameLine();
+                ImGui::Checkbox("C", &c_flag);
+
+                ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+                ImGui::End();
+            }
+
+            {
+                ImGui::Begin("Output");
+
+                convert_output(dmg.lcd);
+                glBindTexture(GL_TEXTURE_2D, texture);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
+                ImGui::Image((void*)(intptr_t) texture, ImVec2(256, 256));
+
+                ImGui::End();
+            }
+
+            fill_memory_editor(&dmg);
+
+            editor.DrawWindow("Memory", full_address_space, 0x10000, 0x0000);
+
+            // Rendering
+            ImGui::Render();
+            glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+            glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            SDL_GL_SwapWindow(window);
+
+            lastDrawTime = currentTime;
         }
-
-        {
-            ImGui::Begin("Output");
-
-            convert_output(dmg.lcd);
-            glBindTexture(GL_TEXTURE_2D, texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
-            ImGui::Image((void*)(intptr_t) texture, ImVec2(256, 256));
-
-            ImGui::End();
-        }
-
-        fill_memory_editor(&dmg);
-
-        editor.DrawWindow("Memory", full_address_space, 0x10000, 0x0000);
-        editor.DrawWindow("LCD", dmg.lcd->buf, 0x2000, 0);
-
-        // Rendering
-        ImGui::Render();
-        glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        SDL_GL_SwapWindow(window);
     }
 
     rom_free(&rom);
