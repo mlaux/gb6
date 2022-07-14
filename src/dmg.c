@@ -92,7 +92,7 @@ void dmg_step(void *_dmg)
             int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
             int tilebase = use_unsigned ? 0x8000 : 0x9000;
 
-            printf("bg_base %04x, tilebase %04x\n", bg_base, tilebase);
+            printf("tile map: %04x, tile data: %04x\n", bg_base, tilebase);
 
             int k = 0, off = 0;
             int tile_y = 0, tile_x = 0;

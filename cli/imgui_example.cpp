@@ -50,6 +50,7 @@ GLuint make_output_texture() {
 }
 
 unsigned char output_image[256 * 256 * 4];
+unsigned char vram_tiles[256 * 96 * 4];
 
 void convert_output(struct lcd *lcd) {
     int x, y;
@@ -62,6 +63,33 @@ void convert_output(struct lcd *lcd) {
             output_image[out_index++] = fill;
             output_image[out_index++] = fill;
             output_image[out_index++] = 255;
+        }
+    }
+}
+
+void convert_vram(struct dmg *dmg) {
+    int tile_y, tile_x;
+    int off, in;
+    for (tile_y = 0; tile_y < 12; tile_y++) {
+        for (tile_x = 0; tile_x < 32; tile_x++) {
+            off = 256 * 8 * tile_y + 8 * tile_x;
+            in = 16 * (tile_y * 32 + tile_x);
+            int b, i;
+            for (b = 0; b < 16; b += 2) {
+                int data1 = dmg->video_ram[in + b];
+                int data2 = dmg->video_ram[in + b + 1];
+                for (i = 7; i >= 0; i--) {
+                    // monochrome for now
+                    int fill = (data1 & (1 << i)) ? 255 : 0;
+                    vram_tiles[4 * off + 0] = fill;
+                    vram_tiles[4 * off + 1] = fill;
+                    vram_tiles[4 * off + 2] = fill;
+                    vram_tiles[4 * off + 3] = 255;
+                    //dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                    off++;
+                }
+                off += 248;
+            }
         }
     }
 }
@@ -165,6 +193,7 @@ int main(int argc, char *argv[])
 
     // setup output
     GLuint texture = make_output_texture();
+    GLuint vram_texture = make_output_texture();
 
     // Our state
     bool z_flag = false;
@@ -243,6 +272,17 @@ int main(int argc, char *argv[])
                 glBindTexture(GL_TEXTURE_2D, texture);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
                 ImGui::Image((void*)(intptr_t) texture, ImVec2(256, 256));
+
+                ImGui::End();
+            }
+
+            {
+                ImGui::Begin("VRAM");
+
+                convert_vram(&dmg);
+                glBindTexture(GL_TEXTURE_2D, vram_texture);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 96, 0, GL_RGBA, GL_UNSIGNED_BYTE, vram_tiles);
+                ImGui::Image((void*)(intptr_t) vram_texture, ImVec2(256, 96));
 
                 ImGui::End();
             }

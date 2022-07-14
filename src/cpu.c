@@ -136,12 +136,12 @@ static u8 rlc(struct cpu *cpu, u8 val)
 
 static u8 rotate_right(struct cpu *regs, u8 reg)
 {
-	// copy old rightmost bit to carry flag
+    int old_carry = flag_isset(regs, FLAG_CARRY) << 7;
+	// copy old rightmost bit to carry flag, clear ZNH
 	regs->f = (reg & 0x01) << 4;
 	// rotate
-	int result = reg >> 1;
-	// restore rightmost bit to left
-	result |= (regs->f & FLAG_CARRY) << 3;
+	int result = old_carry | reg >> 1;
+    if (!result) set_flag(regs, FLAG_ZERO);
     return result;
 }
 
