@@ -372,6 +372,16 @@ static void extended_insn(struct cpu *cpu, u8 insn)
     }
 }
 
+static void conditional_jump(struct cpu *cpu, u8 opc, u8 neg_op, int flag) {
+    s8 target = (s8) read8(cpu, cpu->pc);
+    if ((opc == neg_op) ^ flag_isset(cpu, flag)) {
+        cpu->pc += target + 1;
+        cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+    } else {
+        cpu->pc++;
+    }
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
@@ -399,6 +409,9 @@ void cpu_step(struct cpu *cpu)
         case 0x08: // LD (a16),SP
             write16(cpu, read16(cpu, cpu->pc), cpu->sp);
             cpu->pc += 2;
+            break;
+        case 0x09: // ADD HL,BC
+            add16(cpu, read_bc(cpu));
             break;
         case 0x19: // ADD HL,DE
             add16(cpu, read_de(cpu));
@@ -545,17 +558,15 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0x18: // JR r8
             temp = read8(cpu, cpu->pc);
-            cpu->pc += *((signed char *) &temp) + 1;
+            cpu->pc += (s8) temp + 1;
             break;
         case 0x20: // JR NZ,r8
         case 0x28: // JR Z,r8
-            temp = read8(cpu, cpu->pc);
-            if ((opc == 0x20) ^ flag_isset(cpu, FLAG_ZERO)) {
-                cpu->pc += *((signed char *) &temp) + 1;
-                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
-            } else {
-                cpu->pc++;
-            }
+            conditional_jump(cpu, opc, 0x20, FLAG_ZERO);
+            break;
+        case 0x30: // JR NC, i8
+        case 0x38: // JR C, i8
+            conditional_jump(cpu, opc, 0x30, FLAG_CARRY);
             break;
         case 0x21: // LD HL, d16
             write_hl(cpu, read16(cpu, cpu->pc));
@@ -620,6 +631,15 @@ void cpu_step(struct cpu *cpu)
         case 0x8d: add(cpu, cpu->l, 1); break;
         case 0x8e: add(cpu, read8(cpu, read_hl(cpu)), 1); break;
         case 0x8f: add(cpu, cpu->a, 1); break;
+
+        case 0xc6: // ADD A, u8
+            add(cpu, read8(cpu, cpu->pc), 0);
+            cpu->pc++;
+            break;
+        case 0xce: // ADC A, u8
+            add(cpu, read8(cpu, cpu->pc), 1);
+            cpu->pc++;
+            break;
 
         case 0x90: subtract(cpu, cpu->b, 0, 0); break;
         case 0x91: subtract(cpu, cpu->c, 0, 0); break;
@@ -691,6 +711,9 @@ void cpu_step(struct cpu *cpu)
         case 0xf7: push(cpu, cpu->pc); cpu->pc = 0x30; break;
         case 0xff: push(cpu, cpu->pc); cpu->pc = 0x38; break;
 
+        case 0x76: // HALT
+            break;
+
         case 0xc1: // POP BC
             write_bc(cpu, pop(cpu));
             break;
@@ -711,10 +734,6 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0xcb:
             extended_insn(cpu, read8(cpu, cpu->pc));
-            cpu->pc++;
-            break;
-        case 0xce:
-            add(cpu, read8(cpu, cpu->pc), 1);
             cpu->pc++;
             break;
         case 0xd1: // POP DE
