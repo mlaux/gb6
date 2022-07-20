@@ -13,6 +13,33 @@ void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
     dmg->cpu = cpu;
     dmg->rom = rom;
     dmg->lcd = lcd;
+
+    dmg->joypad = 0xf; // nothing pressed
+    dmg->action_buttons = 0xf;
+}
+
+void dmg_set_button(struct dmg *dmg, int field, int button, int pressed)
+{
+    u8 *mod;
+    if (field == FIELD_JOY) {
+        mod = &dmg->joypad;
+    } else if (field == FIELD_ACTION) {
+        mod = &dmg->action_buttons;
+    } else {
+        printf("setting invalid button state\n");
+        return;
+    }
+
+    if (pressed) {
+        *mod &= ~button;
+    } else {
+        *mod |= button;
+    }
+}
+
+static u8 get_button_state(struct dmg *dmg)
+{
+    return dmg->action_selected ? dmg->action_buttons : dmg->joypad;
 }
 
 u8 dmg_read(void *_dmg, u16 address)
@@ -37,6 +64,12 @@ u8 dmg_read(void *_dmg, u16 address)
         return lcd_read(dmg->lcd, address);
     } else if (address >= 0xff80 && address <= 0xfffe) {
         return dmg->zero_page[address - 0xff80];
+    } else if (address == 0xff00) {
+        return get_button_state(dmg);
+    } else if (address == 0xff0f) {
+        return dmg->interrupt_requested;
+    } else if (address == 0xffff) {
+        return dmg->interrupt_enabled;
     } else {
         // not sure about any of this yet
         // commented out bc of memory view window
@@ -65,11 +98,21 @@ void dmg_write(void *_dmg, u16 address, u8 data)
         lcd_write(dmg->lcd, address, data);
     } else if (address >= 0xff80 && address <= 0xfffe) {
         dmg->zero_page[address - 0xff80] = data;
+    } else if (address == 0xff00) {
+        dmg->action_selected = data & (1 << 5);
+    } else if (address == 0xff0f) {
+        dmg->interrupt_requested = data;
+    } else if (address == 0xffff) {
+        dmg->interrupt_enabled = data;
     } else {
         // not sure about any of this yet
     }
 }
-void exit(int);
+
+void dmg_request_interrupt(struct dmg *dmg, int nr)
+{
+    dmg->interrupt_requested |= nr;
+}
 
 void dmg_step(void *_dmg)
 {
@@ -85,14 +128,13 @@ void dmg_step(void *_dmg)
         int next_scanline = lcd_step(dmg->lcd);
         if (next_scanline == 144) {
             // vblank has started, draw all the stuff from ram into the lcd
+            dmg_request_interrupt(dmg, INT_VBLANK);
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
             int window_base = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
             int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
             int tilebase = use_unsigned ? 0x8000 : 0x9000;
-
-            printf("tile map: %04x, tile data: %04x\n", bg_base, tilebase);
 
             int k = 0, off = 0;
             int tile_y = 0, tile_x = 0;

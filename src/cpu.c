@@ -91,6 +91,7 @@ static void inc_with_carry(struct cpu *regs, u8 *reg)
 	clear_flag(regs, FLAG_SIGN);
 	if(*reg == 0xff || *reg == 0x0f)
 		set_flag(regs, FLAG_HALF_CARRY);
+    else clear_flag(regs, FLAG_HALF_CARRY);
 	(*reg)++;
 	if(*reg == 0)
 		set_flag(regs, FLAG_ZERO);
@@ -102,6 +103,7 @@ static void dec_with_carry(struct cpu *regs, u8 *reg)
 	set_flag(regs, FLAG_SIGN);
 	if(*reg == 0x00 || *reg == 0x10)
 		set_flag(regs, FLAG_HALF_CARRY);
+    else clear_flag(regs, FLAG_HALF_CARRY);
 	(*reg)--;
 	if(*reg == 0)
 		set_flag(regs, FLAG_ZERO);
@@ -218,10 +220,22 @@ static void add(struct cpu *cpu, u8 value, int with_carry)
         sum_full++;
     }
     sum_trunc = (u8) sum_full;
-    set_flag(cpu, sum_trunc == 0 ? FLAG_ZERO : 0);
+    if (sum_trunc == 0) {
+        set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
     clear_flag(cpu, FLAG_SIGN);
-    set_flag(cpu, sum_full > sum_trunc ? FLAG_CARRY : 0);
-    // TODO H
+    if (sum_full > sum_trunc) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    if (((cpu->a & 0xf) + (value & 0xf)) & 0x10) {
+        set_flag(cpu, FLAG_HALF_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_HALF_CARRY);
+    }
     cpu->a = sum_trunc;
 }
 
@@ -239,12 +253,16 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
         clear_flag(cpu, FLAG_ZERO);
     }
     set_flag(cpu, FLAG_SIGN);
-    if (sum_full < sum_trunc) {
+    if (value > cpu->a) {
         set_flag(cpu, FLAG_CARRY);
     } else {
         clear_flag(cpu, FLAG_CARRY);
     }
-    // TODO H
+    if (((cpu->a & 0xf) - (value & 0xf)) & 0x10) {
+        set_flag(cpu, FLAG_HALF_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_HALF_CARRY);
+    }
 
     if (!just_compare) {
         cpu->a = sum_trunc;
@@ -382,14 +400,50 @@ static void conditional_jump(struct cpu *cpu, u8 opc, u8 neg_op, int flag) {
     }
 }
 
+static u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
+
+static u16 check_interrupts(struct cpu *cpu)
+{
+    int k;
+
+    if (!cpu->interrupt_enable) {
+        return 0;
+    }
+
+    u16 enabled = cpu->mem_read(cpu->mem_model, 0xffff);
+    u16 requested = cpu->mem_read(cpu->mem_model, 0xff0f);
+
+    for (k = 0; k < NUM_INTERRUPTS; k++) {
+        int check = 1 << k;
+        if ((enabled & check) && (requested & check)) {
+            // clear request flag for this interrupt and disable all further
+            // interrupts until service routine executes EI or RETI
+            cpu->mem_write(cpu->mem_model, 0xff0f, requested & ~check);
+            cpu->interrupt_enable = 0;
+            return handlers[k];
+        }
+    }
+
+    return 0;
+}
+
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
-    u16 temp16;
+    u16 temp16, intr_dest;
+
+    intr_dest = check_interrupts(cpu);
+    if (intr_dest) {
+        push(cpu, cpu->pc);
+        cpu->pc = intr_dest;
+        return;
+    }
+
     u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
 #ifdef GB6_DEBUG
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
 #endif
+
     cpu->pc++;
     cpu->cycle_count += instructions[opc].cycles;
     switch (opc) {
@@ -727,8 +781,10 @@ void cpu_step(struct cpu *cpu)
             }
             break;
         case 0xca: // JP Z, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
             if (flag_isset(cpu, FLAG_ZERO)) {
-                cpu->pc = read16(cpu, cpu->pc);
+                cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
@@ -741,6 +797,10 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0xd5: // PUSH DE
             push(cpu, read_de(cpu));
+            break;
+        case 0xd9: // RETI
+            cpu->pc = pop(cpu);
+            cpu->interrupt_enable = 1;
             break;
         case 0xe0: // LD (a8),A
             write8(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
@@ -773,6 +833,7 @@ void cpu_step(struct cpu *cpu)
             cpu->a = read8(cpu, 0xff00 + cpu->c);
             break;
         case 0xf3: // DI
+            cpu->interrupt_enable = 0;
             break;
         case 0xf5: // PUSH AF
             push(cpu, read_af(cpu));
@@ -782,6 +843,7 @@ void cpu_step(struct cpu *cpu)
             cpu->pc += 2;
             break;
         case 0xfb: // EI
+            cpu->interrupt_enable = 1;
             break;
         default:
             printf("unknown opcode 0x%02x %s\n", opc, instructions[opc].format);

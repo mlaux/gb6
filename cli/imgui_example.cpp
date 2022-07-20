@@ -103,6 +103,54 @@ void fill_memory_editor(struct dmg *dmg)
     }
 }
 
+struct key_input {
+    int scancode;
+    int button;
+    int field;
+};
+
+struct key_input key_inputs[] = {
+    { SDL_SCANCODE_D, BUTTON_RIGHT, FIELD_JOY },
+    { SDL_SCANCODE_A, BUTTON_LEFT, FIELD_JOY },
+    { SDL_SCANCODE_W, BUTTON_UP, FIELD_JOY },
+    { SDL_SCANCODE_S, BUTTON_DOWN, FIELD_JOY },
+    { SDL_SCANCODE_L, BUTTON_A, FIELD_ACTION },
+    { SDL_SCANCODE_K, BUTTON_B, FIELD_ACTION },
+    { SDL_SCANCODE_N, BUTTON_SELECT, FIELD_ACTION },
+    { SDL_SCANCODE_M, BUTTON_START, FIELD_ACTION },
+    { 0 }
+};
+int scancode_to_joy[] = { 
+    SDL_SCANCODE_D,
+    SDL_SCANCODE_A,
+    SDL_SCANCODE_W,
+    SDL_SCANCODE_S, 
+    SDL_SCANCODE_L,
+    SDL_SCANCODE_K,
+    SDL_SCANCODE_N,
+    SDL_SCANCODE_M
+};
+int scancode_buttons[] = {
+    BUTTON_RIGHT,
+    BUTTON_LEFT,
+    BUTTON_UP,
+    BUTTON_DOWN,
+    BUTTON_A,
+    BUTTON_B,
+    BUTTON_SELECT,
+    BUTTON_START,
+};
+int scancode_fields[] = {
+    FIELD_JOY,
+    FIELD_JOY,
+    FIELD_JOY,
+    FIELD_JOY,
+    FIELD_ACTION,
+    FIELD_ACTION,
+    FIELD_ACTION,
+    FIELD_ACTION,
+};
+
 // Main code
 int main(int argc, char *argv[])
 {
@@ -112,6 +160,8 @@ int main(int argc, char *argv[])
     struct lcd lcd = { 0 };
 
     int executed;
+    int paused = 0;
+    int pause_next = 0;
 
     if (argc < 2) {
         printf("no rom specified\n");
@@ -206,7 +256,12 @@ int main(int argc, char *argv[])
     unsigned int lastDrawTime = 0, currentTime;
     while (!done)
     {
-        dmg_step(&dmg);
+        if (!paused) {
+            dmg_step(&dmg);
+        }
+        if (pause_next) {
+            paused = 1;
+        }
 
         currentTime = SDL_GetTicks();
         if (currentTime >= lastDrawTime + 16) {
@@ -219,10 +274,25 @@ int main(int argc, char *argv[])
             while (SDL_PollEvent(&event))
             {
                 ImGui_ImplSDL2_ProcessEvent(&event);
-                if (event.type == SDL_QUIT)
+                if (event.type == SDL_QUIT) {
                     done = true;
-                if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
+                }
+
+                if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE 
+                        && event.window.windowID == SDL_GetWindowID(window)) {
                     done = true;
+                }
+
+                if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+                    struct key_input *key = key_inputs;
+                    while (key->scancode) {
+                        if (key->scancode == event.key.keysym.scancode) {
+                            dmg_set_button(&dmg, key->field, key->button, event.type == SDL_KEYDOWN);
+                            break;
+                        }
+                        key++;
+                    }
+                }
             }
 
             // Start the Dear ImGui frame
@@ -261,6 +331,20 @@ int main(int argc, char *argv[])
                 ImGui::SameLine();
                 ImGui::Checkbox("C", &c_flag);
 
+                if (ImGui::Button("Run")) {
+                    paused = 0;
+                    pause_next = 0;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Stop")) {
+                    paused = 1;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Step")) {
+                    paused = 0;
+                    pause_next = 1;
+                }
+
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
                 ImGui::End();
             }
@@ -271,7 +355,7 @@ int main(int argc, char *argv[])
                 convert_output(dmg.lcd);
                 glBindTexture(GL_TEXTURE_2D, texture);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
-                ImGui::Image((void*)(intptr_t) texture, ImVec2(256, 256));
+                ImGui::Image((void*)(intptr_t) texture, ImVec2(512, 512));
 
                 ImGui::End();
             }
@@ -290,6 +374,7 @@ int main(int argc, char *argv[])
             fill_memory_editor(&dmg);
 
             editor.DrawWindow("Memory", full_address_space, 0x10000, 0x0000);
+            editor.DrawWindow("ROM", dmg.rom->data, 0x8000, 0);
 
             // Rendering
             ImGui::Render();

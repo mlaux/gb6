@@ -16,6 +16,7 @@ struct cpu
     u16 sp;
     u16 pc;
     u32 cycle_count;
+    u8 interrupt_enable;
 
     u8 (*mem_read)(void *, u16);
     void (*mem_write)(void *, u16, u8);
@@ -36,5 +37,12 @@ int flag_isset(struct cpu *cpu, int flag);
 #define FLAG_SIGN       0x40
 #define FLAG_HALF_CARRY 0x20
 #define FLAG_CARRY      0x10
+
+#define INT_VBLANK  (1 << 0)
+#define INT_LCDSTAT (1 << 1)
+#define INT_TIMER   (1 << 2)
+#define INT_SERIAL  (1 << 3)
+#define INT_JOYPAD  (1 << 4)
+#define NUM_INTERRUPTS 5
 
 #endif
