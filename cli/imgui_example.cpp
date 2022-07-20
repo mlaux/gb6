@@ -1,8 +1,3 @@
-// Dear ImGui: standalone example application for SDL2 + OpenGL
-// (SDL is a cross-platform general purpose library for handling windows, inputs, OpenGL/Vulkan/Metal graphics context creation, etc.)
-// If you are new to Dear ImGui, read documentation from the docs/ folder + read the top of imgui.cpp.
-// Read online: https://github.com/ocornut/imgui/tree/master/docs
-
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/imgui_impl_opengl3.h"
@@ -10,11 +5,7 @@
 #include <stdio.h>
 #include <SDL.h>
 #include <SDL_timer.h>
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-#include <SDL_opengles2.h>
-#else
 #include <SDL_opengl.h>
-#endif
 #include <string>
 
 extern "C" {
@@ -34,6 +25,28 @@ static const char *L_FORMAT = "L: 0x%02x";
 static const char *SP_FORMAT = "SP: 0x%02x";
 static const char *PC_FORMAT = "PC: 0x%02x";
 
+unsigned char output_image[256 * 256 * 4];
+unsigned char vram_tiles[256 * 96 * 4];
+unsigned char full_address_space[0x10000];
+
+struct key_input {
+    int scancode;
+    int button;
+    int field;
+};
+
+struct key_input key_inputs[] = {
+    { SDL_SCANCODE_D, BUTTON_RIGHT, FIELD_JOY },
+    { SDL_SCANCODE_A, BUTTON_LEFT, FIELD_JOY },
+    { SDL_SCANCODE_W, BUTTON_UP, FIELD_JOY },
+    { SDL_SCANCODE_S, BUTTON_DOWN, FIELD_JOY },
+    { SDL_SCANCODE_L, BUTTON_A, FIELD_ACTION },
+    { SDL_SCANCODE_K, BUTTON_B, FIELD_ACTION },
+    { SDL_SCANCODE_N, BUTTON_SELECT, FIELD_ACTION },
+    { SDL_SCANCODE_M, BUTTON_START, FIELD_ACTION },
+    { 0 }
+};
+
 static MemoryEditor editor;
 
 GLuint make_output_texture() {
@@ -43,14 +56,9 @@ GLuint make_output_texture() {
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
 
     return image_texture;
 }
-
-unsigned char output_image[256 * 256 * 4];
-unsigned char vram_tiles[256 * 96 * 4];
 
 void convert_output(struct lcd *lcd) {
     int x, y;
@@ -94,7 +102,6 @@ void convert_vram(struct dmg *dmg) {
     }
 }
 
-char full_address_space[0x10000];
 void fill_memory_editor(struct dmg *dmg)
 {
     int k;
@@ -102,54 +109,6 @@ void fill_memory_editor(struct dmg *dmg)
         full_address_space[k] = dmg_read(dmg, k);
     }
 }
-
-struct key_input {
-    int scancode;
-    int button;
-    int field;
-};
-
-struct key_input key_inputs[] = {
-    { SDL_SCANCODE_D, BUTTON_RIGHT, FIELD_JOY },
-    { SDL_SCANCODE_A, BUTTON_LEFT, FIELD_JOY },
-    { SDL_SCANCODE_W, BUTTON_UP, FIELD_JOY },
-    { SDL_SCANCODE_S, BUTTON_DOWN, FIELD_JOY },
-    { SDL_SCANCODE_L, BUTTON_A, FIELD_ACTION },
-    { SDL_SCANCODE_K, BUTTON_B, FIELD_ACTION },
-    { SDL_SCANCODE_N, BUTTON_SELECT, FIELD_ACTION },
-    { SDL_SCANCODE_M, BUTTON_START, FIELD_ACTION },
-    { 0 }
-};
-int scancode_to_joy[] = { 
-    SDL_SCANCODE_D,
-    SDL_SCANCODE_A,
-    SDL_SCANCODE_W,
-    SDL_SCANCODE_S, 
-    SDL_SCANCODE_L,
-    SDL_SCANCODE_K,
-    SDL_SCANCODE_N,
-    SDL_SCANCODE_M
-};
-int scancode_buttons[] = {
-    BUTTON_RIGHT,
-    BUTTON_LEFT,
-    BUTTON_UP,
-    BUTTON_DOWN,
-    BUTTON_A,
-    BUTTON_B,
-    BUTTON_SELECT,
-    BUTTON_START,
-};
-int scancode_fields[] = {
-    FIELD_JOY,
-    FIELD_JOY,
-    FIELD_JOY,
-    FIELD_JOY,
-    FIELD_ACTION,
-    FIELD_ACTION,
-    FIELD_ACTION,
-    FIELD_ACTION,
-};
 
 // Main code
 int main(int argc, char *argv[])
@@ -183,24 +142,13 @@ int main(int argc, char *argv[])
 
     cpu.pc = 0x100;
 
-    // Setup SDL
-    // (Some versions of SDL before <2.0.10 appears to have performance/stalling issues on a minority of Windows systems,
-    // depending on whether SDL_INIT_GAMECONTROLLER is enabled or disabled.. updating to latest version of SDL is recommended!)
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
-    {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0) {
         printf("Error: %s\n", SDL_GetError());
         return -1;
     }
 
     // Decide GL+GLSL versions
-#if defined(IMGUI_IMPL_OPENGL_ES2)
-    // GL ES 2.0 + GLSL 100
-    const char* glsl_version = "#version 100";
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
     // GL 3.2 Core + GLSL 150
     const char* glsl_version = "#version 150";
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG); // Always required on Mac
@@ -221,7 +169,7 @@ int main(int argc, char *argv[])
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    SDL_Window* window = SDL_CreateWindow("gb6 debug", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(0); // disable vsync
@@ -229,9 +177,8 @@ int main(int argc, char *argv[])
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -245,7 +192,7 @@ int main(int argc, char *argv[])
     GLuint texture = make_output_texture();
     GLuint vram_texture = make_output_texture();
 
-    // Our state
+    // for flag checkboxes
     bool z_flag = false;
     bool n_flag = false;
     bool h_flag = false;
@@ -254,8 +201,8 @@ int main(int argc, char *argv[])
     // Main loop
     bool done = false;
     unsigned int lastDrawTime = 0, currentTime;
-    while (!done)
-    {
+
+    while (!done) {
         if (!paused) {
             dmg_step(&dmg);
         }
@@ -305,9 +252,8 @@ int main(int argc, char *argv[])
             h_flag = flag_isset(dmg.cpu, FLAG_HALF_CARRY);
             c_flag = flag_isset(dmg.cpu, FLAG_CARRY);
 
-            // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
             {
-                ImGui::Begin("State");                          // Create a window called "Hello, world!" and append into it.
+                ImGui::Begin("State");
 
                 ImGui::Text(A_FORMAT, dmg.cpu->a);
                 ImGui::Text(B_FORMAT, dmg.cpu->b);
@@ -388,8 +334,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    rom_free(&rom);
-
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
@@ -398,6 +342,8 @@ int main(int argc, char *argv[])
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    rom_free(&rom);
 
     return 0;
 }

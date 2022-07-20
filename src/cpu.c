@@ -453,6 +453,9 @@ void cpu_step(struct cpu *cpu)
             write_bc(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
             break;
+        case 0x0f: // RRCA
+            cpu->a = rrc(cpu, cpu->a);
+            break;
         case 0x11: // LD DE,d16
             write_de(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
@@ -650,6 +653,14 @@ void cpu_step(struct cpu *cpu)
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
+        case 0xc2: // JP NZ, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            if (!flag_isset(cpu, FLAG_ZERO)) {
+                cpu->pc = temp16;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
         case 0xc9: // RET
             cpu->pc = pop(cpu);
             break;
@@ -663,8 +674,10 @@ void cpu_step(struct cpu *cpu)
             cpu->pc = read16(cpu, cpu->pc);
             break;
         case 0xd2: // JP NC,a16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
             if (flag_isset(cpu, FLAG_CARRY)) {
-                cpu->pc = read16(cpu, cpu->pc);
+                cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
