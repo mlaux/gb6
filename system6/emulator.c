@@ -1,7 +1,4 @@
 /* Game Boy emulator for 68k Macs
-   Compiled with Symantec THINK C 5.0
-   (c) 2013 Matt Laux
-   
    emulator.c - entry point */
 
 #include <stdio.h>
