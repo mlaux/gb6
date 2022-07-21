@@ -4,4 +4,3 @@ void lcd_draw(struct lcd *lcd)
 {
 
 }
-

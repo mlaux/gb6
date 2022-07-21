@@ -44,12 +44,4 @@ typedef unsigned char bool;
 #define true 1
 #define false 0
 
-typedef struct _emu_state {
-	struct dmg *cpu;
-	u8 *rom;
-	unsigned long int romLength;
-} emu_state;
-
-extern emu_state theState;
-
 #endif

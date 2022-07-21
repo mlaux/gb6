@@ -48,6 +48,9 @@ void lcd_write(struct lcd *lcd, u16 addr, u8 value);
 
 void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value);
 
+void lcd_set_bit(struct lcd *lcd, u16 addr, u8 bit);
+void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit);
+
 // i feel like i'm going to need to call this every cycle and update regs
 int lcd_step(struct lcd *lcd);
 void lcd_copy(struct lcd *lcd);

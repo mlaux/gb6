@@ -39,8 +39,17 @@ void dmg_set_button(struct dmg *dmg, int field, int button, int pressed)
 
 static u8 get_button_state(struct dmg *dmg)
 {
-    return dmg->action_selected ? dmg->action_buttons : dmg->joypad;
+    u8 ret = 0;
+    if (dmg->action_selected) {
+        ret |= dmg->action_buttons;
+    }
+    if (dmg->joypad_selected) {
+        ret |= dmg->joypad;
+    }
+    return ret;
 }
+
+static int counter;
 
 u8 dmg_read(void *_dmg, u16 address)
 {
@@ -66,6 +75,9 @@ u8 dmg_read(void *_dmg, u16 address)
         return dmg->zero_page[address - 0xff80];
     } else if (address == 0xff00) {
         return get_button_state(dmg);
+    } else if (address == 0xff04) {
+        counter++;
+        return counter;
     } else if (address == 0xff0f) {
         return dmg->interrupt_requested;
     } else if (address == 0xffff) {
@@ -93,12 +105,21 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     } else if (address < 0xc000) {
         // TODO switchable ram bank
     } else if (address < 0xe000) {
+        // printf("write ram %04x %02x\n", address, data);
         dmg->main_ram[address - 0xc000] = data;
+    } else if (address == 0xFF46) {
+        u16 src = data << 8;
+        int k = 0;
+        // printf("oam dma %04x\n", src);
+        for (u16 addr = src; addr < src + 0xa0; addr++) {
+            dmg->lcd->oam[k++] = dmg_read(dmg, addr);
+        }
     } else if (lcd_is_valid_addr(address)) {
         lcd_write(dmg->lcd, address, data);
     } else if (address >= 0xff80 && address <= 0xfffe) {
         dmg->zero_page[address - 0xff80] = data;
     } else if (address == 0xff00) {
+        dmg->joypad_selected = data & (1 << 4);
         dmg->action_selected = data & (1 << 5);
     } else if (address == 0xff0f) {
         dmg->interrupt_requested = data;
@@ -126,9 +147,19 @@ void dmg_step(void *_dmg)
     if (dmg->cpu->cycle_count - dmg->last_lcd_update >= 456) {
         dmg->last_lcd_update = dmg->cpu->cycle_count;
         int next_scanline = lcd_step(dmg->lcd);
+
+        // update LYC
+        if (next_scanline == lcd_read(dmg->lcd, REG_LYC)) {
+            lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+            dmg_request_interrupt(dmg, INT_LCDSTAT);
+        } else {
+            lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+        }
+
         if (next_scanline == 144) {
             // vblank has started, draw all the stuff from ram into the lcd
             dmg_request_interrupt(dmg, INT_VBLANK);
+            dmg_request_interrupt(dmg, INT_SERIAL);
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
@@ -136,7 +167,7 @@ void dmg_step(void *_dmg)
             int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
             int tilebase = use_unsigned ? 0x8000 : 0x9000;
 
-            printf("%04x %04x %04x\n", bg_base, window_base, tilebase);
+            //printf("%04x %04x %04x\n", bg_base, window_base, tilebase);
 
             int k = 0, off = 0;
             int tile_y = 0, tile_x = 0;
@@ -155,9 +186,8 @@ void dmg_step(void *_dmg)
                         int data1 = dmg_read(dmg, eff_addr + b);
                         int data2 = dmg_read(dmg, eff_addr + b + 1);
                         for (i = 7; i >= 0; i--) {
-                            // monochrome for now
-                            dmg->lcd->buf[off] = (data1 & (1 << i)) ? 1 : 0;
-                            //dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                            dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0);// << 1;
+                            //dmg->lcd->buf[off] |= (data1 & (1 << i)) ? 1 : 0;
                             off++;
                         }
                         off += 248;

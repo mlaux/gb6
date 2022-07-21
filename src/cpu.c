@@ -174,7 +174,16 @@ static u8 shift_right(struct cpu *cpu, u8 value)
 
 static u8 swap(struct cpu *cpu, u8 value)
 {
-    return ((value & 0xf0) >> 4) | ((value & 0x0f) << 4);
+    u8 ret = ((value & 0xf0) >> 4) | ((value & 0x0f) << 4);
+	if(ret == 0) {
+		set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
+	clear_flag(cpu, FLAG_SIGN);
+	clear_flag(cpu, FLAG_HALF_CARRY);
+	clear_flag(cpu, FLAG_CARRY);
+    return ret;
 }
 
 static void xor(struct cpu *regs, u8 value)
@@ -634,6 +643,8 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0x2f: // CPL
             cpu->a = ~cpu->a;
+            set_flag(cpu, FLAG_SIGN);
+            set_flag(cpu, FLAG_HALF_CARRY);
             break;
         case 0x31: // LD SP,d16
             cpu->sp = read16(cpu, cpu->pc);
@@ -756,6 +767,10 @@ void cpu_step(struct cpu *cpu)
         case 0xb5: or(cpu, cpu->l); break;
         case 0xb6: or(cpu, read8(cpu, read_hl(cpu))); break;
         case 0xb7: or(cpu, cpu->a); break;
+        case 0xf6:
+            or(cpu, read8(cpu, cpu->pc));
+            cpu->pc++;
+            break;
 
         // CP
         case 0xb8: subtract(cpu, cpu->b, 0, 1); break;

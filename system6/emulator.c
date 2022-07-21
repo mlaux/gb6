@@ -17,14 +17,24 @@
 
 #include "emulator.h"
 
+#include "dmg.h"
+#include "cpu.h"
+#include "rom.h"
+#include "lcd.h"
+
 WindowPtr g_wp;
+DialogPtr stateDialog;
 unsigned char g_running;
+unsigned char emulationOn;
 
 static Point windowPt = { WINDOW_Y, WINDOW_X };
 
 static Rect windowBounds = { WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT, WINDOW_X + WINDOW_WIDTH };
 
-emu_state theState;
+struct cpu cpu;
+struct rom rom;
+struct lcd lcd;
+struct dmg dmg;
 
 void InitEverything(void)
 {	
@@ -45,10 +55,35 @@ void InitEverything(void)
   g_running = 1;
 }
 
+char offscreen[32 * 256];
+Rect offscreenRect = { 0, 0, 256, 256 };
+
+BitMap offscreenBmp;
+
+int lastTicks;
+
 void Render(void)
 {
-  MoveTo(10, 10);
-  DrawString("\pTest 123");
+  long k = 0, dst;
+  for (dst = 0; dst < 32 * 256; dst++) {
+    offscreen[dst] = lcd.buf[k++] << 7
+            | lcd.buf[k++] << 6
+            | lcd.buf[k++] << 5
+            | lcd.buf[k++] << 4
+            | lcd.buf[k++] << 3
+            | lcd.buf[k++] << 2
+            | lcd.buf[k++] << 1
+            | lcd.buf[k++];
+  }
+  SetPort(g_wp);
+  CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &g_wp->portRect, srcCopy, NULL);
+
+  //EraseRect(&g_wp->portRect);
+  MoveTo(10, 160);
+  char debug[128];
+  sprintf(debug, "PC: %04x", cpu.pc);
+  C2PStr(debug);
+  DrawString(debug);
 }
 
 void StartEmulation(void)
@@ -57,7 +92,10 @@ void StartEmulation(void)
         noGrowDocProc, (WindowPtr) -1, true, 0);
   SetPort(g_wp);
 
-  
+  offscreenBmp.baseAddr = offscreen;
+  offscreenBmp.bounds = offscreenRect;
+  offscreenBmp.rowBytes = 32;
+  emulationOn = 1;
 }
 
 bool LoadRom(StrFileName fileName, short vRefNum)
@@ -66,12 +104,11 @@ bool LoadRom(StrFileName fileName, short vRefNum)
   short fileNo;
   long amtRead;
   
-  if(theState.rom != NULL) {
+  if(rom.data != NULL) {
     // unload existing ROM
-    free((char *) theState.rom);
-    theState.romLength = 0;
+    free((char *) rom.data);
+    rom.length = 0;
   }
-  
 
   err = FSOpen(fileName, vRefNum, &fileNo);
   
@@ -79,16 +116,16 @@ bool LoadRom(StrFileName fileName, short vRefNum)
     return false;
   }
   
-  GetEOF(fileNo, (long *) &theState.romLength);
-  theState.rom = (unsigned char *) malloc(theState.romLength);
-  if(theState.rom == NULL) {
+  GetEOF(fileNo, (long *) &rom.length);
+  rom.data = (unsigned char *) malloc(rom.length);
+  if(rom.data == NULL) {
     Alert(ALRT_NOT_ENOUGH_RAM, NULL);
     return false;
   }
   
-  amtRead = theState.romLength;
+  amtRead = rom.length;
   
-  FSRead(fileNo, &amtRead, theState.rom);
+  FSRead(fileNo, &amtRead, rom.data);
   return true;
 }
 
@@ -112,7 +149,6 @@ bool ShowOpenBox(void)
   return false;
 }
 
-DialogPtr stateDialog;
 void ShowStateDialog(void)
 {
   DialogPtr dp;
@@ -207,15 +243,34 @@ void OnMouseDown(EventRecord *pEvt)
 }
 
 // -- ENTRY POINT --
-
 int main(int argc, char *argv[])
 {
   EventRecord evt;
+
+  int executed;
+  int paused = 0;
+  int pause_next = 0;
   
   InitEverything();
+
+  lcd_new(&lcd);
+  dmg_new(&dmg, &cpu, &rom, &lcd);
+  cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
+
+  cpu.pc = 0x100;
   
+  int start = TickCount();
   while(g_running) {
-    if(WaitNextEvent(everyEvent, &evt, 10, 0) != nullEvent) {
+    if (emulationOn) {
+        dmg_step(&dmg);
+        int now = TickCount();
+        if (now > lastTicks + 100) {
+          lastTicks = now;
+          Render();
+        }
+    }
+
+    if(WaitNextEvent(everyEvent, &evt, 0, 0) != nullEvent) {
       if (IsDialogEvent(&evt)) {
         DialogRef hitBox;
         DialogItemIndex hitItem;

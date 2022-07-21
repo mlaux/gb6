@@ -25,6 +25,7 @@ struct dmg {
     u8 video_ram[0x2000];
     u8 zero_page[0x80];
     u32 last_lcd_update;
+    int joypad_selected;
     int action_selected; // non-0 if A/B/start/select selected, 0 for directions
     u8 interrupt_enabled;
     u8 interrupt_requested;

@@ -4,10 +4,10 @@
 #include "types.h"
 
 struct rom {
+    u32 length;
     int type;
     u8 *data;
 };
-
 
 int rom_load(struct rom *rom, const char *filename);
 

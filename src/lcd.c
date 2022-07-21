@@ -5,12 +5,12 @@
 #include "types.h"
 #include "lcd.h"
 
-static void set_bit(struct lcd *lcd, u16 addr, u8 bit)
+void lcd_set_bit(struct lcd *lcd, u16 addr, u8 bit)
 {
     lcd_write(lcd, addr, lcd_read(lcd, addr) | (1 << bit));
 }
 
-static void clear_bit(struct lcd *lcd, u16 addr, u8 bit)
+void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit)
 {
     lcd_write(lcd, addr, lcd_read(lcd, addr) & ~(1 << bit));
 }
@@ -18,6 +18,7 @@ static void clear_bit(struct lcd *lcd, u16 addr, u8 bit)
 void lcd_new(struct lcd *lcd)
 {
     lcd->buf = malloc(256 * 256);
+    memset(lcd->buf, 0, 256 * 256);
     // todo < 8 bpp
     lcd->pixels = malloc(LCD_WIDTH * LCD_HEIGHT);
 }
@@ -41,9 +42,6 @@ void lcd_write(struct lcd *lcd, u16 addr, u8 value)
         lcd->oam[addr - 0xfe00] = value;
     } else {
         lcd->regs[addr - REG_LCD_BASE] = value;
-        if (addr == 0xFF46) {
-            // OAM DMA
-        }
     }
 }
 
@@ -64,13 +62,6 @@ void lcd_copy(struct lcd *lcd)
 
 int lcd_step(struct lcd *lcd)
 {
-    // update LYC
-    if (lcd_read(lcd, REG_LY) == lcd_read(lcd, REG_LYC)) {
-        set_bit(lcd, REG_STAT, STAT_FLAG_MATCH);
-    } else {
-        clear_bit(lcd, REG_STAT, STAT_FLAG_MATCH);
-    }
-
     // step to next scanline 0-153
     u8 next_scanline = (lcd_read(lcd, REG_LY) + 1) % 154;
     lcd_write(lcd, REG_LY, next_scanline);

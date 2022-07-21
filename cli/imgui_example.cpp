@@ -54,8 +54,8 @@ GLuint make_output_texture() {
     glGenTextures(1, &image_texture);
     glBindTexture(GL_TEXTURE_2D, image_texture);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     return image_texture;
 }
@@ -66,7 +66,8 @@ void convert_output(struct lcd *lcd) {
     for (y = 0; y < 256; y++) {
         for (x = 0; x < 256; x++) {
             int val = lcd->buf[y * 256 + x];
-            int fill = val ? 255 : 0;
+            int fill = 255 - val * 85;
+            //int fill = val ? 255 : 0;
             output_image[out_index++] = fill;
             output_image[out_index++] = fill;
             output_image[out_index++] = fill;
