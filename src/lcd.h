@@ -24,6 +24,11 @@
 #define REG_LCD_LAST REG_WX
 
 #define STAT_FLAG_MATCH 2
+#define STAT_INTR_SOURCE_HBLANK 3
+#define STAT_INTR_SOURCE_VBLANK 4
+#define STAT_INTR_SOURCE_MODE2 5
+#define STAT_INTR_SOURCE_MATCH 6
+
 
 #define LCDC_ENABLE_BG (1 << 0)
 #define LCDC_ENABLE_OBJ (1 << 1)
@@ -50,6 +55,8 @@ void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value);
 
 void lcd_set_bit(struct lcd *lcd, u16 addr, u8 bit);
 void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit);
+int lcd_isset(struct lcd *lcd, u16 addr, u8 bit);
+void lcd_set_mode(struct lcd *lcd, int mode);
 
 // i feel like i'm going to need to call this every cycle and update regs
 int lcd_step(struct lcd *lcd);

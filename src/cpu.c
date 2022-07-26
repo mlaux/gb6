@@ -515,8 +515,8 @@ void cpu_step(struct cpu *cpu)
         case 0x2d: dec_with_carry(cpu, &cpu->l); break;
 
         case 0x33: cpu->sp++; break;
-        case 0x34: temp = read8(cpu, read_hl(cpu)); inc_with_carry(cpu, &temp); break;
-        case 0x35: temp = read8(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); break;
+        case 0x34: temp = read8(cpu, read_hl(cpu)); inc_with_carry(cpu, &temp); write8(cpu, read_hl(cpu), temp); break;
+        case 0x35: temp = read8(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); write8(cpu, read_hl(cpu), temp);  break;
 
         case 0x3b: cpu->sp--; break;
         case 0x3c: inc_with_carry(cpu, &cpu->a); break;
@@ -684,11 +684,31 @@ void cpu_step(struct cpu *cpu)
         case 0xc3: // JP a16
             cpu->pc = read16(cpu, cpu->pc);
             break;
+        case 0xc4: // CALL NZ, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            if (!flag_isset(cpu, FLAG_ZERO)) {        
+                push(cpu, cpu->pc);
+                cpu->pc = temp16;
+            }
+            break;
+        case 0xd0: // RET NC
+            if (!flag_isset(cpu, FLAG_CARRY)) {
+                cpu->pc = pop(cpu);
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
         case 0xd2: // JP NC,a16
             temp16 = read16(cpu, cpu->pc);
             cpu->pc += 2;
             if (flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = temp16;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
+        case 0xd8: // RET C
+            if (flag_isset(cpu, FLAG_CARRY)) {
+                cpu->pc = pop(cpu);
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
@@ -735,6 +755,11 @@ void cpu_step(struct cpu *cpu)
         case 0x9d: subtract(cpu, cpu->l, 1, 0); break;
         case 0x9e: subtract(cpu, read8(cpu, read_hl(cpu)), 1, 0); break;
         case 0x9f: subtract(cpu, cpu->a, 1, 0); break;
+
+        case 0xd6: // SUB A, u8
+            subtract(cpu, read8(cpu, cpu->pc), 0, 0);
+            cpu->pc++;
+            break;
 
         // AND
         case 0xa0: and(cpu, cpu->b); break;
@@ -792,6 +817,9 @@ void cpu_step(struct cpu *cpu)
         case 0xef: push(cpu, cpu->pc); cpu->pc = 0x28; break;
         case 0xf7: push(cpu, cpu->pc); cpu->pc = 0x30; break;
         case 0xff: push(cpu, cpu->pc); cpu->pc = 0x38; break;
+
+        case 0x27: // DAA
+            break;
 
         case 0x76: // HALT
             break;

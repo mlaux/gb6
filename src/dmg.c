@@ -86,7 +86,7 @@ u8 dmg_read(void *_dmg, u16 address)
         // not sure about any of this yet
         // commented out bc of memory view window
         // fprintf(stderr, "don't know how to read 0x%04x\n", address);
-        return 0;
+        return 0xff;
     }
 }
 
@@ -119,8 +119,8 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     } else if (address >= 0xff80 && address <= 0xfffe) {
         dmg->zero_page[address - 0xff80] = data;
     } else if (address == 0xff00) {
-        dmg->joypad_selected = data & (1 << 4);
-        dmg->action_selected = data & (1 << 5);
+        dmg->joypad_selected = !(data & (1 << 4));
+        dmg->action_selected = !(data & (1 << 5));
     } else if (address == 0xff0f) {
         dmg->interrupt_requested = data;
     } else if (address == 0xffff) {
@@ -144,22 +144,33 @@ void dmg_step(void *_dmg)
     cpu_step(dmg->cpu);
 
     // each line takes 456 cycles
-    if (dmg->cpu->cycle_count - dmg->last_lcd_update >= 456) {
+
+    int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
+
+    if (cycle_diff >= 456) {
         dmg->last_lcd_update = dmg->cpu->cycle_count;
         int next_scanline = lcd_step(dmg->lcd);
 
         // update LYC
         if (next_scanline == lcd_read(dmg->lcd, REG_LYC)) {
             lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-            dmg_request_interrupt(dmg, INT_LCDSTAT);
+            if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
+                dmg_request_interrupt(dmg, INT_LCDSTAT);
+            }
         } else {
             lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+        }
+
+        if (next_scanline >= 144 && next_scanline < 154) {
+            lcd_set_mode(dmg->lcd, 1);
         }
 
         if (next_scanline == 144) {
             // vblank has started, draw all the stuff from ram into the lcd
             dmg_request_interrupt(dmg, INT_VBLANK);
-            dmg_request_interrupt(dmg, INT_SERIAL);
+            if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
+                dmg_request_interrupt(dmg, INT_LCDSTAT);
+            }
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
@@ -186,8 +197,8 @@ void dmg_step(void *_dmg)
                         int data1 = dmg_read(dmg, eff_addr + b);
                         int data2 = dmg_read(dmg, eff_addr + b + 1);
                         for (i = 7; i >= 0; i--) {
-                            dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0);// << 1;
-                            //dmg->lcd->buf[off] |= (data1 & (1 << i)) ? 1 : 0;
+                            dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
+                            dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
                             off++;
                         }
                         off += 248;
@@ -198,6 +209,20 @@ void dmg_step(void *_dmg)
             // now copy 256x256 buf to 160x144 based on window registers
             lcd_copy(dmg->lcd);
             lcd_draw(dmg->lcd);
+        }
+    } else {
+        int scan = lcd_read(dmg->lcd, REG_LY);
+        if (scan < 144) {
+            if (cycle_diff < 80) {
+                lcd_set_mode(dmg->lcd, 2);
+            } else if (cycle_diff < 230) {
+                // just midpoint between 168 to 291, todo improve
+                lcd_set_mode(dmg->lcd, 3);
+            } else {
+                lcd_set_mode(dmg->lcd, 0);
+            }
+        } else {
+            // in vblank. mode should stay as 1
         }
     }
 }

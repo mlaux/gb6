@@ -27,7 +27,6 @@ static const char *PC_FORMAT = "PC: 0x%02x";
 
 unsigned char output_image[256 * 256 * 4];
 unsigned char vram_tiles[256 * 96 * 4];
-unsigned char full_address_space[0x10000];
 
 struct key_input {
     int scancode;
@@ -60,13 +59,15 @@ GLuint make_output_texture() {
     return image_texture;
 }
 
+unsigned char default_palette[] = { 0, 0x55, 0xaa, 0xff };
+
 void convert_output(struct lcd *lcd) {
     int x, y;
     int out_index = 0;
     for (y = 0; y < 256; y++) {
         for (x = 0; x < 256; x++) {
             int val = lcd->buf[y * 256 + x];
-            int fill = 255 - val * 85;
+            int fill = default_palette[val];
             //int fill = val ? 255 : 0;
             output_image[out_index++] = fill;
             output_image[out_index++] = fill;
@@ -103,12 +104,14 @@ void convert_vram(struct dmg *dmg) {
     }
 }
 
-void fill_memory_editor(struct dmg *dmg)
+static ImU8 read_mem(const ImU8* data, size_t off)
 {
-    int k;
-    for (k = 0; k < 0x10000; k++) {
-        full_address_space[k] = dmg_read(dmg, k);
-    }
+    return dmg_read((void *) data, (u16) off);
+}
+
+static void write_mem(ImU8 *data, size_t off, ImU8 d)
+{
+    dmg_write(data, (u16) off, d);
 }
 
 // Main code
@@ -192,6 +195,9 @@ int main(int argc, char *argv[])
     // setup output
     GLuint texture = make_output_texture();
     GLuint vram_texture = make_output_texture();
+
+    editor.ReadFn = read_mem;
+    editor.WriteFn = write_mem;
 
     // for flag checkboxes
     bool z_flag = false;
@@ -318,10 +324,7 @@ int main(int argc, char *argv[])
                 ImGui::End();
             }
 
-            fill_memory_editor(&dmg);
-
-            editor.DrawWindow("Memory", full_address_space, 0x10000, 0x0000);
-            editor.DrawWindow("ROM", dmg.rom->data, 0x8000, 0);
+            editor.DrawWindow("Memory", &dmg, 0x10000, 0x0000);
 
             // Rendering
             ImGui::Render();

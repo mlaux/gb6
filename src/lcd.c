@@ -15,6 +15,18 @@ void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit)
     lcd_write(lcd, addr, lcd_read(lcd, addr) & ~(1 << bit));
 }
 
+int lcd_isset(struct lcd *lcd, u16 addr, u8 bit)
+{
+    u8 val = lcd_read(lcd, addr);
+    return val & (1 << bit);
+}
+
+void lcd_set_mode(struct lcd *lcd, int mode)
+{
+    u8 val = lcd_read(lcd, REG_STAT);
+    lcd_write(lcd, REG_STAT, (val & 0xfc) | mode);
+}
+
 void lcd_new(struct lcd *lcd)
 {
     lcd->buf = malloc(256 * 256);
