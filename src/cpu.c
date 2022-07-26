@@ -705,6 +705,9 @@ void cpu_step(struct cpu *cpu)
             write8(cpu, read_hl(cpu), cpu->a);
             write_hl(cpu, read_hl(cpu) - 1);
             break;
+        case 0x39: // ADD HL, SP
+            add16(cpu, cpu->sp);
+            break;
         case 0xc0: // RET NZ
             if (!flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc = pop(cpu);
