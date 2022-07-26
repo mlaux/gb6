@@ -821,6 +821,11 @@ void cpu_step(struct cpu *cpu)
             cpu->pc++;
             break;
 
+        case 0xde: // SBC A, u8
+            subtract(cpu, read8(cpu, cpu->pc), 0, 1);
+            cpu->pc++;
+            break;
+
         // AND
         case 0xa0: and(cpu, cpu->b); break;
         case 0xa1: and(cpu, cpu->c); break;
@@ -953,6 +958,13 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0xf5: // PUSH AF
             push(cpu, read_af(cpu));
+            break;
+        case 0xf8: // LD HL, SP+i8
+            write_hl(cpu, cpu->sp + (signed) read8(cpu, cpu->pc));
+            cpu->pc++;
+            break;
+        case 0xf9: // LD SP, HL
+            cpu->sp = read_hl(cpu);
             break;
         case 0xfa: // LD A,(u16)
             cpu->a = read8(cpu, read16(cpu, cpu->pc));
