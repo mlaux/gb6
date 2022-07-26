@@ -164,11 +164,55 @@ static u8 rrc(struct cpu *cpu, u8 val)
 
 static u8 shift_left(struct cpu *cpu, u8 value)
 {
-    return 0;
+    int result = value << 1;
+    if (result == 0) {
+        set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
+    if (value & 0x80) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    clear_flag(cpu, FLAG_SIGN);
+    clear_flag(cpu, FLAG_HALF_CARRY);
+    return result;
 }
 
 static u8 shift_right(struct cpu *cpu, u8 value)
 {
+    int result = (signed) value >> 1;
+    if (result == 0) {
+        set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
+    if (value & 0x1) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    clear_flag(cpu, FLAG_SIGN);
+    clear_flag(cpu, FLAG_HALF_CARRY);
+    return result;
+}
+
+static u8 srl(struct cpu *cpu, u8 value)
+{
+    int result = value >> 1;
+    if (result == 0) {
+        set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
+    if (value & 0x1) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    clear_flag(cpu, FLAG_SIGN);
+    clear_flag(cpu, FLAG_HALF_CARRY);
     return 0;
 }
 
@@ -368,7 +412,7 @@ static void extended_insn(struct cpu *cpu, u8 insn)
         shift_left,
         shift_right,
         swap,
-        shift_right // TODO SRL
+        srl,
     };
 
 #ifdef GB6_DEBUG
@@ -462,6 +506,9 @@ void cpu_step(struct cpu *cpu)
             write_bc(cpu, read16(cpu, cpu->pc));
             cpu->pc += 2;
             break;
+        case 0x02: // LD (BC), A
+            write8(cpu, read_bc(cpu), cpu->a);
+            break;
         case 0x0f: // RRCA
             cpu->a = rrc(cpu, cpu->a);
             break;
@@ -516,7 +563,7 @@ void cpu_step(struct cpu *cpu)
 
         case 0x33: cpu->sp++; break;
         case 0x34: temp = read8(cpu, read_hl(cpu)); inc_with_carry(cpu, &temp); write8(cpu, read_hl(cpu), temp); break;
-        case 0x35: temp = read8(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); write8(cpu, read_hl(cpu), temp);  break;
+        case 0x35: temp = read8(cpu, read_hl(cpu)); dec_with_carry(cpu, &temp); write8(cpu, read_hl(cpu), temp); break;
 
         case 0x3b: cpu->sp--; break;
         case 0x3c: inc_with_carry(cpu, &cpu->a); break;
@@ -592,8 +639,8 @@ void cpu_step(struct cpu *cpu)
         case 0x6d: break; // copy L to L
         case 0x6e: cpu->l = read8(cpu, read_hl(cpu)); break;
         case 0x6f: cpu->l = cpu->a; break;
-                
-        // dest = *HL
+
+        // dest is *HL
         case 0x70: write8(cpu, read_hl(cpu), cpu->b); break;
         case 0x71: write8(cpu, read_hl(cpu), cpu->c); break;
         case 0x72: write8(cpu, read_hl(cpu), cpu->d); break;
@@ -690,6 +737,16 @@ void cpu_step(struct cpu *cpu)
             if (!flag_isset(cpu, FLAG_ZERO)) {        
                 push(cpu, cpu->pc);
                 cpu->pc = temp16;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
+        case 0xcc: // CALL Z, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            if (flag_isset(cpu, FLAG_ZERO)) {        
+                push(cpu, cpu->pc);
+                cpu->pc = temp16;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
         case 0xd0: // RET NC
