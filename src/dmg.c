@@ -95,11 +95,9 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     struct dmg *dmg = (struct dmg *) _dmg;
     if (address < 0x4000) {
         printf("warning: writing 0x%04x in rom\n", address);
-        dmg->rom->data[address] = data;
     } else if (address < 0x8000) {
         // TODO switchable rom bank
         printf("warning: writing 0x%04x in rom\n", address);
-        dmg->rom->data[address] = data;
     } else if (address < 0xa000) {
         dmg->video_ram[address - 0x8000] = data;
     } else if (address < 0xc000) {
@@ -135,6 +133,82 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
     dmg->interrupt_requested |= nr;
 }
 
+// TODO move to lcd.c, it needs to be able to access dmg_read though
+static void render_background(struct dmg *dmg, int lcdc)
+{
+    int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
+    int window_base = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
+    int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
+    int tilebase = use_unsigned ? 0x8000 : 0x9000;
+
+    //printf("%04x %04x %04x\n", bg_base, window_base, tilebase);
+
+    int k = 0, off = 0;
+    int tile_y = 0, tile_x = 0;
+    for (tile_y = 0; tile_y < 32; tile_y++) {
+        for (tile_x = 0; tile_x < 32; tile_x++) {
+            off = 256 * 8 * tile_y + 8 * tile_x;
+            int tile = dmg_read(dmg, bg_base + (tile_y * 32 + tile_x));
+            int eff_addr;
+            if (use_unsigned) {
+                eff_addr = tilebase + 16 * tile;
+            } else {
+                eff_addr = tilebase + 16 * (signed char) tile;
+            }
+            int b, i;
+            for (b = 0; b < 16; b += 2) {
+                int data1 = dmg_read(dmg, eff_addr + b);
+                int data2 = dmg_read(dmg, eff_addr + b + 1);
+                for (i = 7; i >= 0; i--) {
+                    dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
+                    dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                    off++;
+                }
+                off += 248;
+            }
+        }
+    }
+}
+
+struct oam_entry {
+    u8 pos_y;
+    u8 pos_x;
+    u8 tile;
+    u8 attrs;
+};
+
+// TODO: only ten per scanline, priority
+static void render_objs(struct dmg *dmg)
+{
+    struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
+    int k, lcd_x, lcd_y, off;
+    for (k = 0; k < 40; k++, oam++) {
+        if (oam->pos_y == 0 || oam->pos_y >= 160) {
+            continue;
+        }
+        if (oam->pos_x == 0 || oam->pos_y >= 168) {
+            continue;
+        }
+
+        lcd_x = oam->pos_x - 8;
+        lcd_y = oam->pos_y - 16;
+
+        off = 256 * lcd_y + lcd_x;
+        int eff_addr = 0x8000 + 16 * oam->tile;
+        int b, i;
+        for (b = 0; b < 16; b += 2) {
+            int data1 = dmg_read(dmg, eff_addr + b);
+            int data2 = dmg_read(dmg, eff_addr + b + 1);
+            for (i = 7; i >= 0; i--) {
+                dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
+                dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                off++;
+            }
+            off += 248;
+        }
+    }
+}
+
 void dmg_step(void *_dmg)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
@@ -165,6 +239,7 @@ void dmg_step(void *_dmg)
             lcd_set_mode(dmg->lcd, 1);
         }
 
+        // TODO: do all of this per-scanline instead of everything in vblank
         if (next_scanline == 144) {
             // vblank has started, draw all the stuff from ram into the lcd
             dmg_request_interrupt(dmg, INT_VBLANK);
@@ -173,37 +248,16 @@ void dmg_step(void *_dmg)
             }
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
-            int window_base = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
-            int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
-            int tilebase = use_unsigned ? 0x8000 : 0x9000;
+            if (lcdc & LCDC_ENABLE_BG) {
+                render_background(dmg, lcdc);
+            }
 
-            //printf("%04x %04x %04x\n", bg_base, window_base, tilebase);
+            if (lcdc & LCDC_ENABLE_WINDOW) {
+                // printf("window\n");
+            }
 
-            int k = 0, off = 0;
-            int tile_y = 0, tile_x = 0;
-            for (tile_y = 0; tile_y < 32; tile_y++) {
-                for (tile_x = 0; tile_x < 32; tile_x++) {
-                    off = 256 * 8 * tile_y + 8 * tile_x;
-                    int tile = dmg_read(dmg, bg_base + (tile_y * 32 + tile_x));
-                    int eff_addr;
-                    if (use_unsigned) {
-                        eff_addr = tilebase + 16 * tile;
-                    } else {
-                        eff_addr = tilebase + 16 * (signed char) tile;
-                    }
-                    int b, i;
-                    for (b = 0; b < 16; b += 2) {
-                        int data1 = dmg_read(dmg, eff_addr + b);
-                        int data2 = dmg_read(dmg, eff_addr + b + 1);
-                        for (i = 7; i >= 0; i--) {
-                            dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
-                            dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
-                            off++;
-                        }
-                        off += 248;
-                    }
-                }
+            if (lcdc & LCDC_ENABLE_OBJ) {
+                render_objs(dmg);
             }
 
             // now copy 256x256 buf to 160x144 based on window registers

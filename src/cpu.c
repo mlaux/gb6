@@ -213,7 +213,7 @@ static u8 srl(struct cpu *cpu, u8 value)
     }
     clear_flag(cpu, FLAG_SIGN);
     clear_flag(cpu, FLAG_HALF_CARRY);
-    return 0;
+    return result;
 }
 
 static u8 swap(struct cpu *cpu, u8 value)
@@ -761,7 +761,7 @@ void cpu_step(struct cpu *cpu)
         case 0xd2: // JP NC,a16
             temp16 = read16(cpu, cpu->pc);
             cpu->pc += 2;
-            if (flag_isset(cpu, FLAG_CARRY)) {
+            if (!flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
@@ -769,6 +769,14 @@ void cpu_step(struct cpu *cpu)
         case 0xd8: // RET C
             if (flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = pop(cpu);
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
+        case 0xda: // JP C, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            if (flag_isset(cpu, FLAG_CARRY)) {
+                cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;

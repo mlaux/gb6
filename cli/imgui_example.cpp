@@ -59,7 +59,7 @@ GLuint make_output_texture() {
     return image_texture;
 }
 
-unsigned char default_palette[] = { 0, 0x55, 0xaa, 0xff };
+unsigned char default_palette[] = { 0xff, 0xaa, 0x55, 0x00 };
 
 void convert_output(struct lcd *lcd) {
     int x, y;
