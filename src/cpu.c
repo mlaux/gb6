@@ -453,6 +453,34 @@ static void conditional_jump(struct cpu *cpu, u8 opc, u8 neg_op, int flag) {
     }
 }
 
+static void daa(struct cpu *cpu)
+{
+    // https://forums.nesdev.org/viewtopic.php?t=15944
+    if (!flag_isset(cpu, FLAG_SIGN)) {
+        if (flag_isset(cpu, FLAG_CARRY) || cpu->a > 0x99) {
+            cpu->a += 0x60;
+            set_flag(cpu, FLAG_CARRY);
+        }
+        if (flag_isset(cpu, FLAG_HALF_CARRY) || (cpu->a & 0x0f) > 0x09) {
+            cpu->a += 0x6;
+        }
+    } else {
+        if (flag_isset(cpu, FLAG_CARRY)) {
+            cpu->a -= 0x60;
+        }
+        if (flag_isset(cpu, FLAG_HALF_CARRY)) {
+            cpu->a -= 0x6;
+        }
+    }
+
+    if (cpu->a) {
+        set_flag(cpu, FLAG_ZERO);
+    } else {
+        clear_flag(cpu, FLAG_ZERO);
+    }
+    clear_flag(cpu, FLAG_HALF_CARRY);
+}
+
 static u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
 
 static u16 check_interrupts(struct cpu *cpu)
@@ -479,6 +507,9 @@ static u16 check_interrupts(struct cpu *cpu)
 
     return 0;
 }
+
+/*
+*/
 
 void cpu_step(struct cpu *cpu)
 {
@@ -511,6 +542,9 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0x0f: // RRCA
             cpu->a = rrc(cpu, cpu->a);
+            break;
+        case 0x10: // STOP
+            cpu->pc++;
             break;
         case 0x11: // LD DE,d16
             write_de(cpu, read16(cpu, cpu->pc));
@@ -892,6 +926,7 @@ void cpu_step(struct cpu *cpu)
         case 0xff: push(cpu, cpu->pc); cpu->pc = 0x38; break;
 
         case 0x27: // DAA
+            daa(cpu);
             break;
 
         case 0x76: // HALT

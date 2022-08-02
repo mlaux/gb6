@@ -20,6 +20,7 @@ add_executable(gb6
     ../src/instructions.c
     ../src/lcd.c
     ../src/rom.c
+    ../src/mbc.c
     emulator.c
     lcd_imgui.c
     imgui/imgui_demo.cpp

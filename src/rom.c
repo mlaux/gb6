@@ -17,10 +17,13 @@ int rom_load(struct rom *rom, const char *filename)
     len = ftell(fp);
     rewind(fp);
 
-    rom->type = 0; // TODO read type from cart
     rom->data = malloc(len);
     rom->length = len;
     if (fread(rom->data, 1, len, fp) < len) {
+        return 0;
+    }
+    rom->mbc = mbc_new(rom->data[0x147]);
+    if (!rom->mbc) {
         return 0;
     }
 

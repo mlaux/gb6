@@ -5,6 +5,7 @@
 #include "rom.h"
 #include "lcd.h"
 #include "dmg.h"
+#include "mbc.h"
 #include "types.h"
 #include "bootstrap.h"
 
@@ -54,6 +55,12 @@ static int counter;
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
+    u8 mbc_data;
+
+    if (mbc_read(dmg->rom->mbc, dmg, address, &mbc_data)) {
+        return mbc_data;
+    }
+
 //    if (address < 0x100) {
 //        return dmg_boot_rom[address];
 //    } else if (address < 0x4000) {
@@ -93,6 +100,11 @@ u8 dmg_read(void *_dmg, u16 address)
 void dmg_write(void *_dmg, u16 address, u8 data)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
+
+    if (mbc_write(dmg->rom->mbc, dmg, address, data)) {
+        return;
+    }
+
     if (address < 0x4000) {
         printf("warning: writing 0x%04x in rom\n", address);
     } else if (address < 0x8000) {

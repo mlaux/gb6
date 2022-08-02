@@ -2,11 +2,12 @@
 #define _ROM_H
 
 #include "types.h"
+#include "mbc.h"
 
 struct rom {
     u32 length;
-    int type;
     u8 *data;
+    struct mbc *mbc;
 };
 
 int rom_load(struct rom *rom, const char *filename);

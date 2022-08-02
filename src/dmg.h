@@ -1,9 +1,7 @@
 #ifndef _DMG_H
 #define _DMG_H
 
-#include "cpu.h"
-#include "rom.h"
-#include "lcd.h"
+#include "types.h"
 
 #define FIELD_JOY 1
 #define FIELD_ACTION 2
@@ -16,6 +14,10 @@
 #define BUTTON_B (1 << 1)
 #define BUTTON_SELECT (1 << 2)
 #define BUTTON_START (1 << 3)
+
+struct cpu;
+struct rom;
+struct lcd;
 
 struct dmg {
     struct cpu *cpu;
