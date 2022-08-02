@@ -89,7 +89,7 @@ void Render(void)
   MoveTo(10, 180);
   char debug[128];
   double ms = execTime / 600.0;
-  sprintf(debug, "10000 insn %d ticks, %f ms per instruction", execTime, ms);
+  sprintf(debug, "10000 in %d ticks, %.2f ms per instruction", execTime, ms);
   C2PStr(debug);
   DrawString(debug);
 }
@@ -101,6 +101,13 @@ void Render(void)
 // 1/60 second per tick
 // 0.000695 second per instruction
 // 0.695 ms per instruction
+
+// REAL GB:
+// 4194304 Hz
+// 1048576 NOPs per second
+// 174763 CALL 16s per second
+// 0.001 ms per NOP
+// 0.006 ms per CALL 16
 
 void StartEmulation(void)
 {

@@ -26,9 +26,6 @@ int emulator_main(int argc, char *argv[])
 
     lcd_new(&lcd);
 
-    // this might be too much abstraction but it'll let me
-    // test the cpu, rom, and dmg independently and use the cpu
-    // for other non-GB stuff
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu.dmg = &dmg;
     // cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
