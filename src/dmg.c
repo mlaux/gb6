@@ -181,23 +181,6 @@ static void render_background(struct dmg *dmg, int lcdc)
     }
 }
 
-static void scroll(struct dmg *dmg)
-{
-    int scroll_y = lcd_read(dmg->lcd, REG_SCY);
-    int scroll_x = lcd_read(dmg->lcd, REG_SCX);
-
-    int lines;
-    for (lines = 0; lines < 144; lines++) {
-        int src_y = (scroll_y + lines) & 0xff;
-        int cols;
-        for (cols = 0; cols < 160; cols++) {
-            int src_off = (src_y << 8) + ((scroll_x + cols) & 0xff);
-
-            dmg->lcd->pixels[lines * 160 + cols] = dmg->lcd->buf[src_off];
-        }
-    }
-}
-
 struct oam_entry {
     u8 pos_y;
     u8 pos_x;
@@ -221,18 +204,22 @@ static void render_objs(struct dmg *dmg)
         lcd_x = oam->pos_x - 8;
         lcd_y = oam->pos_y - 16;
 
-        off = 256 * lcd_y + lcd_x;
+        off = 160 * lcd_y + lcd_x;
         int eff_addr = 0x8000 + 16 * oam->tile;
         int b, i;
         for (b = 0; b < 16; b += 2) {
             int data1 = dmg_read(dmg, eff_addr + b);
             int data2 = dmg_read(dmg, eff_addr + b + 1);
             for (i = 7; i >= 0; i--) {
-                dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
-                dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                if (off < 0 || off >= 160 * 144) {
+                    // terrible clipping. need to not have an if per-pixel
+                    continue;
+                }
+                dmg->lcd->pixels[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
+                dmg->lcd->pixels[off] |= (data2 & (1 << i)) ? 1 : 0;
                 off++;
             }
-            off += 248;
+            off += 152;
         }
     }
 }
@@ -284,14 +271,12 @@ void dmg_step(void *_dmg)
                 // printf("window\n");
             }
 
+            lcd_apply_scroll(dmg->lcd);
+
             if (lcdc & LCDC_ENABLE_OBJ) {
                 render_objs(dmg);
             }
 
-            scroll(dmg);
-
-            // now copy 256x256 buf to 160x144 based on window registers
-            lcd_copy(dmg->lcd);
             lcd_draw(dmg->lcd);
         }
     } else {

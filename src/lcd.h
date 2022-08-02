@@ -58,9 +58,8 @@ void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit);
 int lcd_isset(struct lcd *lcd, u16 addr, u8 bit);
 void lcd_set_mode(struct lcd *lcd, int mode);
 
-// i feel like i'm going to need to call this every cycle and update regs
 int lcd_step(struct lcd *lcd);
-void lcd_copy(struct lcd *lcd);
+void lcd_apply_scroll(struct lcd *lcd);
 
 // output the pixels to the screen
 void lcd_draw(struct lcd *lcd);

@@ -66,10 +66,20 @@ void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value)
     lcd->pixels[y * LCD_WIDTH + x] = value;
 }
 
-void lcd_copy(struct lcd *lcd)
+void lcd_apply_scroll(struct lcd *lcd)
 {
-    // use all the registers to compute the pixel data
-    
+    int scroll_y = lcd_read(lcd, REG_SCY);
+    int scroll_x = lcd_read(lcd, REG_SCX);
+
+    int lines;
+    for (lines = 0; lines < 144; lines++) {
+        int src_y = (scroll_y + lines) & 0xff;
+        int cols;
+        for (cols = 0; cols < 160; cols++) {
+            int src_off = (src_y << 8) + ((scroll_x + cols) & 0xff);
+            lcd->pixels[lines * 160 + cols] = lcd->buf[src_off];
+        }
+    }
 }
 
 int lcd_step(struct lcd *lcd)
