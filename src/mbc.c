@@ -19,7 +19,10 @@ static int mbc_noop_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
 static int mbc1_read(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 *out_data)
 {
   if (addr >= 0x4000 && addr <= 0x7fff) {
-    int use_bank = mbc->rom_bank || 1;
+    int use_bank = mbc->rom_bank;
+    if (!use_bank) {
+      use_bank = 1;
+    }
     *out_data = dmg->rom->data[0x4000 * use_bank + (addr & 0x3fff)];
     return 1;
   } else if (addr >= 0xa000 && addr <= 0xbfff) {

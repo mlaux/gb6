@@ -13,6 +13,7 @@ extern "C" {
 #include "cpu.h"
 #include "rom.h"
 #include "lcd.h"
+#include "instructions.h"
 }
 
 static const char *A_FORMAT = "A: 0x%02x";
@@ -24,8 +25,10 @@ static const char *H_FORMAT = "H: 0x%02x";
 static const char *L_FORMAT = "L: 0x%02x";
 static const char *SP_FORMAT = "SP: 0x%02x";
 static const char *PC_FORMAT = "PC: 0x%02x";
+static const char *INSN_FORMAT = "Next instruction: %s";
 
 unsigned char output_image[256 * 256 * 4];
+unsigned char visible_pixels[160 * 144 * 4];
 unsigned char vram_tiles[256 * 96 * 4];
 
 struct key_input {
@@ -73,6 +76,17 @@ void convert_output(struct lcd *lcd) {
             output_image[out_index++] = fill;
             output_image[out_index++] = fill;
             output_image[out_index++] = 255;
+        }
+    }
+    out_index = 0;
+    for (y = 0; y < 144; y++) {
+        for (x = 0; x < 160; x++) {
+            int val = lcd->pixels[y * 160 + x];
+            int fill = default_palette[val];
+            visible_pixels[out_index++] = fill;
+            visible_pixels[out_index++] = fill;
+            visible_pixels[out_index++] = fill;
+            visible_pixels[out_index++] = 255;
         }
     }
 }
@@ -194,6 +208,7 @@ int main(int argc, char *argv[])
 
     // setup output
     GLuint texture = make_output_texture();
+    GLuint vis_texture = make_output_texture();
     GLuint vram_texture = make_output_texture();
 
     editor.ReadFn = read_mem;
@@ -276,6 +291,9 @@ int main(int argc, char *argv[])
                 ImGui::SameLine();
                 ImGui::Text(PC_FORMAT, dmg.cpu->pc);
 
+                u8 opc = dmg_read(&dmg, dmg.cpu->pc);
+                ImGui::Text(INSN_FORMAT, instructions[opc].format);
+
                 ImGui::Checkbox("Z", &z_flag);
                 ImGui::SameLine();
                 ImGui::Checkbox("N", &n_flag);
@@ -302,13 +320,23 @@ int main(int argc, char *argv[])
                 ImGui::End();
             }
 
+            convert_output(dmg.lcd);
             {
                 ImGui::Begin("Output");
 
-                convert_output(dmg.lcd);
                 glBindTexture(GL_TEXTURE_2D, texture);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
                 ImGui::Image((void*)(intptr_t) texture, ImVec2(512, 512));
+
+                ImGui::End();
+            }
+
+            {
+                ImGui::Begin("LCD");
+
+                glBindTexture(GL_TEXTURE_2D, vis_texture);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 160, 144, 0, GL_RGBA, GL_UNSIGNED_BYTE, visible_pixels);
+                ImGui::Image((void*)(intptr_t) vis_texture, ImVec2(320, 288));
 
                 ImGui::End();
             }

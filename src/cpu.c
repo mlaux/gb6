@@ -269,7 +269,8 @@ static void add(struct cpu *cpu, u8 value, int with_carry)
 {
     u8 sum_trunc;
     int sum_full = cpu->a + value;
-    if (with_carry && flag_isset(cpu, FLAG_CARRY)) {
+    int carry = (with_carry && flag_isset(cpu, FLAG_CARRY)) ? 1 : 0;
+    if (carry) {
         sum_full++;
     }
     sum_trunc = (u8) sum_full;
@@ -279,12 +280,12 @@ static void add(struct cpu *cpu, u8 value, int with_carry)
         clear_flag(cpu, FLAG_ZERO);
     }
     clear_flag(cpu, FLAG_SIGN);
-    if (sum_full > sum_trunc) {
+    if (sum_full > 0xff) {
         set_flag(cpu, FLAG_CARRY);
     } else {
         clear_flag(cpu, FLAG_CARRY);
     }
-    if (((cpu->a & 0xf) + (value & 0xf)) & 0x10) {
+    if (((cpu->a & 0xf) + (value & 0xf) + carry) & 0x10) {
         set_flag(cpu, FLAG_HALF_CARRY);
     } else {
         clear_flag(cpu, FLAG_HALF_CARRY);
@@ -296,10 +297,11 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
 {
     u8 sum_trunc;
     int sum_full = cpu->a - value;
-    if (with_carry && flag_isset(cpu, FLAG_CARRY)) {
+    int carry = (with_carry && flag_isset(cpu, FLAG_CARRY)) ? 1 : 0;
+    if (carry) {
         sum_full--;
     }
-    sum_trunc = (u8) (sum_full & 0xff);
+    sum_trunc = (u8) sum_full;
     if (!sum_trunc) {
         set_flag(cpu, FLAG_ZERO);
     } else {
@@ -508,9 +510,6 @@ static u16 check_interrupts(struct cpu *cpu)
     return 0;
 }
 
-/*
-*/
-
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
@@ -568,6 +567,13 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0x1f: // RRA
             cpu->a = rotate_right(cpu, cpu->a);
+            break;
+
+        case 0x37: // SCF
+            set_flag(cpu, FLAG_CARRY);
+            break;
+        case 0x3f: // CCF
+            clear_flag(cpu, FLAG_CARRY);
             break;
 
         // incs and decs
@@ -864,7 +870,7 @@ void cpu_step(struct cpu *cpu)
             break;
 
         case 0xde: // SBC A, u8
-            subtract(cpu, read8(cpu, cpu->pc), 0, 1);
+            subtract(cpu, read8(cpu, cpu->pc), 1, 0);
             cpu->pc++;
             break;
 
@@ -992,6 +998,7 @@ void cpu_step(struct cpu *cpu)
             break;
         case 0xf1: // POP AF
             write_af(cpu, pop(cpu));
+            cpu->f &= 0xf0;
             break;
         case 0xf2: // LD A,(C)
             cpu->a = read8(cpu, 0xff00 + cpu->c);

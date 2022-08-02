@@ -67,13 +67,12 @@ u8 dmg_read(void *_dmg, u16 address)
     if (address < 0x4000) {
         return dmg->rom->data[address];
     } else if (address < 0x8000) {
-        // TODO switchable rom bank
         return dmg->rom->data[address];
     } else if (address < 0xa000) {
         return dmg->video_ram[address - 0x8000];
     } else if (address < 0xc000) {
-        // TODO switchable ram bank
-        return 0;
+        printf("RAM bank not handled by MBC\n");
+        return 0xff;
     } else if (address < 0xe000) {
         return dmg->main_ram[address - 0xc000];
     } else if (lcd_is_valid_addr(address)) {
@@ -182,6 +181,23 @@ static void render_background(struct dmg *dmg, int lcdc)
     }
 }
 
+static void scroll(struct dmg *dmg)
+{
+    int scroll_y = lcd_read(dmg->lcd, REG_SCY);
+    int scroll_x = lcd_read(dmg->lcd, REG_SCX);
+
+    int lines;
+    for (lines = 0; lines < 144; lines++) {
+        int src_y = (scroll_y + lines) & 0xff;
+        int cols;
+        for (cols = 0; cols < 160; cols++) {
+            int src_off = (src_y << 8) + ((scroll_x + cols) & 0xff);
+
+            dmg->lcd->pixels[lines * 160 + cols] = dmg->lcd->buf[src_off];
+        }
+    }
+}
+
 struct oam_entry {
     u8 pos_y;
     u8 pos_x;
@@ -271,6 +287,8 @@ void dmg_step(void *_dmg)
             if (lcdc & LCDC_ENABLE_OBJ) {
                 render_objs(dmg);
             }
+
+            scroll(dmg);
 
             // now copy 256x256 buf to 160x144 based on window registers
             lcd_copy(dmg->lcd);
