@@ -3,6 +3,8 @@
 
 #include "types.h"
 
+struct dmg;
+
 struct cpu
 {
     u8 a;
@@ -18,17 +20,18 @@ struct cpu
     u32 cycle_count;
     u8 interrupt_enable;
 
-    u8 (*mem_read)(void *, u16);
-    void (*mem_write)(void *, u16, u8);
-    void *mem_model;
+    struct dmg *dmg;
+    // u8 (*mem_read)(void *, u16);
+    // void (*mem_write)(void *, u16, u8);
+    // void *mem_model;
 };
 
-void cpu_bind_mem_model(
-    struct cpu *cpu,
-    void *mem_model,
-    u8 (*mem_read)(void *, u16),
-    void (*mem_write)(void *, u16, u8)
-);
+// void cpu_bind_mem_model(
+//     struct cpu *cpu,
+//     void *mem_model,
+//     u8 (*mem_read)(void *, u16),
+//     void (*mem_write)(void *, u16, u8)
+// );
 
 void cpu_step(struct cpu *cpu);
 int flag_isset(struct cpu *cpu, int flag);

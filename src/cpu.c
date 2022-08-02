@@ -2,19 +2,9 @@
 #include <stdlib.h>
 
 #include "cpu.h"
+#include "dmg.h"
 #include "types.h"
 #include "instructions.h"
-
-void cpu_bind_mem_model(
-    struct cpu *cpu,
-    void *mem_model,
-    u8 (*mem_read)(void *, u16),
-    void (*mem_write)(void *, u16, u8)
-) {
-    cpu->mem_model = mem_model;
-    cpu->mem_read = mem_read;
-    cpu->mem_write = mem_write;
-}
 
 int flag_isset(struct cpu *cpu, int flag)
 {
@@ -66,7 +56,7 @@ void cpu_panic(struct cpu *cpu)
 
 static inline u8 read8(struct cpu *cpu, u16 address)
 {
-    return cpu->mem_read(cpu->mem_model, address);
+    return dmg_read(cpu->dmg, address);
 }
 
 static inline u16 read16(struct cpu *cpu, u16 address)
@@ -78,12 +68,12 @@ static inline u16 read16(struct cpu *cpu, u16 address)
 
 static inline void write8(struct cpu *cpu, u16 address, u8 data)
 {
-    cpu->mem_write(cpu->mem_model, address, data);
+    dmg_write(cpu->dmg, address, data);
 }
 
 static inline void write16(struct cpu *cpu, u16 address, u16 data)
 {
-    cpu->mem_write(cpu->mem_model, address, data);
+    dmg_write(cpu->dmg, address, data);
 }
 
 static void inc_with_carry(struct cpu *regs, u8 *reg)
@@ -493,15 +483,15 @@ static u16 check_interrupts(struct cpu *cpu)
         return 0;
     }
 
-    u16 enabled = cpu->mem_read(cpu->mem_model, 0xffff);
-    u16 requested = cpu->mem_read(cpu->mem_model, 0xff0f);
+    u16 enabled = dmg_read(cpu->dmg, 0xffff);
+    u16 requested = dmg_read(cpu->dmg, 0xff0f);
 
     for (k = 0; k < NUM_INTERRUPTS; k++) {
         int check = 1 << k;
         if ((enabled & check) && (requested & check)) {
             // clear request flag for this interrupt and disable all further
             // interrupts until service routine executes EI or RETI
-            cpu->mem_write(cpu->mem_model, 0xff0f, requested & ~check);
+            dmg_write(cpu->dmg, 0xff0f, requested & ~check);
             cpu->interrupt_enable = 0;
             return handlers[k];
         }
@@ -522,7 +512,7 @@ void cpu_step(struct cpu *cpu)
         return;
     }
 
-    u8 opc = cpu->mem_read(cpu->mem_model, cpu->pc);
+    u8 opc = dmg_read(cpu->dmg, cpu->pc);
 #ifdef GB6_DEBUG
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
 #endif

@@ -156,7 +156,8 @@ int main(int argc, char *argv[])
     // test the cpu, rom, and dmg independently and use the cpu
     // for other non-GB stuff
     dmg_new(&dmg, &cpu, &rom, &lcd);
-    cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
+    cpu.dmg = &dmg;
+    // cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
     cpu.pc = 0x100;
 

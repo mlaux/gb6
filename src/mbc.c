@@ -6,16 +6,6 @@
 #include "dmg.h"
 #include "rom.h"
 
-static int mbc_noop_read(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 *out_data)
-{
-  return 0;
-}
-
-static int mbc_noop_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
-{
-  return 0;
-}
-
 static int mbc1_read(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 *out_data)
 {
   if (addr >= 0x4000 && addr <= 0x7fff) {
@@ -60,35 +50,29 @@ static int mbc1_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
   return 0;
 }
 
-struct mbc mbc_noop = {
-  mbc_noop_read,
-  mbc_noop_write,
-};
-
-struct mbc mbc1 = {
-  mbc1_read,
-  mbc1_write,
-};
-
 struct mbc *mbc_new(int type)
 {
-  switch (type) {
-    case 0:
-      return &mbc_noop;
-    case 1:
-    case 2:
-    case 3:
-      return &mbc1;
+  static struct mbc mbc;
+  if (type > 3) {
+    return NULL;
   }
-  return NULL;
+  mbc.type = type;
+
+  return &mbc;
 }
 
 int mbc_read(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 *out_data)
 {
-  return mbc->read_fn(mbc, dmg, addr, out_data);
+  if (mbc->type == 0) {
+    return 0;
+  }
+  return mbc1_read(mbc, dmg, addr, out_data);
 }
 
 int mbc_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
 {
-  return mbc->write_fn(mbc, dmg, addr, data);
+  if (mbc->type == 0) {
+    return 0;
+  }
+  return mbc1_write(mbc, dmg, addr, data);
 }

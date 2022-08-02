@@ -262,22 +262,22 @@ void dmg_step(void *_dmg)
                 dmg_request_interrupt(dmg, INT_LCDSTAT);
             }
 
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                render_background(dmg, lcdc);
-            }
+            // int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+            // if (lcdc & LCDC_ENABLE_BG) {
+            //     render_background(dmg, lcdc);
+            // }
 
-            if (lcdc & LCDC_ENABLE_WINDOW) {
-                // printf("window\n");
-            }
+            // if (lcdc & LCDC_ENABLE_WINDOW) {
+            //     // printf("window\n");
+            // }
 
-            lcd_apply_scroll(dmg->lcd);
+            // lcd_apply_scroll(dmg->lcd);
 
-            if (lcdc & LCDC_ENABLE_OBJ) {
-                render_objs(dmg);
-            }
+            // if (lcdc & LCDC_ENABLE_OBJ) {
+            //     render_objs(dmg);
+            // }
 
-            lcd_draw(dmg->lcd);
+            // lcd_draw(dmg->lcd);
         }
     } else {
         int scan = lcd_read(dmg->lcd, REG_LY);

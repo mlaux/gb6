@@ -59,18 +59,18 @@ Rect offscreenRect = { 0, 0, 144, 160 };
 
 BitMap offscreenBmp;
 
-int lastTicks;
+int execTime;
 
 void Render(void)
 {
-  long k = 0, dst, bit;
-  for (dst = 0; dst < 20 * 144; dst++) {
-    for (bit = 7; bit >= 0; bit--) {
-      offscreen[dst] |= lcd.pixels[k++];
-      offscreen[dst] <<= 1;
-    }
-    dst++;
-  }
+  // long k = 0, dst, bit;
+  // for (dst = 0; dst < 20 * 144; dst++) {
+  //   for (bit = 7; bit >= 0; bit--) {
+  //     offscreen[dst] |= lcd.pixels[k++];
+  //     offscreen[dst] <<= 1;
+  //   }
+  //   dst++;
+  // }
 
   /*
     offscreen[dst] = lcd.pixels[k++] << 7;
@@ -83,15 +83,24 @@ void Render(void)
     offscreen[dst] |= lcd.pixels[k++];
   */
   SetPort(g_wp);
-  CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
+  // CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
 
-  //EraseRect(&g_wp->portRect);
-  // MoveTo(10, 160);
-  // char debug[128];
-  // sprintf(debug, "PC: %04x", cpu.pc);
-  // C2PStr(debug);
-  // DrawString(debug);
+  EraseRect(&g_wp->portRect);
+  MoveTo(10, 180);
+  char debug[128];
+  double ms = execTime / 600.0;
+  sprintf(debug, "10000 insn %d ticks, %f ms per instruction", execTime, ms);
+  C2PStr(debug);
+  DrawString(debug);
 }
+
+// 417 ticks
+// 10000 instructions
+
+// 0.0417 tick per instruction
+// 1/60 second per tick
+// 0.000695 second per instruction
+// 0.695 ms per instruction
 
 void StartEmulation(void)
 {
@@ -188,7 +197,7 @@ void ShowAboutBox(void)
   // DrawDialog(dp);
   // while(!GetNextEvent(mDownMask, &e));
   // while(WaitMouseUp());
-  
+
   DisposeDialog(dp);
 }
 
@@ -264,25 +273,26 @@ int main(int argc, char *argv[])
   int executed;
   int paused = 0;
   int pause_next = 0;
-  
+
   InitEverything();
 
   lcd_new(&lcd);
   dmg_new(&dmg, &cpu, &rom, &lcd);
-  cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
+  cpu.dmg = &dmg;
+  // cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
   cpu.pc = 0x100;
-  
-  int start = TickCount();
+
   while(g_running) {
     if (emulationOn) {
+      int k;
+      int start = TickCount();
+      for (k = 0; k < 10000; k++) {
         dmg_step(&dmg);
-        int now = TickCount();
-        if (now > lastTicks + 100) {
-          lastTicks = now;
-          Render();
-        }
-      if (Button()) g_running = false;
+      }
+      execTime = TickCount() - start;
+      emulationOn = false;
+      Render();
     } else {
       if(WaitNextEvent(everyEvent, &evt, 0, 0) != nullEvent) {
         if (IsDialogEvent(&evt)) {
