@@ -7,7 +7,7 @@
 #include "types.h"
 #include "dmg.h"
 
-#define WINDOW_TITLE "\pEmulator"
+#define WINDOW_TITLE "\pOutput"
 
 #define WINDOW_X 100
 #define WINDOW_Y 100

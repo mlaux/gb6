@@ -18,6 +18,7 @@
 #include "cpu.h"
 #include "rom.h"
 #include "lcd.h"
+#include "mbc.h"
 
 WindowPtr g_wp;
 DialogPtr stateDialog;
@@ -52,8 +53,9 @@ void InitEverything(void)
   g_running = 1;
 }
 
-char offscreen[32 * 256];
-Rect offscreenRect = { 0, 0, 256, 256 };
+// 160 pixels / 8 bits per pixel = 20 bytes per line
+char offscreen[20 * 144];
+Rect offscreenRect = { 0, 0, 144, 160 };
 
 BitMap offscreenBmp;
 
@@ -61,26 +63,34 @@ int lastTicks;
 
 void Render(void)
 {
-  long k = 0, dst;
-  for (dst = 0; dst < 32 * 256; dst++) {
-    offscreen[dst] = lcd.buf[k++] << 7
-            | lcd.buf[k++] << 6
-            | lcd.buf[k++] << 5
-            | lcd.buf[k++] << 4
-            | lcd.buf[k++] << 3
-            | lcd.buf[k++] << 2
-            | lcd.buf[k++] << 1
-            | lcd.buf[k++];
+  long k = 0, dst, bit;
+  for (dst = 0; dst < 20 * 144; dst++) {
+    for (bit = 7; bit >= 0; bit--) {
+      offscreen[dst] |= lcd.pixels[k++];
+      offscreen[dst] <<= 1;
+    }
+    dst++;
   }
+
+  /*
+    offscreen[dst] = lcd.pixels[k++] << 7;
+    offscreen[dst] |= lcd.pixels[k++] << 6;
+    offscreen[dst] |= lcd.pixels[k++] << 5;
+    offscreen[dst] |= lcd.pixels[k++] << 4;
+    offscreen[dst] |= lcd.pixels[k++] << 3;
+    offscreen[dst] |= lcd.pixels[k++] << 2;
+    offscreen[dst] |= lcd.pixels[k++] << 1;
+    offscreen[dst] |= lcd.pixels[k++];
+  */
   SetPort(g_wp);
-  CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &g_wp->portRect, srcCopy, NULL);
+  CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
 
   //EraseRect(&g_wp->portRect);
-  MoveTo(10, 160);
-  char debug[128];
-  sprintf(debug, "PC: %04x", cpu.pc);
-  C2PStr(debug);
-  DrawString(debug);
+  // MoveTo(10, 160);
+  // char debug[128];
+  // sprintf(debug, "PC: %04x", cpu.pc);
+  // C2PStr(debug);
+  // DrawString(debug);
 }
 
 void StartEmulation(void)
@@ -91,7 +101,7 @@ void StartEmulation(void)
 
   offscreenBmp.baseAddr = offscreen;
   offscreenBmp.bounds = offscreenRect;
-  offscreenBmp.rowBytes = 32;
+  offscreenBmp.rowBytes = 20;
   emulationOn = 1;
 }
 
@@ -121,8 +131,15 @@ bool LoadRom(StrFileName fileName, short vRefNum)
   }
   
   amtRead = rom.length;
-  
   FSRead(fileNo, &amtRead, rom.data);
+
+  rom.mbc = mbc_new(rom.data[0x147]);
+  if (!rom.mbc) {
+    ParamText("\pThis cartridge type is unsupported.", "\p", "\p", "\p");
+    Alert(ALRT_4_LINE, NULL);
+    return false;
+  }
+
   return true;
 }
 
@@ -265,24 +282,25 @@ int main(int argc, char *argv[])
           lastTicks = now;
           Render();
         }
-    }
-
-    if(WaitNextEvent(everyEvent, &evt, 0, 0) != nullEvent) {
-      if (IsDialogEvent(&evt)) {
-        DialogRef hitBox;
-        DialogItemIndex hitItem;
-        if (DialogSelect(&evt, &hitBox, &hitItem)) {
-          stateDialog = NULL;
+      if (Button()) g_running = false;
+    } else {
+      if(WaitNextEvent(everyEvent, &evt, 0, 0) != nullEvent) {
+        if (IsDialogEvent(&evt)) {
+          DialogRef hitBox;
+          DialogItemIndex hitItem;
+          if (DialogSelect(&evt, &hitBox, &hitItem)) {
+            stateDialog = NULL;
+          }
+        } else switch(evt.what) {
+          case mouseDown:
+            OnMouseDown(&evt);
+            break;
+          case updateEvt:
+            BeginUpdate((WindowPtr) evt.message);
+            Render();
+            EndUpdate((WindowPtr) evt.message);
+            break;
         }
-      } else switch(evt.what) {
-        case mouseDown:
-          OnMouseDown(&evt);
-          break;
-        case updateEvt:
-          BeginUpdate((WindowPtr) evt.message);
-          Render();
-          EndUpdate((WindowPtr) evt.message);
-          break;
       }
     }
   }
