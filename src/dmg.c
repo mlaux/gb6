@@ -189,11 +189,11 @@ struct oam_entry {
 };
 
 // TODO: only ten per scanline, priority, attributes, move to lcd.c
-static void render_objs(struct dmg *dmg)
+static void render_objs(struct dmg *dmg, int scanline)
 {
     struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
     int k, lcd_x, lcd_y, off;
-    int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
+    int height = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE) ? 16 : 8;
 
     for (k = 0; k < 40; k++, oam++) {
         if (oam->pos_y == 0 || oam->pos_y >= 160) {
@@ -206,33 +206,31 @@ static void render_objs(struct dmg *dmg)
         lcd_x = oam->pos_x - 8;
         lcd_y = oam->pos_y - 16;
 
-        off = 160 * lcd_y + lcd_x;
-        int eff_addr = 0x8000 + 16 * oam->tile;
-        int b, i, limit = 16;
-        if (tall) {
-            limit = 32;
+        if (scanline < lcd_y || scanline >= lcd_y + height) {
+            continue;
         }
-        for (b = 0; b < limit; b += 2) {
-            int use_tile = b;
-            if (oam->attrs & OAM_ATTR_MIRROR_Y) {
-                use_tile = (limit - 2) - b;
+
+        off = 160 * scanline + lcd_x;
+        int eff_addr = 0x8000 + 16 * oam->tile;
+        int use_tile = 2 * (scanline - lcd_y);
+        if (oam->attrs & OAM_ATTR_MIRROR_Y) {
+            use_tile = (height - 2) - use_tile;
+        }
+        int data1 = dmg_read(dmg, eff_addr + use_tile);
+        int data2 = dmg_read(dmg, eff_addr + use_tile + 1);
+        int i;
+        for (i = 7; i >= 0; i--) {
+            if (off < 0 || off >= 160 * 144) {
+                // terrible clipping. need to not have an if per-pixel
+                continue;
             }
-            int data1 = dmg_read(dmg, eff_addr + use_tile);
-            int data2 = dmg_read(dmg, eff_addr + use_tile + 1);
-            for (i = 7; i >= 0; i--) {
-                if (off < 0 || off >= 160 * 144) {
-                    // terrible clipping. need to not have an if per-pixel
-                    continue;
-                }
-                int use_index = i;
-                if (oam->attrs & OAM_ATTR_MIRROR_X) {
-                    use_index = 7 - i;
-                }
-                dmg->lcd->pixels[off] = ((data1 & (1 << use_index)) ? 1 : 0) << 1;
-                dmg->lcd->pixels[off] |= (data2 & (1 << use_index)) ? 1 : 0;
-                off++;
+            int use_index = i;
+            if (oam->attrs & OAM_ATTR_MIRROR_X) {
+                use_index = 7 - i;
             }
-            off += 152;
+            dmg->lcd->pixels[off] = ((data1 & (1 << use_index)) ? 1 : 0) << 1;
+            dmg->lcd->pixels[off] |= (data2 & (1 << use_index)) ? 1 : 0;
+            off++;
         }
     }
 }
@@ -263,23 +261,23 @@ void dmg_step(void *_dmg)
             lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
         }
 
+        int lcdc = lcd_read(dmg->lcd, REG_LCDC);
         if (next_scanline >= 144 && next_scanline < 154) {
             lcd_set_mode(dmg->lcd, 1);
-        }
 
-        // TODO: do all of this per-scanline instead of everything in vblank
-        if (next_scanline == 144) {
-            // vblank has started, draw all the stuff from ram into the lcd
-            dmg_request_interrupt(dmg, INT_VBLANK);
-            if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
-                dmg_request_interrupt(dmg, INT_LCDSTAT);
+            if (next_scanline == 144) {
+                // vblank has started, draw all the stuff from ram into the lcd
+                dmg_request_interrupt(dmg, INT_VBLANK);
+                if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
+                    dmg_request_interrupt(dmg, INT_LCDSTAT);
+                }
+
+                if (lcdc & LCDC_ENABLE_BG) {
+                    render_background(dmg, lcdc);
+                }
             }
-
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                render_background(dmg, lcdc);
-            }
-
+        } else {
+            // not vblank
             if (lcdc & LCDC_ENABLE_WINDOW) {
                 // printf("window\n");
             }
@@ -287,7 +285,7 @@ void dmg_step(void *_dmg)
             lcd_apply_scroll(dmg->lcd);
 
             if (lcdc & LCDC_ENABLE_OBJ) {
-                render_objs(dmg);
+                render_objs(dmg, next_scanline);
             }
 
             lcd_draw(dmg->lcd);

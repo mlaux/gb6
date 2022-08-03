@@ -7,18 +7,18 @@
 
 void lcd_set_bit(struct lcd *lcd, u16 addr, u8 bit)
 {
-    lcd_write(lcd, addr, lcd_read(lcd, addr) | (1 << bit));
+    lcd_write(lcd, addr, lcd_read(lcd, addr) | bit);
 }
 
 void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit)
 {
-    lcd_write(lcd, addr, lcd_read(lcd, addr) & ~(1 << bit));
+    lcd_write(lcd, addr, lcd_read(lcd, addr) & ~bit);
 }
 
 int lcd_isset(struct lcd *lcd, u16 addr, u8 bit)
 {
     u8 val = lcd_read(lcd, addr);
-    return val & (1 << bit);
+    return val & bit;
 }
 
 void lcd_set_mode(struct lcd *lcd, int mode)
