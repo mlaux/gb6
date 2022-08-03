@@ -228,8 +228,11 @@ static void render_objs(struct dmg *dmg)
                 if (oam->attrs & OAM_ATTR_MIRROR_X) {
                     use_index = 7 - i;
                 }
-                dmg->lcd->pixels[off] = ((data1 & (1 << use_index)) ? 1 : 0) << 1;
-                dmg->lcd->pixels[off] |= (data2 & (1 << use_index)) ? 1 : 0;
+                int color = ((data1 & (1 << use_index)) ? 1 : 0) << 1 
+                          | ((data2 & (1 << use_index)) ? 1 : 0);
+                if (color) {
+                    dmg->lcd->pixels[off] = color;
+                }
                 off++;
             }
             off += 152;
