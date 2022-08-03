@@ -782,6 +782,24 @@ void cpu_step(struct cpu *cpu)
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
+        case 0xd4: // CALL NC, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            if (!flag_isset(cpu, FLAG_CARRY)) {        
+                push(cpu, cpu->pc);
+                cpu->pc = temp16;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
+        case 0xdc: // CALL C, u16
+            temp16 = read16(cpu, cpu->pc);
+            cpu->pc += 2;
+            if (flag_isset(cpu, FLAG_CARRY)) {        
+                push(cpu, cpu->pc);
+                cpu->pc = temp16;
+                cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
+            }
+            break;
         case 0xd0: // RET NC
             if (!flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = pop(cpu);

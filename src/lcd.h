@@ -39,6 +39,11 @@
 #define LCDC_WINDOW_TILE_MAP (1 << 6)
 #define LCDC_ENABLE (1 << 7)
 
+#define OAM_ATTR_PALETTE (1 << 4)
+#define OAM_ATTR_MIRROR_X (1 << 5)
+#define OAM_ATTR_MIRROR_Y (1 << 6)
+#define OAM_ATTR_BEHIND_BG (1 << 7)
+
 struct lcd {
     u8 oam[0xa0];
     u8 regs[0x0c];

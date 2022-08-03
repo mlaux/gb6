@@ -188,16 +188,18 @@ struct oam_entry {
     u8 attrs;
 };
 
-// TODO: only ten per scanline, priority
+// TODO: only ten per scanline, priority, attributes, move to lcd.c
 static void render_objs(struct dmg *dmg)
 {
     struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
     int k, lcd_x, lcd_y, off;
+    int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
+
     for (k = 0; k < 40; k++, oam++) {
         if (oam->pos_y == 0 || oam->pos_y >= 160) {
             continue;
         }
-        if (oam->pos_x == 0 || oam->pos_y >= 168) {
+        if (oam->pos_x == 0 || oam->pos_x >= 168) {
             continue;
         }
 
@@ -206,17 +208,28 @@ static void render_objs(struct dmg *dmg)
 
         off = 160 * lcd_y + lcd_x;
         int eff_addr = 0x8000 + 16 * oam->tile;
-        int b, i;
-        for (b = 0; b < 16; b += 2) {
-            int data1 = dmg_read(dmg, eff_addr + b);
-            int data2 = dmg_read(dmg, eff_addr + b + 1);
+        int b, i, limit = 16;
+        if (tall) {
+            limit = 32;
+        }
+        for (b = 0; b < limit; b += 2) {
+            int use_tile = b;
+            if (oam->attrs & OAM_ATTR_MIRROR_Y) {
+                use_tile = (limit - 2) - b;
+            }
+            int data1 = dmg_read(dmg, eff_addr + use_tile);
+            int data2 = dmg_read(dmg, eff_addr + use_tile + 1);
             for (i = 7; i >= 0; i--) {
                 if (off < 0 || off >= 160 * 144) {
                     // terrible clipping. need to not have an if per-pixel
                     continue;
                 }
-                dmg->lcd->pixels[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
-                dmg->lcd->pixels[off] |= (data2 & (1 << i)) ? 1 : 0;
+                int use_index = i;
+                if (oam->attrs & OAM_ATTR_MIRROR_X) {
+                    use_index = 7 - i;
+                }
+                dmg->lcd->pixels[off] = ((data1 & (1 << use_index)) ? 1 : 0) << 1;
+                dmg->lcd->pixels[off] |= (data2 & (1 << use_index)) ? 1 : 0;
                 off++;
             }
             off += 152;
