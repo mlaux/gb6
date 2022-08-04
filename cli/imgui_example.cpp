@@ -13,6 +13,7 @@ extern "C" {
 #include "cpu.h"
 #include "rom.h"
 #include "lcd.h"
+#include "mbc.h"
 #include "instructions.h"
 }
 
@@ -163,6 +164,7 @@ int main(int argc, char *argv[])
 
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu.dmg = &dmg;
+    mbc_load_ram(dmg.rom->mbc, "save.sav");
     // cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
     cpu.pc = 0x100;
@@ -382,6 +384,7 @@ int main(int argc, char *argv[])
     SDL_DestroyWindow(window);
     SDL_Quit();
 
+    mbc_save_ram(dmg.rom->mbc, "save.sav");
     rom_free(&rom);
 
     return 0;

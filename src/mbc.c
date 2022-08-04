@@ -57,6 +57,7 @@ struct mbc *mbc_new(int type)
     return NULL;
   }
   mbc.type = type;
+  mbc.has_battery = type == 3;
 
   return &mbc;
 }
@@ -75,4 +76,48 @@ int mbc_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
     return 0;
   }
   return mbc1_write(mbc, dmg, addr, data);
+}
+
+int mbc_save_ram(struct mbc *mbc, const char *filename)
+{
+  FILE *fp;
+
+  if (!mbc->has_battery) {
+    return 0;
+  }
+
+  fp = fopen(filename, "w");
+  if (!fp) {
+    return 0;
+  }
+
+  if (fwrite(mbc->ram, 1, RAM_SIZE, fp) < RAM_SIZE) {
+    fclose(fp);
+    return 0;
+  }
+
+  fclose(fp);
+  return 1;
+}
+
+int mbc_load_ram(struct mbc *mbc, const char *filename)
+{
+  FILE *fp;
+
+  if (!mbc->has_battery) {
+    return 0;
+  }
+
+  fp = fopen(filename, "r");
+  if (!fp) {
+    return 0;
+  }
+
+  if (fread(mbc->ram, 1, RAM_SIZE, fp) < RAM_SIZE) {
+    fclose(fp);
+    return 0;
+  }
+
+  fclose(fp);
+  return 1;
 }

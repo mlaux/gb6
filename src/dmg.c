@@ -278,7 +278,7 @@ void dmg_step(void *_dmg)
     // order of dependencies? i think cpu needs to step first then update
     // all other hw
     cpu_step(dmg->cpu);
-    timer_step(dmg);
+    // timer_step(dmg);
 
     // each line takes 456 cycles
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
