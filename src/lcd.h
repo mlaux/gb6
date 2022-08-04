@@ -48,6 +48,7 @@ struct lcd {
     u8 oam[0xa0];
     u8 regs[0x0c];
     u8 *buf; // 256x256
+    u8 *window;
     u8 *pixels; // the actual 160x144 visible area
 };
 
@@ -64,7 +65,7 @@ int lcd_isset(struct lcd *lcd, u16 addr, u8 bit);
 void lcd_set_mode(struct lcd *lcd, int mode);
 
 int lcd_step(struct lcd *lcd);
-void lcd_apply_scroll(struct lcd *lcd);
+void lcd_apply_scroll(struct lcd *lcd, int use_window);
 
 // output the pixels to the screen
 void lcd_draw(struct lcd *lcd);

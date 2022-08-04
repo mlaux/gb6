@@ -145,36 +145,37 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 }
 
 // TODO move to lcd.c, it needs to be able to access dmg_read though
-static void render_background(struct dmg *dmg, int lcdc)
+static void render_background(struct dmg *dmg, int lcdc, int is_window)
 {
-    int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
-    int window_base = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
-    int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
+    int bg_map = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
+    int window_map = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
+    int map_base_addr = is_window ? window_map : bg_map;
+    int unsigned_mode = lcdc & LCDC_BG_TILE_DATA;
+    int tile_base_addr = unsigned_mode ? 0x8000 : 0x9000;
     int palette = lcd_read(dmg->lcd, REG_BGP);
-    int tilebase = use_unsigned ? 0x8000 : 0x9000;
+    u8 *dest = is_window ? dmg->lcd->window : dmg->lcd->buf;
 
-    //printf("%04x %04x %04x\n", bg_base, window_base, tilebase);
-
-    int k = 0, off = 0;
-    int tile_y = 0, tile_x = 0;
+    int tile_y, tile_x;
     for (tile_y = 0; tile_y < 32; tile_y++) {
         for (tile_x = 0; tile_x < 32; tile_x++) {
-            off = 256 * 8 * tile_y + 8 * tile_x;
-            int tile = dmg_read(dmg, bg_base + (tile_y * 32 + tile_x));
-            int eff_addr;
-            if (use_unsigned) {
-                eff_addr = tilebase + 16 * tile;
+            int eff_addr, b, i;
+
+            int off = 256 * 8 * tile_y + 8 * tile_x;
+            int tile_index = dmg_read(dmg, map_base_addr + (tile_y * 32 + tile_x));
+
+            if (unsigned_mode) {
+                eff_addr = tile_base_addr + 16 * tile_index;
             } else {
-                eff_addr = tilebase + 16 * (signed char) tile;
+                eff_addr = tile_base_addr + 16 * (signed char) tile_index;
             }
-            int b, i, col_index;
+
             for (b = 0; b < 16; b += 2) {
                 int data1 = dmg_read(dmg, eff_addr + b);
                 int data2 = dmg_read(dmg, eff_addr + b + 1);
                 for (i = 7; i >= 0; i--) {
-                    col_index = (data1 & (1 << i)) ? 1 : 0;
+                    int col_index = (data1 & (1 << i)) ? 1 : 0;
                     col_index |= ((data2 & (1 << i)) ? 1 : 0) << 1;
-                    dmg->lcd->buf[off] = (palette >> (col_index << 1)) & 3;
+                    dest[off] = (palette >> (col_index << 1)) & 3;
                     off++;
                 }
                 off += 248;
@@ -193,8 +194,8 @@ struct oam_entry {
 // TODO: only ten per scanline, priority, attributes, move to lcd.c
 static void render_objs(struct dmg *dmg)
 {
-    struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
     int k, lcd_x, lcd_y, off;
+    struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
     int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
 
     for (k = 0; k < 40; k++, oam++) {
@@ -285,14 +286,15 @@ void dmg_step(void *_dmg)
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
-                render_background(dmg, lcdc);
+                render_background(dmg, lcdc, 0);
             }
 
-            if (lcdc & LCDC_ENABLE_WINDOW) {
-                // printf("window\n");
+            int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+            if (window_enabled) {
+                render_background(dmg, lcdc, 1);
             }
 
-            lcd_apply_scroll(dmg->lcd);
+            lcd_apply_scroll(dmg->lcd, window_enabled);
 
             if (lcdc & LCDC_ENABLE_OBJ) {
                 render_objs(dmg);

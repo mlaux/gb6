@@ -29,8 +29,11 @@ void lcd_set_mode(struct lcd *lcd, int mode)
 
 void lcd_new(struct lcd *lcd)
 {
-    lcd->buf = malloc(256 * 256);
-    memset(lcd->buf, 0, 256 * 256);
+    const size_t size = 256 * 256;
+    lcd->buf = malloc(size);
+    lcd->window = malloc(size);
+    memset(lcd->buf, 0, size);
+    memset(lcd->window, 0, size);
     // todo < 8 bpp
     lcd->pixels = malloc(LCD_WIDTH * LCD_HEIGHT);
 }
@@ -66,10 +69,13 @@ void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value)
     lcd->pixels[y * LCD_WIDTH + x] = value;
 }
 
-void lcd_apply_scroll(struct lcd *lcd)
+void lcd_apply_scroll(struct lcd *lcd, int use_window)
 {
     int scroll_y = lcd_read(lcd, REG_SCY);
     int scroll_x = lcd_read(lcd, REG_SCX);
+
+    int win_x = lcd_read(lcd, REG_WX) - 7;
+    int win_y = lcd_read(lcd, REG_WY);
 
     int lines;
     for (lines = 0; lines < 144; lines++) {
@@ -77,7 +83,12 @@ void lcd_apply_scroll(struct lcd *lcd)
         int cols;
         for (cols = 0; cols < 160; cols++) {
             int src_off = (src_y << 8) + ((scroll_x + cols) & 0xff);
-            lcd->pixels[lines * 160 + cols] = lcd->buf[src_off];
+            u8 *src = lcd->buf;
+            if (use_window && cols >= win_x && lines >= win_y) {
+                src_off = (((lines - win_y) & 0xff) << 8) + ((cols - win_x) & 0xff);
+                src = lcd->window;
+            }
+            lcd->pixels[lines * 160 + cols] = src[src_off];
         }
     }
 }
