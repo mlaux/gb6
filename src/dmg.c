@@ -81,7 +81,7 @@ u8 dmg_read(void *_dmg, u16 address)
         return dmg->zero_page[address - 0xff80];
     } else if (address == 0xff00) {
         return get_button_state(dmg);
-    } else if (address == 0xff04) {
+    } else if (address == REG_TIMER_DIV) {
         counter++;
         return counter;
     } else if (address == 0xff0f) {
@@ -246,6 +246,31 @@ static void render_objs(struct dmg *dmg)
     }
 }
 
+static void timer_step(struct dmg *dmg)
+{
+    if (!(dmg_read(dmg, REG_TIMER_CONTROL) & TIMER_CONTROL_ENABLED)) {
+        return;
+    }
+
+    int passed = dmg->cpu->cycle_count - dmg->last_timer_update;
+    // TODO
+    if (passed < 10000) {
+        return;
+    }
+
+    u8 counter = dmg_read(dmg, REG_TIMER_COUNT);
+    u8 modulo = dmg_read(dmg, REG_TIMER_MOD);
+
+    counter++;
+    if (!counter) {
+        counter = modulo;
+        dmg_request_interrupt(dmg, INT_TIMER);
+    }
+
+    dmg_write(dmg, REG_TIMER_COUNT, counter);
+    dmg->last_timer_update = dmg->cpu->cycle_count;
+}
+
 void dmg_step(void *_dmg)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
@@ -253,9 +278,9 @@ void dmg_step(void *_dmg)
     // order of dependencies? i think cpu needs to step first then update
     // all other hw
     cpu_step(dmg->cpu);
+    timer_step(dmg);
 
     // each line takes 456 cycles
-
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
 
     if (cycle_diff >= 456) {

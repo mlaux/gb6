@@ -15,6 +15,13 @@
 #define BUTTON_SELECT (1 << 2)
 #define BUTTON_START (1 << 3)
 
+#define REG_TIMER_DIV 0xFF04
+#define REG_TIMER_COUNT 0xFF05
+#define REG_TIMER_MOD 0xFF06
+#define REG_TIMER_CONTROL 0xFF07
+
+#define TIMER_CONTROL_ENABLED (1 << 2)
+
 struct cpu;
 struct rom;
 struct lcd;
@@ -27,6 +34,7 @@ struct dmg {
     u8 video_ram[0x2000];
     u8 zero_page[0x80];
     u32 last_lcd_update;
+    u32 last_timer_update;
     int joypad_selected;
     int action_selected; // non-0 if A/B/start/select selected, 0 for directions
     u8 interrupt_enabled;
