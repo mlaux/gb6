@@ -150,6 +150,7 @@ static void render_background(struct dmg *dmg, int lcdc)
     int bg_base = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
     int window_base = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
     int use_unsigned = lcdc & LCDC_BG_TILE_DATA;
+    int palette = lcd_read(dmg->lcd, REG_BGP);
     int tilebase = use_unsigned ? 0x8000 : 0x9000;
 
     //printf("%04x %04x %04x\n", bg_base, window_base, tilebase);
@@ -166,13 +167,14 @@ static void render_background(struct dmg *dmg, int lcdc)
             } else {
                 eff_addr = tilebase + 16 * (signed char) tile;
             }
-            int b, i;
+            int b, i, col_index;
             for (b = 0; b < 16; b += 2) {
                 int data1 = dmg_read(dmg, eff_addr + b);
                 int data2 = dmg_read(dmg, eff_addr + b + 1);
                 for (i = 7; i >= 0; i--) {
-                    dmg->lcd->buf[off] = ((data1 & (1 << i)) ? 1 : 0) << 1;
-                    dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
+                    col_index = (data1 & (1 << i)) ? 1 : 0;
+                    col_index |= ((data2 & (1 << i)) ? 1 : 0) << 1;
+                    dmg->lcd->buf[off] = (palette >> (col_index << 1)) & 3;
                     off++;
                 }
                 off += 248;
@@ -202,23 +204,26 @@ static void render_objs(struct dmg *dmg)
         if (oam->pos_x == 0 || oam->pos_x >= 168) {
             continue;
         }
+        int first_tile = 0x8000 + 16 * oam->tile;
+        int palette = oam->attrs & OAM_ATTR_PALETTE 
+            ? lcd_read(dmg->lcd, REG_OBP1)
+            : lcd_read(dmg->lcd, REG_OBP0);
 
         lcd_x = oam->pos_x - 8;
         lcd_y = oam->pos_y - 16;
 
         off = 160 * lcd_y + lcd_x;
-        int eff_addr = 0x8000 + 16 * oam->tile;
-        int b, i, limit = 16;
+        int b, i, tile_bytes = 16;
         if (tall) {
-            limit = 32;
+            tile_bytes = 32;
         }
-        for (b = 0; b < limit; b += 2) {
+        for (b = 0; b < tile_bytes; b += 2) {
             int use_tile = b;
             if (oam->attrs & OAM_ATTR_MIRROR_Y) {
-                use_tile = (limit - 2) - b;
+                use_tile = (tile_bytes - 2) - b;
             }
-            int data1 = dmg_read(dmg, eff_addr + use_tile);
-            int data2 = dmg_read(dmg, eff_addr + use_tile + 1);
+            int data1 = dmg_read(dmg, first_tile + use_tile);
+            int data2 = dmg_read(dmg, first_tile + use_tile + 1);
             for (i = 7; i >= 0; i--) {
                 if (off < 0 || off >= 160 * 144) {
                     // terrible clipping. need to not have an if per-pixel
@@ -228,10 +233,10 @@ static void render_objs(struct dmg *dmg)
                 if (oam->attrs & OAM_ATTR_MIRROR_X) {
                     use_index = 7 - i;
                 }
-                int color = ((data1 & (1 << use_index)) ? 1 : 0) << 1 
-                          | ((data2 & (1 << use_index)) ? 1 : 0);
-                if (color) {
-                    dmg->lcd->pixels[off] = color;
+                int col_index = ((data1 & (1 << use_index)) ? 1 : 0)
+                              | ((data2 & (1 << use_index)) ? 1 : 0) << 1;
+                if (col_index) {
+                    dmg->lcd->pixels[off] = (palette >> (col_index << 1)) & 3;
                 }
                 off++;
             }

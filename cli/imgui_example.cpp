@@ -62,7 +62,16 @@ GLuint make_output_texture() {
     return image_texture;
 }
 
-unsigned char default_palette[] = { 0xff, 0xaa, 0x55, 0x00 };
+unsigned int default_palette[] = { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
+// ugly evenly spaced: { 0xffffff, 0xaaaaaa, 0x555555, 0x000000 };
+// bgb default: {0xe0f8d0, 0x88c070, 0x346856, 0x081820};
+
+// https://lospec.com/palette-list/blk-aqu4
+// { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
+
+// https://lospec.com/palette-list/velvet-cherry-gb
+// { 0x9775a6, 0x683a68, 0x412752, 0x2d162c };
+
 
 void convert_output(struct lcd *lcd) {
     int x, y;
@@ -72,9 +81,9 @@ void convert_output(struct lcd *lcd) {
             int val = lcd->buf[y * 256 + x];
             int fill = default_palette[val];
             //int fill = val ? 255 : 0;
-            output_image[out_index++] = fill;
-            output_image[out_index++] = fill;
-            output_image[out_index++] = fill;
+            output_image[out_index++] = (fill >> 16) & 0xff;
+            output_image[out_index++] = (fill >> 8) & 0xff;
+            output_image[out_index++] = fill & 0xff;
             output_image[out_index++] = 255;
         }
     }
@@ -83,9 +92,9 @@ void convert_output(struct lcd *lcd) {
         for (x = 0; x < 160; x++) {
             int val = lcd->pixels[y * 160 + x];
             int fill = default_palette[val];
-            visible_pixels[out_index++] = fill;
-            visible_pixels[out_index++] = fill;
-            visible_pixels[out_index++] = fill;
+            visible_pixels[out_index++] = (fill >> 16) & 0xff;
+            visible_pixels[out_index++] = (fill >> 8) & 0xff;
+            visible_pixels[out_index++] = fill & 0xff;
             visible_pixels[out_index++] = 255;
         }
     }
