@@ -36,12 +36,16 @@ struct dmg {
     u32 last_lcd_update;
     u32 last_timer_update;
     int joypad_selected;
-    int action_selected; // non-0 if A/B/start/select selected, 0 for directions
+    int action_selected;
     u8 interrupt_enabled;
     u8 interrupt_requested;
 
     u8 joypad;
     u8 action_buttons;
+    u16 timer_div;
+    u8 timer_count;
+    u8 timer_mod;
+    u8 timer_control;
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);

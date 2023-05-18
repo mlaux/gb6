@@ -50,8 +50,6 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
-static int counter;
-
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
@@ -82,8 +80,13 @@ u8 dmg_read(void *_dmg, u16 address)
     } else if (address == 0xff00) {
         return get_button_state(dmg);
     } else if (address == REG_TIMER_DIV) {
-        counter++;
-        return counter;
+        return (dmg->timer_div & 0xff00) >> 8;
+    } else if (address == REG_TIMER_COUNT) {
+        return dmg->timer_count;
+    } else if (address == REG_TIMER_MOD) {
+        return dmg->timer_mod;
+    } else if (address == REG_TIMER_CONTROL) {
+        return dmg->timer_control;
     } else if (address == 0xff0f) {
         return dmg->interrupt_requested;
     } else if (address == 0xffff) {
@@ -116,6 +119,17 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     } else if (address < 0xe000) {
         // printf("write ram %04x %02x\n", address, data);
         dmg->main_ram[address - 0xc000] = data;
+    } else if (address == REG_TIMER_DIV) {
+        dmg->timer_div = 0;
+    } else if (address == REG_TIMER_COUNT) {
+        printf("write timer count\n");
+        dmg->timer_count = data;
+    } else if (address == REG_TIMER_MOD) {
+        printf("write timer mod\n");
+        dmg->timer_mod = data;
+    } else if (address == REG_TIMER_CONTROL) {
+        printf("write timer control\n");
+        dmg->timer_control = data;
     } else if (address == 0xFF46) {
         u16 src = data << 8;
         int k = 0;
@@ -248,15 +262,13 @@ static void render_objs(struct dmg *dmg)
 
 static void timer_step(struct dmg *dmg)
 {
+    dmg->timer_div++;
+
     if (!(dmg_read(dmg, REG_TIMER_CONTROL) & TIMER_CONTROL_ENABLED)) {
         return;
     }
 
     int passed = dmg->cpu->cycle_count - dmg->last_timer_update;
-    // TODO
-    if (passed < 10000) {
-        return;
-    }
 
     u8 counter = dmg_read(dmg, REG_TIMER_COUNT);
     u8 modulo = dmg_read(dmg, REG_TIMER_MOD);
@@ -278,7 +290,7 @@ void dmg_step(void *_dmg)
     // order of dependencies? i think cpu needs to step first then update
     // all other hw
     cpu_step(dmg->cpu);
-    // timer_step(dmg);
+    //timer_step(dmg);
 
     // each line takes 456 cycles
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;

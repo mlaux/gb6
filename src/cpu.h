@@ -20,6 +20,8 @@ struct cpu
     u32 cycle_count;
     u8 interrupt_enable;
 
+    u8 halted;
+
     struct dmg *dmg;
     // u8 (*mem_read)(void *, u16);
     // void (*mem_write)(void *, u16, u8);
