@@ -976,7 +976,7 @@ void cpu_step(struct cpu *cpu)
             break;
 
         case 0x76: // HALT
-            cpu->halted = 1;
+            //cpu->halted = 1;
             break;
 
         case 0xc1: // POP BC

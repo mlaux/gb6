@@ -40,7 +40,7 @@ void dmg_set_button(struct dmg *dmg, int field, int button, int pressed)
 
 static u8 get_button_state(struct dmg *dmg)
 {
-    u8 ret = 0;
+    u8 ret = 0xf0;
     if (dmg->action_selected) {
         ret |= dmg->action_buttons;
     }

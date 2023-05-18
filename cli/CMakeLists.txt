@@ -34,8 +34,8 @@ add_executable(gb6
 )
 
 target_link_libraries(gb6
-    "-framework OpenGL"
-    "-framework CoreFoundation"
+    "-lGL"
+    "-ldl"
     "${SDL_LIBS}"
 )
 
