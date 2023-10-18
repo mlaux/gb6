@@ -356,6 +356,32 @@ static void add16(struct cpu *cpu, u16 src)
     write_hl(cpu, trunc);
 }
 
+static void add_sp(struct cpu *cpu, u8 value)
+{
+    int total = cpu->sp + (signed char) value;
+    clear_flag(cpu, FLAG_ZERO);
+    clear_flag(cpu, FLAG_SIGN);
+    if (total > 0xffff) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    cpu->sp = (u16) total;
+}
+
+static void ld_hl_sp(struct cpu *cpu, u8 value)
+{
+    int total = cpu->sp + (signed char) value;
+    clear_flag(cpu, FLAG_ZERO);
+    clear_flag(cpu, FLAG_SIGN);
+    if (total > 0xffff) {
+        set_flag(cpu, FLAG_CARRY);
+    } else {
+        clear_flag(cpu, FLAG_CARRY);
+    }
+    write_hl(cpu, total);
+}
+
 static u8 read_reg(struct cpu *cpu, int index)
 {
     switch (index) {
@@ -1026,6 +1052,10 @@ void cpu_step(struct cpu *cpu)
         case 0xe5: // PUSH HL
             push(cpu, read_hl(cpu));
             break;
+        case 0xe8:
+            add_sp(cpu, read8(cpu, cpu->pc));
+            cpu->pc++;
+            break;
         case 0xe9: // JP HL
             cpu->pc = read_hl(cpu);
             break;
@@ -1051,7 +1081,7 @@ void cpu_step(struct cpu *cpu)
             push(cpu, read_af(cpu));
             break;
         case 0xf8: // LD HL, SP+i8
-            write_hl(cpu, cpu->sp + (signed) read8(cpu, cpu->pc));
+            ld_hl_sp(cpu, read8(cpu, cpu->pc));
             cpu->pc++;
             break;
         case 0xf9: // LD SP, HL
