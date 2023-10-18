@@ -2,6 +2,11 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+// A -> D0
+// BC -> D1
+// DE -> D2
+// HL -> A0
+// SP -> A7
 
 uint8_t out_code[1024];
 uint8_t memory[1024]; // ???
@@ -9,23 +14,32 @@ uint32_t out_ptr;
 
 struct basic_block {
     // in 68k space?
-    void *start_address;
+    uint8_t code[256];
     size_t length;
 };
 
 // need some kind of map from gb address to struct basic_block?
 
 uint8_t test_code[] = {
-    0
+    0x00, // nop
+    0x18, 0xfe, // jr $-1
+    0xc9  // ret
 };
 
 struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
 {
-    uint32_t start = out_ptr;
+    uint8_t instruction;
     struct basic_block *bblock;
+    uint32_t dst_ptr = 0;
+    uint16_t src_ptr = 0;
 
     bblock = malloc(sizeof *bblock);
-    bblock->start_address = out_code + start;
+    // bblock->code = out_code + start;
+
+    while (1) {
+        instruction = gb_code[src_ptr++];
+
+    }
 
     return bblock;
 }
@@ -33,7 +47,7 @@ struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
 void run_block(struct basic_block *bblock)
 {
     // calling convention? do i need to do this from asm?
-    uint16_t jump_target = ((uint16_t (*)()) bblock->start_address)();
+    uint16_t jump_target = ((uint16_t (*)()) bblock->code)();
 }
 
 // TODO
@@ -55,7 +69,7 @@ int main(int argc, char *argv[])
     while (1) {
         uint16_t jump_target;
 
-        jump_target = ((uint16_t (*)()) bblock->start_address)();
+        jump_target = ((uint16_t (*)()) bblock->code)();
 
         bblock = block_cache_get(jump_target);
         if (!bblock) {
