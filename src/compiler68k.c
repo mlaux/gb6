@@ -2,7 +2,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <sys/mman.h>
+#include <sys/mman.h> // mprotect
+#include <unistd.h> // getpagesize
 
 // A -> D0
 // BC -> D1
@@ -49,22 +50,10 @@ struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
     struct basic_block *bblock;
     uint32_t dst_ptr = 0;
     uint16_t src_ptr = 0;
-    int ret;
 
     printf("compile block starting at 0x%04x\n", src_address);
 
     bblock = malloc(sizeof *bblock);
-
-    // for testing...
-    ret = mprotect(
-        (void *) ((uint64_t) bblock & 0xfffffffffffff000L),
-        4096,
-        PROT_READ | PROT_WRITE | PROT_EXEC
-    );
-    if (ret == -1) {
-        perror("mprotect");
-        exit(0);
-    }
     // bblock->code = out_code + start;
 
     while (1) {
@@ -112,6 +101,7 @@ void run_all(uint8_t *gb_code)
 {
     struct basic_block *bblock;
     uint16_t jump_target = 0;
+    int page_size, ret;
 
     while (1) {
         bblock = block_cache_get(jump_target);
@@ -123,6 +113,17 @@ void run_all(uint8_t *gb_code)
             block_cache_add(jump_target, bblock);
         }
 
+        // for testing...
+        page_size = getpagesize();
+        ret = mprotect(
+            (void *) ((uint64_t) bblock & ~(page_size - 1)),
+            page_size,
+            PROT_READ | PROT_WRITE | PROT_EXEC
+        );
+        if (ret == -1) {
+            perror("mprotect");
+            exit(0);
+        }
         jump_target = ((uint16_t (*)()) bblock->code)();
     }
 }
