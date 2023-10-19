@@ -37,8 +37,4 @@
 #define EMULATION_PREFERENCES 4
 #define EMULATION_KEY_MAPPINGS 5
 
-typedef unsigned char bool;
-#define true 1
-#define false 0
-
 #endif

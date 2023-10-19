@@ -85,13 +85,13 @@ void Render(void)
   SetPort(g_wp);
   // CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
 
-  EraseRect(&g_wp->portRect);
-  MoveTo(10, 180);
-  char debug[128];
-  double ms = execTime / 600.0;
-  sprintf(debug, "10000 in %d ticks, %.2f ms per instruction", execTime, ms);
-  C2PStr(debug);
-  DrawString(debug);
+  // EraseRect(&g_wp->portRect);
+  // MoveTo(10, 180);
+  // char debug[128];
+  // double ms = execTime / 600.0;
+  // sprintf(debug, "10000 in %d ticks, %.2f ms per instruction", execTime, ms);
+  // C2PStr(debug);
+  // DrawString(debug);
 }
 
 // 417 ticks
@@ -121,7 +121,7 @@ void StartEmulation(void)
   emulationOn = 1;
 }
 
-bool LoadRom(StrFileName fileName, short vRefNum)
+bool LoadRom(Str255 fileName, short vRefNum)
 {
   int err;
   short fileNo;

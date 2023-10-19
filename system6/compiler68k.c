@@ -2,8 +2,11 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#ifdef USE_MPROTECT
 #include <sys/mman.h> // mprotect
 #include <unistd.h> // getpagesize
+#endif
 
 // A -> D0
 // BC -> D1
@@ -64,13 +67,12 @@ struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
         }
     }
 
-    bblock->length = 6;
-    bblock->code[0] = 0xb8; // mov eax, 1234h
-    bblock->code[1] = 0x34;
-    bblock->code[2] = 0x12;
-    bblock->code[3] = 0x00;
-    bblock->code[4] = 0x00;
-    bblock->code[5] = 0xc3; // ret
+    bblock->length = 4;
+    // bblock->code[0] = 0xc3;
+    bblock->code[0] = 0x70; // moveq #$ff, d0
+    bblock->code[1] = 0xff;
+    bblock->code[2] = 0x4e; // rts
+    bblock->code[3] = 0x75;
 
     return bblock;
 }
@@ -114,6 +116,7 @@ void run_all(uint8_t *gb_code)
         }
 
         // for testing...
+#ifdef USE_MPROTECT
         page_size = getpagesize();
         ret = mprotect(
             (void *) ((uint64_t) bblock & ~(page_size - 1)),
@@ -124,7 +127,13 @@ void run_all(uint8_t *gb_code)
             perror("mprotect");
             exit(0);
         }
+#endif
+        // __builtin___clear_cache(bblock, bblock + sizeof *bblock);
+        asm("":::"memory");
         jump_target = ((uint16_t (*)()) bblock->code)();
+        if (jump_target == 0xffff) {
+            break;
+        }
     }
 }
 
@@ -151,6 +160,8 @@ int main(int argc, char *argv[])
     if (data != test_code) {
         free(data);
     }
+
+    while(1);
 
     return 0;
 }
