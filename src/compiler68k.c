@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <sys/mman.h>
 
 // A -> D0
 // BC -> D1
@@ -47,14 +49,39 @@ struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
     struct basic_block *bblock;
     uint32_t dst_ptr = 0;
     uint16_t src_ptr = 0;
+    int ret;
+
+    printf("compile block starting at 0x%04x\n", src_address);
 
     bblock = malloc(sizeof *bblock);
+
+    // for testing...
+    ret = mprotect(
+        (void *) ((uint64_t) bblock & 0xfffffffffffff000L),
+        4096,
+        PROT_READ | PROT_WRITE | PROT_EXEC
+    );
+    if (ret == -1) {
+        perror("mprotect");
+        exit(0);
+    }
     // bblock->code = out_code + start;
 
     while (1) {
         instruction = gb_code[src_ptr++];
-
+        if (instruction == 0xfd) {
+            // invalid opcode for testing
+            break;
+        }
     }
+
+    bblock->length = 6;
+    bblock->code[0] = 0xb8; // mov eax, 1234h
+    bblock->code[1] = 0x34;
+    bblock->code[2] = 0x12;
+    bblock->code[3] = 0x00;
+    bblock->code[4] = 0x00;
+    bblock->code[5] = 0xc3; // ret
 
     return bblock;
 }
@@ -66,30 +93,63 @@ void run_block(struct basic_block *bblock)
 }
 
 // TODO
-void block_cache_add(uint16_t src_address, struct basic_block *bblock);
-struct basic_block *block_cache_get(uint16_t src_address);
+void block_cache_add(uint16_t src_address, struct basic_block *bblock)
+{
+    // no-op
+}
+
+struct basic_block *block_cache_get(uint16_t src_address)
+{
+    return NULL;
+}
 
 // 1. compile each block ending in a jump
 // 2. turn the jump into a return
 // 3. add the compiled code to some kind of cache
 // 3. return back to check the cache and maybe compile the next block
 
-int main(int argc, char *argv[])
+void run_all(uint8_t *gb_code)
 {
     struct basic_block *bblock;
-    
-    bblock = compile_block(0, test_code);
-    block_cache_add(0, bblock);
+    uint16_t jump_target = 0;
 
     while (1) {
-        uint16_t jump_target;
-
-        jump_target = ((uint16_t (*)()) bblock->code)();
-
         bblock = block_cache_get(jump_target);
         if (!bblock) {
-            bblock = compile_block(jump_target, test_code + jump_target);
+            bblock = compile_block(jump_target, gb_code + jump_target);
+            if (bblock->length == 0) {
+                break;
+            }
+            block_cache_add(jump_target, bblock);
         }
+
+        jump_target = ((uint16_t (*)()) bblock->code)();
     }
+}
+
+int main(int argc, char *argv[])
+{
+    FILE *fp;
+    long len;
+    uint8_t *data;
+
+    if (argc < 2) {
+        data = test_code;
+    } else {
+        fp = fopen(argv[1], "r");
+        fseek(fp, 0, SEEK_END);
+        len = ftell(fp);
+        rewind(fp);
+        data = malloc(len);
+        fread(data, 1, len, fp);
+        fclose(fp);
+    }
+
+    run_all(data);
+
+    if (data != test_code) {
+        free(data);
+    }
+
     return 0;
 }
