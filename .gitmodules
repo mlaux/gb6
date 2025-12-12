@@ -1,0 +1,3 @@
+[submodule "compiler/musashi"]
+	path = compiler/musashi
+	url = https://github.com/kstenerud/Musashi.git
