@@ -5,12 +5,13 @@
 #include <stddef.h>
 
 // GB register -> 68k register mapping:
-// A  -> D0 (low byte)
-// BC -> D1
-// DE -> D2
-// HL -> A0
-// SP -> A7 (68k convention)
-// F  -> stored separately, computed as needed
+// D0 = A (8-bit)
+// D1 = BC (split: 0x00BB00CC)
+// D2 = DE (split: 0x00DD00EE)
+// D3 = scratch
+// D7 = flags (ZNHC0000)
+// A0 = HL (contiguous: 0xHHLL)
+// A7 = SP, might need to move to preserve mac stack
 
 struct basic_block {
     uint8_t code[256];

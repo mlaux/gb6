@@ -1,62 +1,39 @@
 #include "tests.h"
 
-// ==== Execution Tests (run on Musashi, check results) ====
+/*
+  Instruction roadmap:
+  1. ld b,imm8 / ld c,imm8 etc (other 8-bit immediate loads)
+  2. ld bc,imm16 / ld de,imm16 / ld hl,imm16 (16-bit loads)
+  3. Simple ALU: inc a, dec a, add a,imm8
+  4. Register-to-register moves: ld a,b, ld b,c, etc.
+  5. Memory access: ld a,[hl], ld [hl],a
+  6. Control flow: jr, jp, conditional jumps
+*/
 
-TEST(test_exec_ld_a_imm8)
-{
-    uint8_t gb_code[] = { 0x3e, 0x42, 0xc9 };  // ld a, $42; ret
-    struct basic_block *block = compile_block(0, gb_code);
+TEST_EXEC(test_exec_ld_a_imm8,      REG_A, 0x55,  0x3e, 0x55, 0xc9)
+TEST_EXEC(test_exec_ld_a_zero,      REG_A, 0x00,  0x3e, 0x00, 0xc9)
+TEST_EXEC(test_exec_ld_a_ff,        REG_A, 0xff,  0x3e, 0xff, 0xc9)
+TEST_EXEC(test_exec_multiple_ld_a,  REG_A, 0x33,  0x3e, 0x11, 0x3e, 0x22, 0x3e, 0x33, 0xc9)
 
-    uint32_t d0 = run_code(block);
-
-    // D0 low byte should be 0x42
-    ASSERT_EQ(d0 & 0xff, 0x42);
-
-    block_free(block);
-}
-
-TEST(test_exec_ld_a_zero)
-{
-    uint8_t gb_code[] = { 0x3e, 0x00, 0xc9 };
-    struct basic_block *block = compile_block(0, gb_code);
-
-    uint32_t d0 = run_code(block);
-    ASSERT_EQ(d0 & 0xff, 0x00);
-
-    block_free(block);
-}
-
-TEST(test_exec_ld_a_ff)
-{
-    uint8_t gb_code[] = { 0x3e, 0xff, 0xc9 };
-    struct basic_block *block = compile_block(0, gb_code);
-
-    uint32_t d0 = run_code(block);
-    // moveq sign-extends, so D0 = 0xffffffff, but A register is 8-bit
-    // The low byte is what matters for the GB A register
-    ASSERT_EQ(d0 & 0xff, 0xff);
-
-    block_free(block);
-}
-
-TEST(test_exec_multiple_ld_a)
-{
-    // ld a, $11; ld a, $22; ld a, $33; ret
-    uint8_t gb_code[] = { 0x3e, 0x11, 0x3e, 0x22, 0x3e, 0x33, 0xc9 };
-    struct basic_block *block = compile_block(0, gb_code);
-
-    uint32_t d0 = run_code(block);
-    // Last value should win
-    ASSERT_EQ(d0 & 0xff, 0x33);
-
-    block_free(block);
-}
+TEST_EXEC(test_exec_ld_b_imm8,      REG_BC, 0x00110000,  0x06, 0x11, 0xc9)
+TEST_EXEC(test_exec_ld_c_imm8,      REG_BC, 0x00000022,  0x0e, 0x22, 0xc9)
+TEST_EXEC(test_exec_ld_d_imm8,      REG_DE, 0x00330000,  0x16, 0x33, 0xc9)
+TEST_EXEC(test_exec_ld_e_imm8,      REG_DE, 0x00000044,  0x1e, 0x44, 0xc9)
+TEST_EXEC(test_exec_ld_h_imm8,      REG_HL, 0x5500,  0x26, 0x55, 0xc9)
+TEST_EXEC(test_exec_ld_l_imm8,      REG_HL, 0x0066,  0x2e, 0x66, 0xc9)
 
 void register_exec_tests(void)
 {
-    printf("\nExecution tests (Musashi):\n");
+    printf("\nExecution tests:\n");
     RUN_TEST(test_exec_ld_a_imm8);
     RUN_TEST(test_exec_ld_a_zero);
     RUN_TEST(test_exec_ld_a_ff);
     RUN_TEST(test_exec_multiple_ld_a);
+
+    RUN_TEST(test_exec_ld_b_imm8);
+    RUN_TEST(test_exec_ld_c_imm8);
+    RUN_TEST(test_exec_ld_d_imm8);
+    RUN_TEST(test_exec_ld_e_imm8);
+    RUN_TEST(test_exec_ld_h_imm8);
+    RUN_TEST(test_exec_ld_l_imm8);
 }

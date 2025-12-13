@@ -9,6 +9,19 @@
 extern int tests_run;
 extern int tests_passed;
 
+// Register encoding:
+//   bits 0-3: register number (0-7)
+//   bit 4: 0 = data reg, 1 = address reg
+//   bits 8-15: mask type (0 = 8-bit, 1 = split 32-bit, 2 = 16-bit)
+#define REG_A   0x0000  // D0, 8-bit
+#define REG_BC  0x0101  // D1, split (0x00BB00CC)
+#define REG_DE  0x0102  // D2, split (0x00DD00EE)
+#define REG_HL  0x0210  // A0, 16-bit contiguous (0xHHLL)
+
+#define REG_INDEX(r)   ((r) & 0x0f)
+#define REG_IS_ADDR(r) ((r) & 0x10)
+#define REG_MASK(r)    (((r) & 0x0200) ? 0xffff : (((r) & 0x0100) ? 0x00ff00ff : 0xff))
+
 #define TEST(name) static void name(void)
 #define RUN_TEST(name) do { \
     printf("  %s... ", #name); \
@@ -20,8 +33,8 @@ extern int tests_passed;
 
 #define ASSERT_EQ(a, b) do { \
     if ((a) != (b)) { \
-        printf("FAIL\n    %s:%d: expected %d, got %d\n", \
-               __FILE__, __LINE__, (int)(b), (int)(a)); \
+        printf("FAIL\n    %s:%d: expected 0x%x, got 0x%x\n", \
+               __FILE__, __LINE__, (unsigned)(b), (unsigned)(a)); \
         exit(1); \
     } \
 } while (0)
@@ -39,8 +52,24 @@ extern int tests_passed;
     } \
 } while (0)
 
-// Run compiled code on Musashi, return D0
-uint32_t run_code(struct basic_block *block);
+#define TEST_EXEC(name, reg, expected, ...) \
+    TEST(name) { \
+        uint8_t gb_code[] = { __VA_ARGS__ }; \
+        struct basic_block *block = compile_block(0, gb_code); \
+        run_code(block); \
+        uint32_t raw = REG_IS_ADDR(reg) ? get_areg(REG_INDEX(reg)) : get_dreg(REG_INDEX(reg)); \
+        uint32_t result = raw & REG_MASK(reg); \
+        ASSERT_EQ(result, expected); \
+        block_free(block); \
+    }
+
+
+// Run compiled code on Musashi
+void run_code(struct basic_block *block);
+
+// Get 68k register values
+uint32_t get_dreg(int reg);
+uint32_t get_areg(int reg);
 
 // Test registration functions
 void register_unit_tests(void);

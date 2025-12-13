@@ -77,8 +77,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run
-// Returns value of D0 after execution
-uint32_t run_code(struct basic_block *block)
+void run_code(struct basic_block *block)
 {
     memset(mem, 0, MEM_SIZE);
 
@@ -94,12 +93,26 @@ uint32_t run_code(struct basic_block *block)
     m68k_set_reg(M68K_REG_SP, STACK_BASE - 4);
     m68k_set_reg(M68K_REG_ISP, STACK_BASE);
     m68k_set_reg(M68K_REG_PC, CODE_BASE);
-    m68k_set_reg(M68K_REG_D0, 0);
 
-    int cycles = m68k_execute(1000);
-    (void)cycles;
+    for (int k = 0; k < 8; k++) {
+        m68k_set_reg(M68K_REG_D0 + k, 0);
+    }
+    // Clear A0-A6, but not A7 (stack pointer)
+    for (int k = 0; k < 7; k++) {
+        m68k_set_reg(M68K_REG_A0 + k, 0);
+    }
 
-    return m68k_get_reg(NULL, M68K_REG_D0);
+    m68k_execute(1000);
+}
+
+uint32_t get_dreg(int reg)
+{
+    return m68k_get_reg(NULL, M68K_REG_D0 + reg);
+}
+
+uint32_t get_areg(int reg)
+{
+    return m68k_get_reg(NULL, M68K_REG_A0 + reg);
 }
 
 int main(int argc, char *argv[])
