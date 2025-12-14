@@ -17,6 +17,7 @@ extern int tests_passed;
 #define REG_BC  0x0101  // D1, split (0x00BB00CC)
 #define REG_DE  0x0102  // D2, split (0x00DD00EE)
 #define REG_HL  0x0210  // A0, 16-bit contiguous (0xHHLL)
+#define REG_SP  0x0211  // A1, 16-bit contiguous
 
 #define REG_INDEX(r)   ((r) & 0x0f)
 #define REG_IS_ADDR(r) ((r) & 0x10)

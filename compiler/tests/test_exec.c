@@ -22,6 +22,11 @@ TEST_EXEC(test_exec_ld_e_imm8,      REG_DE, 0x00000044,  0x1e, 0x44, 0xc9)
 TEST_EXEC(test_exec_ld_h_imm8,      REG_HL, 0x5500,  0x26, 0x55, 0xc9)
 TEST_EXEC(test_exec_ld_l_imm8,      REG_HL, 0x0066,  0x2e, 0x66, 0xc9)
 
+TEST_EXEC(test_exec_ld_bc_imm16,    REG_BC, 0x00110022,  0x01, 0x22, 0x11, 0xc9)
+TEST_EXEC(test_exec_ld_de_imm16,    REG_DE, 0x00330044,  0x11, 0x44, 0x33, 0xc9)
+TEST_EXEC(test_exec_ld_hl_imm16,    REG_HL, 0x5566,  0x21, 0x66, 0x55, 0xc9)
+TEST_EXEC(test_exec_ld_sp_imm16,    REG_SP, 0x7788,  0x31, 0x88, 0x77, 0xc9)
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -36,4 +41,9 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_ld_e_imm8);
     RUN_TEST(test_exec_ld_h_imm8);
     RUN_TEST(test_exec_ld_l_imm8);
+
+    RUN_TEST(test_exec_ld_bc_imm16);
+    RUN_TEST(test_exec_ld_de_imm16);
+    RUN_TEST(test_exec_ld_hl_imm16);
+    RUN_TEST(test_exec_ld_sp_imm16);
 }

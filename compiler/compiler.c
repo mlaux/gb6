@@ -20,6 +20,14 @@ void emit_word(struct basic_block *block, uint16_t word)
     emit_byte(block, word & 0xff);
 }
 
+void emit_long(struct basic_block *block, uint32_t val)
+{
+    emit_byte(block, val >> 24);
+    emit_byte(block, val >> 16);
+    emit_byte(block, val >> 8);
+    emit_byte(block, val & 0xff);
+}
+
 static void emit_moveq_dn(struct basic_block *block, uint8_t reg, int8_t imm)
 {
     emit_byte(block, 0x70 | reg << 1);
@@ -35,6 +43,22 @@ static void emit_move_b_dn(struct basic_block *block, uint8_t reg, int8_t imm)
     uint16_t ins = (1 << 12) | (reg << 9) | (7 << 3) | 4;
     emit_word(block, ins);
     emit_word(block, (uint8_t) imm);
+}
+
+// move.w #imm, Dn
+static void emit_move_w_dn(struct basic_block *block, uint8_t reg, int16_t imm)
+{
+    uint16_t ins = (3 << 12) | (reg << 9) | (7 << 3) | 4;
+    emit_word(block, ins);
+    emit_word(block, (uint16_t) imm);
+}
+
+// move.l #imm, Dn
+static void emit_move_l_dn(struct basic_block *block, uint8_t reg, int32_t imm)
+{
+    uint16_t ins = (2 << 12) | (reg << 9) | (7 << 3) | 4;
+    emit_word(block, ins);
+    emit_long(block, (uint32_t) imm);
 }
 
 // rol.w #8, Dn
@@ -73,10 +97,42 @@ static void emit_movea_w_dn_an(struct basic_block *block, uint8_t dreg, uint8_t 
     emit_word(block, 0x3040 | (areg << 9) | dreg);
 }
 
+static void emit_movea_w_imm16(struct basic_block *block, uint8_t areg, uint16_t val)
+{
+    // 00 11 aaa 001 111 100
+    emit_word(block, 0x307c | areg << 9);
+    emit_word(block, val);
+}
+
 // Emit: rts
 static void emit_rts(struct basic_block *block)
 {
     emit_word(block, 0x4e75);
+}
+
+static void compile_ld_imm16_split(
+    struct basic_block *block, 
+    uint8_t reg, 
+    uint8_t *gb_code, 
+    uint16_t *src_ptr
+) {
+    uint8_t lobyte = gb_code[*src_ptr],
+            hibyte = gb_code[*src_ptr + 1];
+    *src_ptr += 2;
+    emit_move_l_dn(block, reg, hibyte << 16);
+    emit_move_w_dn(block, reg, lobyte);
+}
+
+static void compile_ld_imm16_contiguous(
+    struct basic_block *block, 
+    uint8_t reg, 
+    uint8_t *gb_code, 
+    uint16_t *src_ptr
+) {
+    uint8_t lobyte = gb_code[*src_ptr],
+            hibyte = gb_code[*src_ptr + 1];
+    *src_ptr += 2;
+    emit_movea_w_imm16(block, reg, hibyte << 8 | lobyte);
 }
 
 struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
@@ -100,6 +156,19 @@ struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code)
         switch (op) {
         case 0x00: // nop
             // emit nothing
+            break;
+
+        case 0x01: // ld bc, imm16
+            compile_ld_imm16_split(block, 1, gb_code, &src_ptr);
+            break;
+        case 0x11: // ld de, imm16
+            compile_ld_imm16_split(block, 2, gb_code, &src_ptr);
+            break;
+        case 0x21: // ld hl, imm16
+            compile_ld_imm16_contiguous(block, 0, gb_code, &src_ptr);
+            break;
+        case 0x31: // ld sp, imm16
+            compile_ld_imm16_contiguous(block, 1, gb_code, &src_ptr);
             break;
 
         case 0x0e:

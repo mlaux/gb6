@@ -16,6 +16,7 @@
 struct basic_block {
     uint8_t code[256];
     size_t length;
+    uint16_t gb_cycles; // for timing
     uint16_t src_address;  // GB address this block starts at
     uint16_t end_address;  // GB address after last instruction
 };
