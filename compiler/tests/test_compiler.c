@@ -77,7 +77,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run
-void run_code(struct basic_block *block)
+void run_code(struct code_block *block)
 {
     memset(mem, 0, MEM_SIZE);
 
@@ -103,6 +103,68 @@ void run_code(struct basic_block *block)
     }
 
     m68k_execute(1000);
+}
+
+#define HALT_SENTINEL 0xffffffff
+#define MAX_CACHED_BLOCKS 256
+
+// Run a complete GB program with block dispatcher
+void run_program(uint8_t *gb_rom, uint16_t start_pc)
+{
+    struct code_block *cache[MAX_CACHED_BLOCKS] = {0};
+    uint32_t pc = start_pc;
+
+    memset(mem, 0, MEM_SIZE);
+
+    // Set up halt trap at address 0
+    m68k_write_memory_16(0, 0x60fe);  // bra.s *
+
+    m68k_pulse_reset();
+
+    // Clear all registers once at start
+    for (int k = 0; k < 8; k++) {
+        m68k_set_reg(M68K_REG_D0 + k, 0);
+    }
+    for (int k = 0; k < 7; k++) {
+        m68k_set_reg(M68K_REG_A0 + k, 0);
+    }
+
+    while (1) {
+        // Look up or compile block
+        struct code_block *block = NULL;
+        if (pc < MAX_CACHED_BLOCKS) {
+            block = cache[pc];
+        }
+        if (!block) {
+            block = compile_block(pc, gb_rom + pc);
+            if (pc < MAX_CACHED_BLOCKS) {
+                cache[pc] = block;
+            }
+        }
+
+        // Copy block code to execution area
+        memcpy(mem + CODE_BASE, block->code, block->length);
+
+        // Set up return address to trap
+        m68k_write_memory_32(STACK_BASE - 4, 0);
+        m68k_set_reg(M68K_REG_SP, STACK_BASE - 4);
+        m68k_set_reg(M68K_REG_PC, CODE_BASE);
+
+        m68k_execute(1000);
+
+        // Check D4 for next PC or halt
+        pc = get_dreg(4);
+        if (pc == HALT_SENTINEL) {
+            break;
+        }
+    }
+
+    // Clean up cached blocks
+    for (int k = 0; k < MAX_CACHED_BLOCKS; k++) {
+        if (cache[k]) {
+            block_free(cache[k]);
+        }
+    }
 }
 
 uint32_t get_dreg(int reg)

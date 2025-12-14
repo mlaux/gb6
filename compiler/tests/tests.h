@@ -56,7 +56,7 @@ extern int tests_passed;
 #define TEST_EXEC(name, reg, expected, ...) \
     TEST(name) { \
         uint8_t gb_code[] = { __VA_ARGS__ }; \
-        struct basic_block *block = compile_block(0, gb_code); \
+        struct code_block *block = compile_block(0, gb_code); \
         run_code(block); \
         uint32_t raw = REG_IS_ADDR(reg) ? get_areg(REG_INDEX(reg)) : get_dreg(REG_INDEX(reg)); \
         uint32_t result = raw & REG_MASK(reg); \
@@ -66,7 +66,10 @@ extern int tests_passed;
 
 
 // Run compiled code on Musashi
-void run_code(struct basic_block *block);
+void run_code(struct code_block *block);
+
+// Run a complete GB program with block dispatcher
+void run_program(uint8_t *gb_rom, uint16_t start_pc);
 
 // Get 68k register values
 uint32_t get_dreg(int reg);

@@ -13,7 +13,7 @@
 // A0 = HL (contiguous: 0xHHLL)
 // A7 = SP, might need to move to preserve mac stack
 
-struct basic_block {
+struct code_block {
     uint8_t code[256];
     size_t length;
     uint16_t gb_cycles; // for timing
@@ -27,13 +27,13 @@ void compiler_init(void);
 // Compile a basic block starting at the given GB address
 // Returns NULL on failure
 // The block ends when a control flow instruction is encountered
-struct basic_block *compile_block(uint16_t src_address, uint8_t *gb_code);
+struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code);
 
 // Free a compiled block
-void block_free(struct basic_block *block);
+void block_free(struct code_block *block);
 
 // Emit helpers (exposed for testing)
-void emit_byte(struct basic_block *block, uint8_t byte);
-void emit_word(struct basic_block *block, uint16_t word);
+void emit_byte(struct code_block *block, uint8_t byte);
+void emit_word(struct code_block *block, uint16_t word);
 
 #endif
