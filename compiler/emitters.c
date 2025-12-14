@@ -73,7 +73,7 @@ void emit_ror_w_8(struct code_block *block, uint8_t reg)
     emit_word(block, 0xe058 | reg);
 }
 
-// swap Dn - exchange high and low 16-bit words (4 cycles vs 22 for rol #8)
+// swap Dn - exchange high and low 16-bit words
 void emit_swap(struct code_block *block, uint8_t reg)
 {
     // 0100 1000 0100 0 rrr
@@ -113,6 +113,86 @@ void emit_subq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val)
     }
     ddd = val == 8 ? 0 : val;
     emit_word(block, 0x5100 | ddd << 9 | dreg);
+}
+
+// subq.w #val, An
+void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 1 01 001 aaa
+    if (val == 0 || val > 8) {
+        printf("can only subq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5148 | ddd << 9 | areg);
+}
+
+// addq.w #val, An
+void emit_addq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 0 01 001 aaa
+    if (val == 0 || val > 8) {
+        printf("can only addq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5048 | ddd << 9 | areg);
+}
+
+// move.w Dn, (An) - store data register to memory via address register
+void emit_move_w_dn_ind_an(struct code_block *block, uint8_t dreg, uint8_t areg)
+{
+    // 00 11 aaa 010 000 ddd
+    emit_word(block, 0x3080 | (areg << 9) | dreg);
+}
+
+// move.w (An), Dn - load from memory via address register to data register
+void emit_move_w_ind_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg)
+{
+    // 00 11 ddd 000 010 aaa
+    emit_word(block, 0x3010 | (dreg << 9) | areg);
+}
+
+// move.b Dn, (An) - store byte to memory via address register
+void emit_move_b_dn_ind_an(struct code_block *block, uint8_t dreg, uint8_t areg)
+{
+    // 00 01 aaa 010 000 ddd
+    emit_word(block, 0x1080 | (areg << 9) | dreg);
+}
+
+// move.b Dn, d(An) - store byte to memory with displacement
+void emit_move_b_dn_disp_an(struct code_block *block, uint8_t dreg, int16_t disp, uint8_t areg)
+{
+    // 00 01 aaa 101 000 ddd
+    emit_word(block, 0x1140 | (areg << 9) | dreg);
+    emit_word(block, disp);
+}
+
+// move.b (An), Dn - load byte from memory via address register
+void emit_move_b_ind_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg)
+{
+    // 00 01 ddd 000 010 aaa
+    emit_word(block, 0x1010 | (dreg << 9) | areg);
+}
+
+// move.b d(An), Dn - load byte from memory with displacement
+void emit_move_b_disp_an_dn(struct code_block *block, int16_t disp, uint8_t areg, uint8_t dreg)
+{
+    // 00 01 ddd 000 101 aaa
+    emit_word(block, 0x1028 | (dreg << 9) | areg);
+    emit_word(block, disp);
+}
+
+// andi.l #imm, Dn
+void emit_andi_l_dn(struct code_block *block, uint8_t dreg, uint32_t imm)
+{
+    // 0000 0010 10 000 rrr
+    emit_word(block, 0x0280 | dreg);
+    emit_long(block, imm);
 }
 
 // cmp.b #imm, Dn

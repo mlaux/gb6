@@ -1,23 +1,23 @@
 #include "tests.h"
 
-TEST_EXEC(test_exec_ld_a_imm8,      REG_A, 0x55,  0x3e, 0x55, 0xc9)
-TEST_EXEC(test_exec_ld_a_zero,      REG_A, 0x00,  0x3e, 0x00, 0xc9)
-TEST_EXEC(test_exec_ld_a_ff,        REG_A, 0xff,  0x3e, 0xff, 0xc9)
-TEST_EXEC(test_exec_multiple_ld_a,  REG_A, 0x33,  0x3e, 0x11, 0x3e, 0x22, 0x3e, 0x33, 0xc9)
+TEST_EXEC(test_exec_ld_a_imm8,      REG_A, 0x55,  0x3e, 0x55, 0x10)
+TEST_EXEC(test_exec_ld_a_zero,      REG_A, 0x00,  0x3e, 0x00, 0x10)
+TEST_EXEC(test_exec_ld_a_ff,        REG_A, 0xff,  0x3e, 0xff, 0x10)
+TEST_EXEC(test_exec_multiple_ld_a,  REG_A, 0x33,  0x3e, 0x11, 0x3e, 0x22, 0x3e, 0x33, 0x10)
 
-TEST_EXEC(test_exec_ld_b_imm8,      REG_BC, 0x00110000,  0x06, 0x11, 0xc9)
-TEST_EXEC(test_exec_ld_c_imm8,      REG_BC, 0x00000022,  0x0e, 0x22, 0xc9)
-TEST_EXEC(test_exec_ld_d_imm8,      REG_DE, 0x00330000,  0x16, 0x33, 0xc9)
-TEST_EXEC(test_exec_ld_e_imm8,      REG_DE, 0x00000044,  0x1e, 0x44, 0xc9)
-TEST_EXEC(test_exec_ld_h_imm8,      REG_HL, 0x5500,  0x26, 0x55, 0xc9)
-TEST_EXEC(test_exec_ld_l_imm8,      REG_HL, 0x0066,  0x2e, 0x66, 0xc9)
+TEST_EXEC(test_exec_ld_b_imm8,      REG_BC, 0x00110000,  0x06, 0x11, 0x10)
+TEST_EXEC(test_exec_ld_c_imm8,      REG_BC, 0x00000022,  0x0e, 0x22, 0x10)
+TEST_EXEC(test_exec_ld_d_imm8,      REG_DE, 0x00330000,  0x16, 0x33, 0x10)
+TEST_EXEC(test_exec_ld_e_imm8,      REG_DE, 0x00000044,  0x1e, 0x44, 0x10)
+TEST_EXEC(test_exec_ld_h_imm8,      REG_HL, 0x5500,  0x26, 0x55, 0x10)
+TEST_EXEC(test_exec_ld_l_imm8,      REG_HL, 0x0066,  0x2e, 0x66, 0x10)
 
-TEST_EXEC(test_exec_ld_bc_imm16,    REG_BC, 0x00110022,  0x01, 0x22, 0x11, 0xc9)
-TEST_EXEC(test_exec_ld_de_imm16,    REG_DE, 0x00330044,  0x11, 0x44, 0x33, 0xc9)
-TEST_EXEC(test_exec_ld_hl_imm16,    REG_HL, 0x5566,  0x21, 0x66, 0x55, 0xc9)
-TEST_EXEC(test_exec_ld_sp_imm16,    REG_SP, 0x7788,  0x31, 0x88, 0x77, 0xc9)
+TEST_EXEC(test_exec_ld_bc_imm16,    REG_BC, 0x00110022,  0x01, 0x22, 0x11, 0x10)
+TEST_EXEC(test_exec_ld_de_imm16,    REG_DE, 0x00330044,  0x11, 0x44, 0x33, 0x10)
+TEST_EXEC(test_exec_ld_hl_imm16,    REG_HL, 0x5566,  0x21, 0x66, 0x55, 0x10)
+TEST_EXEC(test_exec_ld_sp_imm16,    REG_SP, 0x7788,  0x31, 0x88, 0x77, 0x10)
 
-TEST_EXEC(test_dec_a,               REG_A,  0x1,  0x3e, 0x02, 0x3d, 0xc9)
+TEST_EXEC(test_dec_a,               REG_A,  0x1,  0x3e, 0x02, 0x3d, 0x10)
 
 TEST(test_exec_jp_skip)
 {
@@ -198,6 +198,63 @@ TEST(test_exec_jr_nc_not_taken)
     ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
 }
 
+TEST(test_exec_call_ret_simple)
+{
+    // Simple call and return
+    uint8_t rom[] = {
+        0x3e, 0x11,       // 0x0000: ld a, 0x11
+        0xcd, 0x08, 0x00, // 0x0002: call 0x0008
+        0x3e, 0x33,       // 0x0005: ld a, 0x33 (after return)
+        0x10,             // 0x0007: stop
+        // subroutine at 0x0008:
+        0x06, 0x22,       // 0x0008: ld b, 0x22
+        0xc9              // 0x000a: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x33);        // A = 0x33 (set after return)
+    ASSERT_EQ((get_dreg(1) >> 16) & 0xff, 0x22); // B = 0x22 (set in subroutine)
+}
+
+TEST(test_exec_call_ret_nested)
+{
+    // Nested calls: main -> sub1 -> sub2
+    uint8_t rom[] = {
+        0x3e, 0x01,       // 0x0000: ld a, 1
+        0xcd, 0x08, 0x00, // 0x0002: call sub1 (0x0008)
+        0x3e, 0x04,       // 0x0005: ld a, 4
+        0x10,             // 0x0007: stop
+        // sub1 at 0x0008:
+        0x3e, 0x02,       // 0x0008: ld a, 2
+        0xcd, 0x10, 0x00, // 0x000a: call sub2 (0x0010)
+        0x3e, 0x03,       // 0x000d: ld a, 3
+        0xc9,             // 0x000f: ret from sub1
+        // sub2 at 0x0010:
+        0x0e, 0x99,       // 0x0010: ld c, 0x99
+        0xc9              // 0x0012: ret from sub2
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x04);  // A = 4 (final value after all returns)
+}
+
+TEST(test_exec_call_preserves_regs)
+{
+    // Call should not clobber registers other than what subroutine modifies
+    uint8_t rom[] = {
+        0x3e, 0xaa,       // 0x0000: ld a, 0xaa
+        0x06, 0xbb,       // 0x0002: ld b, 0xbb
+        0xcd, 0x0a, 0x00, // 0x0004: call 0x000a
+        0x10,             // 0x0007: stop
+        0x00, 0x00,       // padding
+        // subroutine at 0x000a:
+        0x0e, 0xcc,       // 0x000a: ld c, 0xcc
+        0xc9              // 0x000c: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0xaa);         // A preserved
+    ASSERT_EQ((get_dreg(1) >> 16) & 0xff, 0xbb); // B preserved
+    ASSERT_EQ(get_dreg(1) & 0xff, 0xcc);         // C set by subroutine
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -238,4 +295,9 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_jr_c_not_taken);
     RUN_TEST(test_exec_jr_nc_taken);
     RUN_TEST(test_exec_jr_nc_not_taken);
+
+    printf("\nCall/ret tests:\n");
+    RUN_TEST(test_exec_call_ret_simple);
+    RUN_TEST(test_exec_call_ret_nested);
+    RUN_TEST(test_exec_call_preserves_regs);
 }

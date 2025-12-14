@@ -250,10 +250,40 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             break;
 
         case 0xc9: // ret
-            // TODO: implement proper GB stack pop
-            emit_move_l_dn(block, 4, 0xffffffff);
-            emit_rts(block);
-            done = 1;
+            {
+                // pop return address from stack (A1 = base + SP)
+                // use byte operations to handle odd SP addresses
+                emit_moveq_dn(block, 4, 0);
+                emit_move_b_disp_an_dn(block, 1, 1, 4);  // D4 = [SP+1] (high byte)
+                emit_rol_w_8(block, 4);                  // shift to high position
+                emit_move_b_ind_an_dn(block, 1, 4);      // D4.b = [SP] (low byte)
+                emit_addq_w_an(block, 1, 2);             // SP += 2
+                emit_rts(block);
+                done = 1;
+            }
+            break;
+
+        case 0xcd: // call imm16
+            {
+                uint16_t target = gb_code[src_ptr] | (gb_code[src_ptr + 1] << 8);
+                uint16_t ret_addr = src_address + src_ptr + 2;  // address after call
+                src_ptr += 2;
+
+                // push return address (A1 = base + SP)
+                // use byte operations to handle odd SP addresses
+                emit_moveq_dn(block, 3, 0);
+                emit_move_w_dn(block, 3, ret_addr);
+                emit_subq_w_an(block, 1, 2);             // SP -= 2
+                emit_move_b_dn_ind_an(block, 3, 1);      // [SP] = low byte
+                emit_rol_w_8(block, 3);                  // swap bytes
+                emit_move_b_dn_disp_an(block, 3, 1, 1);  // [SP+1] = high byte
+
+                // jump to target
+                emit_moveq_dn(block, 4, 0);
+                emit_move_w_dn(block, 4, target);
+                emit_rts(block);
+                done = 1;
+            }
             break;
 
         default:

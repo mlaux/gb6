@@ -13,6 +13,11 @@ static uint8_t mem[MEM_SIZE];
 #define CODE_BASE 0x1000
 #define STACK_BASE 0x8000
 
+// GB memory is mapped at base of 68k address space
+// A1 = GB_MEM_BASE + GB_SP for stack operations
+#define GB_MEM_BASE 0x0000
+#define DEFAULT_GB_SP 0x0f00
+
 int tests_run = 0;
 int tests_passed = 0;
 
@@ -131,6 +136,9 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
     for (k = 0; k < 7; k++) {
         m68k_set_reg(M68K_REG_A0 + k, 0);
     }
+
+    // Initialize GB stack pointer (A1 = base + SP)
+    m68k_set_reg(M68K_REG_A1, GB_MEM_BASE + DEFAULT_GB_SP);
 
     while (1) {
         // Look up or compile block
