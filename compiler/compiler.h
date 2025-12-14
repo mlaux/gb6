@@ -15,6 +15,7 @@
 
 struct code_block {
     uint8_t code[256];
+    uint16_t m68k_offsets[256];
     size_t length;
     uint16_t gb_cycles; // for timing
     uint16_t src_address;  // GB address this block starts at

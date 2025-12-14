@@ -104,6 +104,20 @@ static void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t 
     emit_word(block, val);
 }
 
+// subq.b #, Dn
+static void emit_subq_b_1_dn(struct code_block *block, uint8_t dreg, uint8_t val)
+{
+    // 0101 ddd 1 ss 000 rrr
+    // ss = 00
+    // rrr = dreg
+    if (val == 0 || val > 8) {
+        printf("can only subq values between 1 and 8\n");
+        exit(1);
+    }
+    uint16_t ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5300 | ddd << 9 | dreg);
+}
+
 // Emit: rts
 static void emit_rts(struct code_block *block)
 {
@@ -111,9 +125,9 @@ static void emit_rts(struct code_block *block)
 }
 
 static void compile_ld_imm16_split(
-    struct code_block *block, 
-    uint8_t reg, 
-    uint8_t *gb_code, 
+    struct code_block *block,
+    uint8_t reg,
+    uint8_t *gb_code,
     uint16_t *src_ptr
 ) {
     uint8_t lobyte = gb_code[*src_ptr],
@@ -124,15 +138,55 @@ static void compile_ld_imm16_split(
 }
 
 static void compile_ld_imm16_contiguous(
-    struct code_block *block, 
-    uint8_t reg, 
-    uint8_t *gb_code, 
+    struct code_block *block,
+    uint8_t reg,
+    uint8_t *gb_code,
     uint16_t *src_ptr
 ) {
     uint8_t lobyte = gb_code[*src_ptr],
             hibyte = gb_code[*src_ptr + 1];
     *src_ptr += 2;
     emit_movea_w_imm16(block, reg, hibyte << 8 | lobyte);
+}
+
+// bra.w - branch always with 16-bit displacement
+static void emit_bra_w(struct code_block *block, int16_t disp)
+{
+    emit_word(block, 0x6000);
+    emit_word(block, disp);
+}
+
+// returns 1 if jr ended the block, 0 if it's a backward jump within block
+static int compile_jr(
+    struct code_block *block,
+    uint8_t *gb_code,
+    uint16_t *src_ptr,
+    uint16_t src_address
+) {
+    int8_t disp = (int8_t) gb_code[*src_ptr];
+    (*src_ptr)++;
+
+    // jr displacement is relative to PC after the jr instruction
+    // *src_ptr now points to the byte after jr, so target = *src_ptr + disp
+    int16_t target_gb_offset = (int16_t) *src_ptr + disp;
+
+    // Check if this is a backward jump to a location we've already compiled
+    if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
+        // Backward jump within block - emit bra.w
+        uint16_t target_m68k = block->m68k_offsets[target_gb_offset];
+        // bra.w displacement is relative to PC after the opcode word (before extension)
+        // current position = block->length, PC after opcode = block->length + 2
+        int16_t m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+        emit_bra_w(block, m68k_disp);
+        return 0;
+    }
+
+    // Forward jump or outside block - go through dispatcher
+    uint16_t target_gb_pc = src_address + target_gb_offset;
+    emit_moveq_dn(block, 4, 0);
+    emit_move_w_dn(block, 4, target_gb_pc);
+    emit_rts(block);
+    return 1;
 }
 
 struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
@@ -151,6 +205,7 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
     block->src_address = src_address;
 
     while (!done) {
+        block->m68k_offsets[src_ptr] = block->length;
         op = gb_code[src_ptr++];
 
         switch (op) {
@@ -214,11 +269,18 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             done = 1;
             break;
 
+        case 0x18: // jr disp8
+            done = compile_jr(block, gb_code, &src_ptr, src_address);
+            break;
+
+        case 0x3d: // dec a
+            emit_subq_b_1_dn(block, 0, 1);
+            break;
+
         case 0xc3: // jp imm16
             {
                 uint16_t target = gb_code[src_ptr] | (gb_code[src_ptr + 1] << 8);
                 src_ptr += 2;
-                // Store target in D4 (zero-extend via moveq first)
                 emit_moveq_dn(block, 4, 0);
                 emit_move_w_dn(block, 4, target);
                 emit_rts(block);
