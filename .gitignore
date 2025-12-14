@@ -16,3 +16,5 @@ imgui.ini
 roms
 examples/*.bin
 *.dSYM
+*.o
+test_compiler

@@ -62,6 +62,142 @@ TEST(test_exec_jr_zero)
     ASSERT_EQ(get_dreg(1) & 0xff, 0xbb);
 }
 
+TEST(test_exec_dec_a_loop)
+{
+    // Classic countdown loop: ld a,5; loop: dec a; jr nz,loop
+    // A starts at 5, loop runs 5 times until A=0
+    uint8_t rom[] = {
+        0x3e, 0x05,       // 0x0000: ld a, 5
+        0x3d,             // 0x0002: dec a (loop start)
+        0x20, 0xfd,       // 0x0003: jr nz, -3 (back to 0x0002)
+        0x10              // 0x0005: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x00);  // A should be 0 after loop
+}
+
+TEST(test_exec_cp_equal)
+{
+    // cp a, imm8 when equal - Z flag should be set
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x42,       // 0x0002: cp a, 0x42
+        0x10              // 0x0004: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged by cp
+    ASSERT_EQ(get_dreg(7) & 0x80, 0x80);  // Z flag set (bit 7)
+}
+
+TEST(test_exec_cp_not_equal)
+{
+    // cp a, imm8 when not equal - Z flag should be clear
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10
+        0x10              // 0x0004: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged
+    ASSERT_EQ(get_dreg(7) & 0x80, 0x00);  // Z flag clear
+}
+
+TEST(test_exec_cp_carry)
+{
+    // cp a, imm8 when A < imm8 - C flag should be set
+    uint8_t rom[] = {
+        0x3e, 0x10,       // 0x0000: ld a, 0x10
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (0x10 < 0x42)
+        0x10              // 0x0004: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(7) & 0x10, 0x10);  // C flag set (bit 4)
+}
+
+TEST(test_exec_jr_z_taken)
+{
+    // jr z jumps when Z=1 (after cp equal)
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (sets Z=1)
+        0x28, 0x02,       // 0x0004: jr z, +2 (skip to 0x0008)
+        0x3e, 0x00,       // 0x0006: ld a, 0x00 (skipped)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged (skip was taken)
+}
+
+TEST(test_exec_jr_z_not_taken)
+{
+    // jr z doesn't jump when Z=0 (after cp not equal)
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (sets Z=0)
+        0x28, 0x02,       // 0x0004: jr z, +2 (not taken)
+        0x3e, 0x99,       // 0x0006: ld a, 0x99 (executed)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
+}
+
+TEST(test_exec_jr_c_taken)
+{
+    // jr c jumps when C=1 (after cp with A < imm)
+    uint8_t rom[] = {
+        0x3e, 0x10,       // 0x0000: ld a, 0x10
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (0x10 < 0x42, sets C=1)
+        0x38, 0x02,       // 0x0004: jr c, +2 (skip to 0x0008)
+        0x3e, 0x00,       // 0x0006: ld a, 0x00 (skipped)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x10);  // A unchanged (skip was taken)
+}
+
+TEST(test_exec_jr_c_not_taken)
+{
+    // jr c doesn't jump when C=0 (after cp with A >= imm)
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (0x42 >= 0x10, sets C=0)
+        0x38, 0x02,       // 0x0004: jr c, +2 (not taken)
+        0x3e, 0x99,       // 0x0006: ld a, 0x99 (executed)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
+}
+
+TEST(test_exec_jr_nc_taken)
+{
+    // jr nc jumps when C=0 (after cp with A >= imm)
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (0x42 >= 0x10, sets C=0)
+        0x30, 0x02,       // 0x0004: jr nc, +2 (skip to 0x0008)
+        0x3e, 0x00,       // 0x0006: ld a, 0x00 (skipped)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged (skip was taken)
+}
+
+TEST(test_exec_jr_nc_not_taken)
+{
+    // jr nc doesn't jump when C=1 (after cp with A < imm)
+    uint8_t rom[] = {
+        0x3e, 0x10,       // 0x0000: ld a, 0x10
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (0x10 < 0x42, sets C=1)
+        0x30, 0x02,       // 0x0004: jr nc, +2 (not taken)
+        0x3e, 0x99,       // 0x0006: ld a, 0x99 (executed)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -88,4 +224,18 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_jp_skip);
     RUN_TEST(test_exec_jr_forward);
     RUN_TEST(test_exec_jr_zero);
+    RUN_TEST(test_exec_dec_a_loop);
+
+    printf("\nFlags tests:\n");
+    RUN_TEST(test_exec_cp_equal);
+    RUN_TEST(test_exec_cp_not_equal);
+    RUN_TEST(test_exec_cp_carry);
+
+    printf("\nConditional jump tests:\n");
+    RUN_TEST(test_exec_jr_z_taken);
+    RUN_TEST(test_exec_jr_z_not_taken);
+    RUN_TEST(test_exec_jr_c_taken);
+    RUN_TEST(test_exec_jr_c_not_taken);
+    RUN_TEST(test_exec_jr_nc_taken);
+    RUN_TEST(test_exec_jr_nc_not_taken);
 }

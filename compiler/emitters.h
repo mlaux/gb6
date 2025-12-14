@@ -1,0 +1,40 @@
+#ifndef EMITTERS_H
+#define EMITTERS_H
+
+#include <stdint.h>
+#include "compiler.h"
+
+void emit_byte(struct code_block *block, uint8_t byte);
+void emit_word(struct code_block *block, uint16_t word);
+void emit_long(struct code_block *block, uint32_t val);
+
+void emit_moveq_dn(struct code_block *block, uint8_t reg, int8_t imm);
+void emit_move_b_dn(struct code_block *block, uint8_t reg, int8_t imm);
+void emit_move_w_dn(struct code_block *block, uint8_t reg, int16_t imm);
+void emit_move_l_dn(struct code_block *block, uint8_t reg, int32_t imm);
+
+void emit_rol_w_8(struct code_block *block, uint8_t reg);
+void emit_ror_w_8(struct code_block *block, uint8_t reg);
+void emit_swap(struct code_block *block, uint8_t reg);
+
+void emit_move_w_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg);
+void emit_movea_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg);
+void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t val);
+
+void emit_subq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val);
+void emit_cmp_b_imm_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
+void emit_scc(struct code_block *block, uint8_t cond, uint8_t dreg);
+void emit_andi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
+void emit_ori_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
+void emit_or_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+
+void emit_set_z_flag(struct code_block *block);
+void emit_set_znc_flags(struct code_block *block);
+
+void emit_rts(struct code_block *block);
+void emit_bra_w(struct code_block *block, int16_t disp);
+void emit_beq_w(struct code_block *block, int16_t disp);
+void emit_bne_w(struct code_block *block, int16_t disp);
+void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg);
+
+#endif

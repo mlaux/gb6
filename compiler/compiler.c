@@ -1,127 +1,12 @@
-#include "compiler.h"
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+#include "compiler.h"
+#include "emitters.h"
 
 void compiler_init(void)
 {
     // nothing for now
-}
-
-void emit_byte(struct code_block *block, uint8_t byte)
-{
-    if (block->length < sizeof(block->code)) {
-        block->code[block->length++] = byte;
-    }
-}
-
-void emit_word(struct code_block *block, uint16_t word)
-{
-    emit_byte(block, word >> 8);
-    emit_byte(block, word & 0xff);
-}
-
-void emit_long(struct code_block *block, uint32_t val)
-{
-    emit_byte(block, val >> 24);
-    emit_byte(block, val >> 16);
-    emit_byte(block, val >> 8);
-    emit_byte(block, val & 0xff);
-}
-
-static void emit_moveq_dn(struct code_block *block, uint8_t reg, int8_t imm)
-{
-    emit_byte(block, 0x70 | reg << 1);
-    emit_byte(block, (uint8_t)imm);
-}
-
-// move.b #imm, Dn
-static void emit_move_b_dn(struct code_block *block, uint8_t reg, int8_t imm)
-{
-    // 01 = byte mode
-    // dest effective address = rrr 000
-    // src effective address = 111 100 means immediate
-    uint16_t ins = (1 << 12) | (reg << 9) | (7 << 3) | 4;
-    emit_word(block, ins);
-    emit_word(block, (uint8_t) imm);
-}
-
-// move.w #imm, Dn
-static void emit_move_w_dn(struct code_block *block, uint8_t reg, int16_t imm)
-{
-    uint16_t ins = (3 << 12) | (reg << 9) | (7 << 3) | 4;
-    emit_word(block, ins);
-    emit_word(block, (uint16_t) imm);
-}
-
-// move.l #imm, Dn
-static void emit_move_l_dn(struct code_block *block, uint8_t reg, int32_t imm)
-{
-    uint16_t ins = (2 << 12) | (reg << 9) | (7 << 3) | 4;
-    emit_word(block, ins);
-    emit_long(block, (uint32_t) imm);
-}
-
-// rol.w #8, Dn
-static void emit_rol_w_8(struct code_block *block, uint8_t reg)
-{
-    // 1110 ccc d ss i 11 rrr
-    // ccc=000 (8), d=1 (left), ss=01 (word), i=0 (immediate), rrr=reg
-    emit_word(block, 0xe158 | reg);
-}
-
-// ror.w #8, Dn
-static void emit_ror_w_8(struct code_block *block, uint8_t reg)
-{
-    // ccc=000 (8), d=0 (right), ss=01 (word), i=0 (immediate), rrr=reg
-    emit_word(block, 0xe058 | reg);
-}
-
-// swap Dn - exchange high and low 16-bit words (4 cycles vs 22 for rol #8)
-static void emit_swap(struct code_block *block, uint8_t reg)
-{
-    // 0100 1000 0100 0 rrr
-    emit_word(block, 0x4840 | reg);
-}
-
-// move.w An, Dn - copy address register to data register
-static void emit_move_w_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg)
-{
-    // 00 11 ddd 000 001 aaa
-    emit_word(block, 0x3008 | (dreg << 9) | areg);
-}
-
-// movea.w Dn, An - copy data register to address register
-static void emit_movea_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
-{
-    // 00 11 aaa 001 000 ddd
-    emit_word(block, 0x3040 | (areg << 9) | dreg);
-}
-
-static void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t val)
-{
-    // 00 11 aaa 001 111 100
-    emit_word(block, 0x307c | areg << 9);
-    emit_word(block, val);
-}
-
-// subq.b #, Dn
-static void emit_subq_b_1_dn(struct code_block *block, uint8_t dreg, uint8_t val)
-{
-    // 0101 ddd 1 ss 000 rrr
-    // ss = 00
-    // rrr = dreg
-    if (val == 0 || val > 8) {
-        printf("can only subq values between 1 and 8\n");
-        exit(1);
-    }
-    uint16_t ddd = val == 8 ? 0 : val;
-    emit_word(block, 0x5300 | ddd << 9 | dreg);
-}
-
-// Emit: rts
-static void emit_rts(struct code_block *block)
-{
-    emit_word(block, 0x4e75);
 }
 
 static void compile_ld_imm16_split(
@@ -149,13 +34,6 @@ static void compile_ld_imm16_contiguous(
     emit_movea_w_imm16(block, reg, hibyte << 8 | lobyte);
 }
 
-// bra.w - branch always with 16-bit displacement
-static void emit_bra_w(struct code_block *block, int16_t disp)
-{
-    emit_word(block, 0x6000);
-    emit_word(block, disp);
-}
-
 // returns 1 if jr ended the block, 0 if it's a backward jump within block
 static int compile_jr(
     struct code_block *block,
@@ -163,30 +41,93 @@ static int compile_jr(
     uint16_t *src_ptr,
     uint16_t src_address
 ) {
-    int8_t disp = (int8_t) gb_code[*src_ptr];
+    int8_t disp;
+    int16_t target_gb_offset;
+    uint16_t target_m68k, target_gb_pc;
+    int16_t m68k_disp;
+
+    disp = (int8_t) gb_code[*src_ptr];
     (*src_ptr)++;
 
     // jr displacement is relative to PC after the jr instruction
     // *src_ptr now points to the byte after jr, so target = *src_ptr + disp
-    int16_t target_gb_offset = (int16_t) *src_ptr + disp;
+    target_gb_offset = (int16_t) *src_ptr + disp;
 
     // Check if this is a backward jump to a location we've already compiled
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
         // Backward jump within block - emit bra.w
-        uint16_t target_m68k = block->m68k_offsets[target_gb_offset];
+        target_m68k = block->m68k_offsets[target_gb_offset];
         // bra.w displacement is relative to PC after the opcode word (before extension)
         // current position = block->length, PC after opcode = block->length + 2
-        int16_t m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bra_w(block, m68k_disp);
         return 0;
     }
 
     // Forward jump or outside block - go through dispatcher
-    uint16_t target_gb_pc = src_address + target_gb_offset;
+    target_gb_pc = src_address + target_gb_offset;
     emit_moveq_dn(block, 4, 0);
     emit_move_w_dn(block, 4, target_gb_pc);
     emit_rts(block);
     return 1;
+}
+
+// Compile conditional relative jump (jr nz, jr z, jr nc, jr c)
+// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// branch_if_set: if true, branch when flag is set; if false, branch when clear
+static void compile_jr_cond(
+    struct code_block *block,
+    uint8_t *gb_code,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    uint8_t flag_bit,
+    int branch_if_set
+) {
+    int8_t disp;
+    int16_t target_gb_offset;
+    uint16_t target_m68k, target_gb_pc;
+    int16_t m68k_disp;
+
+    disp = (int8_t) gb_code[*src_ptr];
+    (*src_ptr)++;
+
+    target_gb_offset = (int16_t) *src_ptr + disp;
+
+    // Test the flag bit in D7
+    // btst sets 68k Z=1 if tested bit is 0, Z=0 if tested bit is 1
+    emit_btst_imm_dn(block, flag_bit, 7);
+
+    // Check if this is a backward jump within block
+    if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
+        // Backward jump - emit conditional branch
+        target_m68k = block->m68k_offsets[target_gb_offset];
+        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+
+        if (branch_if_set) {
+            // Branch if flag is set: btst gives Z=0 when bit=1, so use bne
+            emit_bne_w(block, m68k_disp);
+        } else {
+            // Branch if flag is clear: btst gives Z=1 when bit=0, so use beq
+            emit_beq_w(block, m68k_disp);
+        }
+        return; // block continues (fall-through path)
+    }
+
+    // Forward/external jump - conditionally exit to dispatcher
+    // If condition NOT met, skip the exit sequence
+    target_gb_pc = src_address + target_gb_offset;
+
+    if (branch_if_set) {
+        // Skip exit if flag is clear (btst Z=1 when bit=0)
+        emit_beq_w(block, 10);  // skip: moveq(2) + move.w(4) + rts(2) + ext(2) = 10
+    } else {
+        // Skip exit if flag is set (btst Z=0 when bit=1)
+        emit_bne_w(block, 10);
+    }
+
+    emit_moveq_dn(block, 4, 0);
+    emit_move_w_dn(block, 4, target_gb_pc);
+    emit_rts(block);
 }
 
 struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
@@ -273,8 +214,28 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             done = compile_jr(block, gb_code, &src_ptr, src_address);
             break;
 
+        case 0x20: // jr nz, disp8
+            compile_jr_cond(block, gb_code, &src_ptr, src_address, 7, 0);
+            break;
+        case 0x28: // jr z, disp8
+            compile_jr_cond(block, gb_code, &src_ptr, src_address, 7, 1);
+            break;
+        case 0x30: // jr nc, disp8
+            compile_jr_cond(block, gb_code, &src_ptr, src_address, 4, 0);
+            break;
+        case 0x38: // jr c, disp8
+            compile_jr_cond(block, gb_code, &src_ptr, src_address, 4, 1);
+            break;
+
         case 0x3d: // dec a
-            emit_subq_b_1_dn(block, 0, 1);
+            emit_subq_b_dn(block, 0, 1);
+            emit_set_z_flag(block);
+            emit_ori_b_dn(block, 7, 0x40);  // D7 |= 0x40 (N flag)
+            break;
+
+        case 0xfe: // cp a, imm8
+            emit_cmp_b_imm_dn(block, 0, gb_code[src_ptr++]);
+            emit_set_znc_flags(block);
             break;
 
         case 0xc3: // jp imm16

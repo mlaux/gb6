@@ -79,6 +79,8 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 // Initialize Musashi, copy code to memory, set up stack, run
 void run_code(struct code_block *block)
 {
+    int k;
+
     memset(mem, 0, MEM_SIZE);
 
     // Copy code to CODE_BASE
@@ -94,11 +96,11 @@ void run_code(struct code_block *block)
     m68k_set_reg(M68K_REG_ISP, STACK_BASE);
     m68k_set_reg(M68K_REG_PC, CODE_BASE);
 
-    for (int k = 0; k < 8; k++) {
+    for (k = 0; k < 8; k++) {
         m68k_set_reg(M68K_REG_D0 + k, 0);
     }
     // Clear A0-A6, but not A7 (stack pointer)
-    for (int k = 0; k < 7; k++) {
+    for (k = 0; k < 7; k++) {
         m68k_set_reg(M68K_REG_A0 + k, 0);
     }
 
@@ -113,6 +115,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
 {
     struct code_block *cache[MAX_CACHED_BLOCKS] = {0};
     uint32_t pc = start_pc;
+    int k;
 
     memset(mem, 0, MEM_SIZE);
 
@@ -122,10 +125,10 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
     m68k_pulse_reset();
 
     // Clear all registers once at start
-    for (int k = 0; k < 8; k++) {
+    for (k = 0; k < 8; k++) {
         m68k_set_reg(M68K_REG_D0 + k, 0);
     }
-    for (int k = 0; k < 7; k++) {
+    for (k = 0; k < 7; k++) {
         m68k_set_reg(M68K_REG_A0 + k, 0);
     }
 
@@ -160,7 +163,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
     }
 
     // Clean up cached blocks
-    for (int k = 0; k < MAX_CACHED_BLOCKS; k++) {
+    for (k = 0; k < MAX_CACHED_BLOCKS; k++) {
         if (cache[k]) {
             block_free(cache[k]);
         }
