@@ -13,11 +13,11 @@ extern int tests_passed;
 //   bits 0-3: register number (0-7)
 //   bit 4: 0 = data reg, 1 = address reg
 //   bits 8-15: mask type (0 = 8-bit, 1 = split 32-bit, 2 = 16-bit)
-#define REG_A   0x0001  // D0, 8-bit
-#define REG_BC  0x0102  // D1, split (0x00BB00CC)
-#define REG_DE  0x0103  // D2, split (0x00DD00EE)
-#define REG_HL  0x0210  // A0, 16-bit contiguous (0xHHLL)
-#define REG_SP  0x0211  // A1, 16-bit contiguous
+#define REG_A   0x0004  // D4, 8-bit
+#define REG_BC  0x0105  // D5, split (0x00BB00CC)
+#define REG_DE  0x0106  // D6, split (0x00DD00EE)
+#define REG_HL  0x0212  // A2, 16-bit contiguous (0xHHLL)
+#define REG_SP  0x0213  // A3, 16-bit contiguous
 
 #define REG_INDEX(r)   ((r) & 0x0f)
 #define REG_IS_ADDR(r) ((r) & 0x10)

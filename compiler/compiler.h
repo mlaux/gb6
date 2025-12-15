@@ -22,39 +22,25 @@
 // A6 = reserved (Mac frame pointer)
 // A7 = 68k stack pointer
 
-#define REG_68K_D_A 1
-#define REG_68K_D_BC 2
-#define REG_68K_D_DE 3
-#define REG_68K_D_NEXT_PC 4
-#define REG_68K_D_SCRATCH_1 5
-#define REG_68K_D_SCRATCH_2 6
+#define REG_68K_D_NEXT_PC 0
+#define REG_68K_D_SCRATCH_1 1
+#define REG_68K_D_SCRATCH_2 2
+#define REG_68K_D_SCRATCH_3 3
+#define REG_68K_D_A 4
+#define REG_68K_D_BC 5
+#define REG_68K_D_DE 6
 #define REG_68K_D_FLAGS 7
 
-#define REG_68K_A_HL 0
-#define REG_68K_A_SP 1
-#define REG_68K_A_SCRATCH_1 2
-#define REG_68K_A_SCRATCH_2 3
+#define REG_68K_A_SCRATCH_1 0
+#define REG_68K_A_SCRATCH_2 1
+#define REG_68K_A_HL 2
+#define REG_68K_A_SP 3
 #define REG_68K_A_CTX 4
 
 // Runtime context offsets
 #define JIT_CTX_DMG   0
 #define JIT_CTX_READ  4
 #define JIT_CTX_WRITE 8
-
-// Register save masks for movem around C function calls
-// Retro68 (gcc) may clobber D0-D2, A0-A1, so we save our working regs
-// For write: save D1(A), D2(BC), D3(DE), D7(flags), A0(HL), A1(SP)
-// Predec mask: bit 15=D0..8=D7, 7=A0..0=A7
-//   D1=bit14, D2=bit13, D3=bit12, D7=bit8, A0=bit7, A1=bit6
-#define MOVEM_SAVE_WRITE_PREDEC  0x71c0
-//   D1=bit1, D2=bit2, D3=bit3, D7=bit7, A0=bit8, A1=bit9
-#define MOVEM_SAVE_WRITE_POSTINC 0x038e
-
-// For read: same but don't save D1 since we'll overwrite it with result
-//   D2=bit13, D3=bit12, D7=bit8, A0=bit7, A1=bit6
-#define MOVEM_SAVE_READ_PREDEC   0x31c0
-//   D2=bit2, D3=bit3, D7=bit7, A0=bit8, A1=bit9
-#define MOVEM_SAVE_READ_POSTINC  0x038c
 
 
 struct code_block {

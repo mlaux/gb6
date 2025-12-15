@@ -85,29 +85,30 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 
 // Set up stub functions for dmg_read/dmg_write
 // These are 68k code that the compiled JIT code can call
+// Use A0 as scratch (it's caller-saved, won't clobber our GB state)
 static void setup_runtime_stubs(void)
 {
     // stub_write: writes value byte to address
     // Stack layout after jsr: ret(4), dmg(4), addr(2), val(2)
-    // movea.w 8(sp), a2   ; a2 = address
-    // move.b 11(sp), (a2) ; write value to memory
+    // movea.w 8(sp), a0   ; a0 = address
+    // move.b 11(sp), (a0) ; write value to memory
     // rts
     static const uint8_t stub_write[] = {
-        0x34, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a2
-        0x14, 0xaf, 0x00, 0x0b,  // move.b 11(sp), (a2)
+        0x30, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a0
+        0x10, 0xaf, 0x00, 0x0b,  // move.b 11(sp), (a0)
         0x4e, 0x75               // rts
     };
 
     // stub_read: reads byte from address, returns in d0
     // Stack layout after jsr: ret(4), dmg(4), addr(2)
-    // movea.w 8(sp), a2   ; a2 = address
+    // movea.w 8(sp), a0   ; a0 = address
     // moveq #0, d0        ; clear d0
-    // move.b (a2), d0     ; read value
+    // move.b (a0), d0     ; read value
     // rts
     static const uint8_t stub_read[] = {
-        0x34, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a2
+        0x30, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a0
         0x70, 0x00,              // moveq #0, d0
-        0x10, 0x12,              // move.b (a2), d0
+        0x10, 0x10,              // move.b (a0), d0
         0x4e, 0x75               // rts
     };
 
@@ -189,8 +190,8 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
         m68k_set_reg(M68K_REG_A0 + k, 0);
     }
 
-    // Initialize GB stack pointer (A1 = base + SP)
-    m68k_set_reg(M68K_REG_A1, GB_MEM_BASE + DEFAULT_GB_SP);
+    // Initialize GB stack pointer (A3 = base + SP)
+    m68k_set_reg(M68K_REG_A3, GB_MEM_BASE + DEFAULT_GB_SP);
 
     // Set A4 to runtime context
     m68k_set_reg(M68K_REG_A4, JIT_CTX_ADDR);
@@ -218,8 +219,8 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
 
         m68k_execute(1000);
 
-        // Check D4 for next PC or halt
-        pc = get_dreg(4);
+        // Check D0 for next PC or halt
+        pc = get_dreg(0);
         if (pc == HALT_SENTINEL) {
             break;
         }
