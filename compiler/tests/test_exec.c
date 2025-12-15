@@ -284,6 +284,34 @@ TEST(test_exec_ld_a_bc_ind)
     ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A should have value read from memory
 }
 
+TEST(test_exec_ld_de_ind_a)
+{
+    // ld (de), a - write A to memory address DE
+    uint8_t rom[] = {
+        0x11, 0x00, 0x50, // 0x0000: ld de, 0x5000
+        0x3e, 0x42,       // 0x0003: ld a, 0x42
+        0x12,             // 0x0005: ld (de), a
+        0x10              // 0x0006: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_mem_byte(0x5000), 0x42);  // memory at DE should have A's value
+}
+
+TEST(test_exec_ld_a_de_ind)
+{
+    // ld a, (de) - read byte from memory address DE into A
+    uint8_t rom[] = {
+        0x11, 0x00, 0x50, // 0x0000: ld de, 0x5000
+        0x3e, 0x42,       // 0x0003: ld a, 0x42
+        0x12,             // 0x0005: ld (de), a  ; write 0x42 to memory
+        0x3e, 0x00,       // 0x0006: ld a, 0x00  ; clear A
+        0x1a,             // 0x0008: ld a, (de)  ; read back from memory
+        0x10              // 0x0009: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A should have value read from memory
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -333,4 +361,6 @@ void register_exec_tests(void)
     printf("\nMemory access tests:\n");
     RUN_TEST(test_exec_ld_bc_ind_a);
     RUN_TEST(test_exec_ld_a_bc_ind);
+    RUN_TEST(test_exec_ld_de_ind_a);
+    RUN_TEST(test_exec_ld_a_de_ind);
 }

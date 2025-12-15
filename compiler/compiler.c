@@ -232,12 +232,22 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             break;
 
         case 0x02: // ld (bc), a
-            compile_bc_to_addr(block);  // BC → D5.w
+            compile_bc_to_addr(block);  // BC -> D5.w
             compile_call_dmg_write(block);  // dmg_write(dmg, D5.w, A)
             break;
 
         case 0x0a: // ld a, (bc)
-            compile_bc_to_addr(block);  // BC → D5.w
+            compile_bc_to_addr(block);  // BC -> D5.w
+            compile_call_dmg_read(block);  // A = dmg_read(dmg, D5.w)
+            break;
+
+        case 0x12: // ld (de), a
+            compile_de_to_addr(block);  // DE -> D5.w
+            compile_call_dmg_write(block);  // dmg_write(dmg, D5.w, A)
+            break;
+
+        case 0x1a: // ld a, (de)
+            compile_de_to_addr(block);  // DE -> D5.w
             compile_call_dmg_read(block);  // A = dmg_read(dmg, D5.w)
             break;
 
