@@ -40,6 +40,79 @@ static void compile_set_znc_flags(struct code_block *block)
     emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // D7 |= 0x40 (N flag)
 }
 
+// ; Reconstruct BC address into D5.w
+// move.l D2, D5       ; copy split BC
+// move.w D5, D6       ; save low byte (C)
+// swap D5             ; get high byte (B) in low word
+// lsl.w #8, D5        ; shift B to high position
+// or.b D6, D5         ; combine: D5.w = 0xBBCC
+
+// ; Call dmg_write(dmg, addr, val)
+// move.w D1, -(A7)    ; push A (value)
+// move.w D5, -(A7)    ; push address
+// move.l (A4), -(A7)  ; push dmg pointer
+// movea.l 8(A4), A3   ; load write function pointer
+// jsr (A3)            ; call
+// addq.l #8, A7       ; cleanup stack
+
+// Reconstruct BC from split format (0x00BB00CC) into D5.w as 0xBBCC
+static void compile_bc_to_addr(struct code_block *block)
+{
+    emit_move_l_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D5 = 0x00BB00CC
+    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);  // D6.w = 0x00CC
+    emit_swap(block, REG_68K_D_SCRATCH_1);  // D5 = 0x00CC00BB
+    emit_lsl_w_imm_dn(block, 8, REG_68K_D_SCRATCH_1);  // D5.w = 0xBB00
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // D5.w = 0xBBCC
+}
+
+// Reconstruct DE from split format (0x00DD00EE) into D5.w as 0xDDEE
+static void compile_de_to_addr(struct code_block *block)
+{
+    emit_move_l_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);  // D5 = 0x00DD00EE
+    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);  // D6.w = 0x00EE
+    emit_swap(block, REG_68K_D_SCRATCH_1);  // D5 = 0x00EE00DD
+    emit_lsl_w_imm_dn(block, 8, REG_68K_D_SCRATCH_1);  // D5.w = 0xDD00
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // D5.w = 0xDDEE
+}
+
+// Call dmg_write(dmg, addr, val) - addr in D5.w, val in D1.b (A register)
+static void compile_call_dmg_write(struct code_block *block)
+{
+    // Save registers that C compiler may clobber
+    emit_movem_l_to_predec(block, MOVEM_SAVE_WRITE_PREDEC);
+
+    // Push args right-to-left: val, addr, dmg
+    emit_push_w_dn(block, REG_68K_D_A);  // push value (A register)
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // push address (D5.w)
+    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);  // push dmg pointer
+    emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_2);  // A3 = write func
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_2);  // call dmg_write
+    emit_addq_l_an(block, 7, 8);  // clean up stack (4 + 2 + 2 = 8 bytes)
+
+    // Restore registers
+    emit_movem_l_from_postinc(block, MOVEM_SAVE_WRITE_POSTINC);
+}
+
+// Call dmg_read(dmg, addr) - addr in D5.w, result goes to D1.b (A register)
+static void compile_call_dmg_read(struct code_block *block)
+{
+    // Save registers (not D1 since we'll overwrite it with result)
+    emit_movem_l_to_predec(block, MOVEM_SAVE_READ_PREDEC);
+
+    // Push args right-to-left: addr, dmg
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // push address (D5.w)
+    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);  // push dmg pointer
+    emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_2);  // A3 = read func
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_2);  // call dmg_read
+    emit_addq_l_an(block, 7, 6);  // clean up stack (4 + 2 = 6 bytes)
+
+    // Move result from D0 to D1 (A register)
+    emit_move_b_dn_dn(block, 0, REG_68K_D_A);
+
+    // Restore registers
+    emit_movem_l_from_postinc(block, MOVEM_SAVE_READ_POSTINC);
+}
+
 static void compile_ld_imm16_split(
     struct code_block *block,
     uint8_t reg,
@@ -183,6 +256,16 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
         switch (op) {
         case 0x00: // nop
             // emit nothing
+            break;
+
+        case 0x02: // ld (bc), a
+            compile_bc_to_addr(block);  // BC → D5.w
+            compile_call_dmg_write(block);  // dmg_write(dmg, D5.w, A)
+            break;
+
+        case 0x0a: // ld a, (bc)
+            compile_bc_to_addr(block);  // BC → D5.w
+            compile_call_dmg_read(block);  // A = dmg_read(dmg, D5.w)
             break;
 
         case 0x01: // ld bc, imm16

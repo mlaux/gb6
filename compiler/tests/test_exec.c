@@ -256,6 +256,34 @@ TEST(test_exec_call_preserves_regs)
     ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0xcc);         // C set by subroutine
 }
 
+TEST(test_exec_ld_bc_ind_a)
+{
+    // ld (bc), a - write A to memory address BC
+    uint8_t rom[] = {
+        0x01, 0x00, 0x50, // 0x0000: ld bc, 0x5000
+        0x3e, 0x42,       // 0x0003: ld a, 0x42
+        0x02,             // 0x0005: ld (bc), a
+        0x10              // 0x0006: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_mem_byte(0x5000), 0x42);  // memory at BC should have A's value
+}
+
+TEST(test_exec_ld_a_bc_ind)
+{
+    // ld a, (bc) - read byte from memory address BC into A
+    uint8_t rom[] = {
+        0x01, 0x00, 0x50, // 0x0000: ld bc, 0x5000
+        0x3e, 0x42,       // 0x0003: ld a, 0x42
+        0x02,             // 0x0005: ld (bc), a  ; write 0x42 to memory
+        0x3e, 0x00,       // 0x0006: ld a, 0x00  ; clear A
+        0x0a,             // 0x0008: ld a, (bc)  ; read back from memory
+        0x10              // 0x0009: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A should have value read from memory
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -301,4 +329,8 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_call_ret_simple);
     RUN_TEST(test_exec_call_ret_nested);
     RUN_TEST(test_exec_call_preserves_regs);
+
+    printf("\nMemory access tests:\n");
+    RUN_TEST(test_exec_ld_bc_ind_a);
+    RUN_TEST(test_exec_ld_a_bc_ind);
 }

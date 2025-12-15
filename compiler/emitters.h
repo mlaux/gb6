@@ -43,4 +43,16 @@ void emit_beq_w(struct code_block *block, int16_t disp);
 void emit_bne_w(struct code_block *block, int16_t disp);
 void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg);
 
+void emit_move_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+void emit_move_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+void emit_lsl_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg);
+void emit_push_w_dn(struct code_block *block, uint8_t dreg);
+void emit_push_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg);
+void emit_movea_l_disp_an_an(struct code_block *block, int16_t disp, uint8_t src_areg, uint8_t dest_areg);
+void emit_jsr_ind_an(struct code_block *block, uint8_t areg);
+void emit_addq_l_an(struct code_block *block, uint8_t areg, uint8_t val);
+void emit_movem_l_to_predec(struct code_block *block, uint16_t mask);
+void emit_movem_l_from_postinc(struct code_block *block, uint16_t mask);
+void emit_move_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+
 #endif

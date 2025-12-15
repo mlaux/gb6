@@ -11,12 +11,14 @@
 static uint8_t mem[MEM_SIZE];
 
 #define CODE_BASE 0x1000
+#define STUB_BASE 0x2000   // Where stub functions live
+#define JIT_CTX_ADDR 0x3000 // jit_runtime context structure
 #define STACK_BASE 0x8000
 
 // GB memory is mapped at base of 68k address space
 // A1 = GB_MEM_BASE + GB_SP for stack operations
 #define GB_MEM_BASE 0x0000
-#define DEFAULT_GB_SP 0x0f00
+#define DEFAULT_GB_SP 0x0fff
 
 int tests_run = 0;
 int tests_passed = 0;
@@ -81,12 +83,56 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
     }
 }
 
+// Set up stub functions for dmg_read/dmg_write
+// These are 68k code that the compiled JIT code can call
+static void setup_runtime_stubs(void)
+{
+    // stub_write: writes value byte to address
+    // Stack layout after jsr: ret(4), dmg(4), addr(2), val(2)
+    // movea.w 8(sp), a2   ; a2 = address
+    // move.b 11(sp), (a2) ; write value to memory
+    // rts
+    static const uint8_t stub_write[] = {
+        0x34, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a2
+        0x14, 0xaf, 0x00, 0x0b,  // move.b 11(sp), (a2)
+        0x4e, 0x75               // rts
+    };
+
+    // stub_read: reads byte from address, returns in d0
+    // Stack layout after jsr: ret(4), dmg(4), addr(2)
+    // movea.w 8(sp), a2   ; a2 = address
+    // moveq #0, d0        ; clear d0
+    // move.b (a2), d0     ; read value
+    // rts
+    static const uint8_t stub_read[] = {
+        0x34, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a2
+        0x70, 0x00,              // moveq #0, d0
+        0x10, 0x12,              // move.b (a2), d0
+        0x4e, 0x75               // rts
+    };
+
+    // Copy stubs to memory
+    memcpy(mem + STUB_BASE, stub_write, sizeof(stub_write));
+    memcpy(mem + STUB_BASE + 0x20, stub_read, sizeof(stub_read));
+
+    // Set up jit_runtime context structure at JIT_CTX_ADDR
+    // offset 0: dmg pointer (just use a non-null dummy)
+    // offset 4: read function pointer
+    // offset 8: write function pointer
+    m68k_write_memory_32(JIT_CTX_ADDR + 0, 0x00004000);  // dmg = some address
+    m68k_write_memory_32(JIT_CTX_ADDR + 4, STUB_BASE + 0x20);  // read
+    m68k_write_memory_32(JIT_CTX_ADDR + 8, STUB_BASE);  // write
+}
+
 // Initialize Musashi, copy code to memory, set up stack, run
 void run_code(struct code_block *block)
 {
     int k;
 
     memset(mem, 0, MEM_SIZE);
+
+    // Set up runtime stubs and context
+    setup_runtime_stubs();
 
     // Copy code to CODE_BASE
     memcpy(mem + CODE_BASE, block->code, block->length);
@@ -109,6 +155,9 @@ void run_code(struct code_block *block)
         m68k_set_reg(M68K_REG_A0 + k, 0);
     }
 
+    // Set A4 to runtime context
+    m68k_set_reg(M68K_REG_A4, JIT_CTX_ADDR);
+
     m68k_execute(1000);
 }
 
@@ -123,6 +172,9 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
     int k;
 
     memset(mem, 0, MEM_SIZE);
+
+    // Set up runtime stubs and context
+    setup_runtime_stubs();
 
     // Set up halt trap at address 0
     m68k_write_memory_16(0, 0x60fe);  // bra.s *
@@ -139,6 +191,9 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
 
     // Initialize GB stack pointer (A1 = base + SP)
     m68k_set_reg(M68K_REG_A1, GB_MEM_BASE + DEFAULT_GB_SP);
+
+    // Set A4 to runtime context
+    m68k_set_reg(M68K_REG_A4, JIT_CTX_ADDR);
 
     while (1) {
         // Look up or compile block
@@ -186,6 +241,11 @@ uint32_t get_dreg(int reg)
 uint32_t get_areg(int reg)
 {
     return m68k_get_reg(NULL, M68K_REG_A0 + reg);
+}
+
+uint8_t get_mem_byte(uint16_t addr)
+{
+    return mem[addr];
 }
 
 int main(int argc, char *argv[])

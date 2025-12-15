@@ -75,6 +75,9 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc);
 uint32_t get_dreg(int reg);
 uint32_t get_areg(int reg);
 
+// Get simulated memory byte
+uint8_t get_mem_byte(uint16_t addr);
+
 // Test registration functions
 void register_unit_tests(void);
 void register_exec_tests(void);

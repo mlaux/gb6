@@ -268,3 +268,102 @@ void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg)
     emit_word(block, 0x0800 | dreg);
     emit_word(block, bit);
 }
+
+// move.l Ds, Dd - copy data register to data register (long)
+void emit_move_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 00 10 ddd 000 000 sss
+    emit_word(block, 0x2000 | (dest << 9) | src);
+}
+
+// move.w Ds, Dd - copy data register to data register (word)
+void emit_move_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 00 11 ddd 000 000 sss
+    emit_word(block, 0x3000 | (dest << 9) | src);
+}
+
+// lsl.w #imm, Dn - logical shift left word by immediate
+void emit_lsl_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 1 01 i 01 rrr  (i=0 for immediate, size=01 for word)
+    if (count == 0 || count > 8) {
+        printf("can only lsl by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe148 | (ccc << 9) | dreg);
+}
+
+// move.w Dn, -(A7) - push word from data register
+void emit_push_w_dn(struct code_block *block, uint8_t dreg)
+{
+    // 00 11 111 100 000 ddd  (dest = -(A7), src = Dn)
+    emit_word(block, 0x3f00 | dreg);
+}
+
+// move.l d(An), -(A7) - push long from memory with displacement
+void emit_push_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg)
+{
+    // 00 10 111 100 101 aaa  (dest = -(A7), src = d(An))
+    emit_word(block, 0x2f28 | areg);
+    emit_word(block, disp);
+}
+
+// movea.l d(An), Ad - load address from memory with displacement
+void emit_movea_l_disp_an_an(struct code_block *block, int16_t disp, uint8_t src_areg, uint8_t dest_areg)
+{
+    // 00 10 ddd 001 101 sss
+    emit_word(block, 0x2068 | (dest_areg << 9) | src_areg);
+    emit_word(block, disp);
+}
+
+// jsr (An) - jump to subroutine via address register
+void emit_jsr_ind_an(struct code_block *block, uint8_t areg)
+{
+    // 0100 1110 10 010 aaa
+    emit_word(block, 0x4e90 | areg);
+}
+
+// addq.l #val, An - add quick to address register (long)
+void emit_addq_l_an(struct code_block *block, uint8_t areg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 0 10 001 aaa
+    if (val == 0 || val > 8) {
+        printf("can only addq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5088 | (ddd << 9) | areg);
+}
+
+// movem.l <list>, -(A7) - push multiple registers
+// mask uses reversed bit order for predecrement:
+//   bit 15=D0, 14=D1, ..., 8=D7, 7=A0, 6=A1, ..., 0=A7
+void emit_movem_l_to_predec(struct code_block *block, uint16_t mask)
+{
+    // 0100 1000 11 100 111 = 0x48e7
+    emit_word(block, 0x48e7);
+    emit_word(block, mask);
+}
+
+// movem.l (A7)+, <list> - pop multiple registers
+// mask uses normal bit order for postincrement:
+//   bit 0=D0, 1=D1, ..., 7=D7, 8=A0, 9=A1, ..., 15=A7
+void emit_movem_l_from_postinc(struct code_block *block, uint16_t mask)
+{
+    // 0100 1100 11 011 111 = 0x4cdf
+    emit_word(block, 0x4cdf);
+    emit_word(block, mask);
+}
+
+// move.b Dn, Dm - copy data register to data register (byte)
+void emit_move_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 00 01 ddd 000 000 sss
+    emit_word(block, 0x1000 | (dest << 9) | src);
+}
