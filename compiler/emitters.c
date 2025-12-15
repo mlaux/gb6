@@ -234,31 +234,6 @@ void emit_or_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     emit_word(block, 0x8000 | (dest << 9) | src);
 }
 
-// Set Z flag in D7 based on current 68k CCR, preserving other flags
-void emit_set_z_flag(struct code_block *block)
-{
-    emit_scc(block, 0x7, 3);        // seq D3 (D3 = 0xff if Z, 0x00 if NZ)
-    emit_andi_b_dn(block, 3, 0x80); // D3 = 0x80 if Z was set
-    emit_andi_b_dn(block, 7, 0x7f); // clear Z bit in D7
-    emit_or_b_dn_dn(block, 3, 7);   // D7 |= new Z bit
-}
-
-// Set Z and C flags in D7 based on current 68k CCR, also set N=1 (for sub/cp)
-void emit_set_znc_flags(struct code_block *block)
-{
-    // Extract both flags FIRST using scc (scc doesn't affect CCR)
-    emit_scc(block, 0x7, 3);        // seq D3 (D3 = 0xff if Z, 0x00 if NZ)
-    emit_scc(block, 0x5, 7);        // scs D7 (D7 = 0xff if C, 0x00 if NC)
-
-    // Now we can manipulate D3 and D7 freely (CCR doesn't matter anymore)
-    emit_andi_b_dn(block, 3, 0x80); // D3 = 0x80 if Z was set
-    emit_andi_b_dn(block, 7, 0x10); // D7 = 0x10 if C was set
-    emit_or_b_dn_dn(block, 3, 7);   // D7 = Z_bit | C_bit
-
-    // Add N=1 flag for subtract operations
-    emit_ori_b_dn(block, 7, 0x40);  // D7 |= 0x40 (N flag)
-}
-
 // Emit: rts
 void emit_rts(struct code_block *block)
 {

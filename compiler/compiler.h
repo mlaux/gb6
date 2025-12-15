@@ -4,14 +4,32 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// GB register -> 68k register mapping:
-// D0 = A (8-bit)
+// D0 = A (GB accumulator)
 // D1 = BC (split: 0x00BB00CC)
 // D2 = DE (split: 0x00DD00EE)
 // D3 = scratch
+// D4 = dispatcher return value (next GB PC)
 // D7 = flags (ZNHC0000)
 // A0 = HL (contiguous: 0xHHLL)
-// A7 = SP, might need to move to preserve mac stack
+// A1 = SP (base + SP, for direct stack access)
+// A2 = scratch
+// A3 = scratch (function pointers for JSR)
+// A4 = runtime context pointer
+// A5 = reserved (Mac "A5 world")
+// A6 = reserved (Mac frame pointer)
+// A7 = 68k stack pointer
+
+#define REG_68K_D_A 1
+#define REG_68K_D_BC 2
+#define REG_68K_D_DE 3
+#define REG_68K_D_NEXT_PC 4
+#define REG_68K_D_SCRATCH_1 5
+#define REG_68K_D_SCRATCH_2 6
+#define REG_68K_D_FLAGS 7
+
+#define REG_68K_A_HL 0
+#define REG_68K_A_SP 1
+
 
 struct code_block {
     uint8_t code[256];

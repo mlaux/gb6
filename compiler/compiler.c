@@ -9,6 +9,37 @@ void compiler_init(void)
     // nothing for now
 }
 
+// Set Z flag in D7 based on current 68k CCR, preserving other flags
+static void compile_set_z_flag(struct code_block *block)
+{
+    // seq D5 (D5 = 0xff if Z, 0x00 if NZ)
+    emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);
+    // scratch = 0x80 if Z was set
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);
+    // clear Z bit in D7
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x7f);
+    // D7 |= new Z bit
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
+}
+
+// Set Z and C flags in D7 based on current 68k CCR, also set N=1 (for sub/cp)
+static void compile_set_znc_flags(struct code_block *block)
+{
+    // extract both flags first using scc (scc doesn't affect CCR)
+    // seq D5 (D5 = 0xff if Z, 0x00 if NZ)
+    emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);
+    // scs D7 (D7 = 0xff if C, 0x00 if NC)
+    emit_scc(block, 0x5, REG_68K_D_FLAGS);
+
+    // now CCR doesn't matter anymore
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80); // D5 = 0x80 if Z was set
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10); // D7 = 0x10 if C was set
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);   // D7 = Z_bit | C_bit
+
+    // Add N=1 flag for subtract operations
+    emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // D7 |= 0x40 (N flag)
+}
+
 static void compile_ld_imm16_split(
     struct code_block *block,
     uint8_t reg,
@@ -66,8 +97,8 @@ static int compile_jr(
 
     // Forward jump or outside block - go through dispatcher
     target_gb_pc = src_address + target_gb_offset;
-    emit_moveq_dn(block, 4, 0);
-    emit_move_w_dn(block, 4, target_gb_pc);
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
     emit_rts(block);
     return 1;
 }
@@ -125,8 +156,8 @@ static void compile_jr_cond(
         emit_bne_w(block, 10);
     }
 
-    emit_moveq_dn(block, 4, 0);
-    emit_move_w_dn(block, 4, target_gb_pc);
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
     emit_rts(block);
 }
 
@@ -155,57 +186,62 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             break;
 
         case 0x01: // ld bc, imm16
-            compile_ld_imm16_split(block, 1, gb_code, &src_ptr);
+            compile_ld_imm16_split(block, REG_68K_D_BC, gb_code, &src_ptr);
             break;
         case 0x11: // ld de, imm16
-            compile_ld_imm16_split(block, 2, gb_code, &src_ptr);
+            compile_ld_imm16_split(block, REG_68K_D_DE, gb_code, &src_ptr);
             break;
         case 0x21: // ld hl, imm16
-            compile_ld_imm16_contiguous(block, 0, gb_code, &src_ptr);
+            compile_ld_imm16_contiguous(block, REG_68K_A_HL, gb_code, &src_ptr);
             break;
         case 0x31: // ld sp, imm16
-            compile_ld_imm16_contiguous(block, 1, gb_code, &src_ptr);
+            compile_ld_imm16_contiguous(block, REG_68K_A_SP, gb_code, &src_ptr);
             break;
 
-        case 0x0e:
-            emit_move_b_dn(block, 1, gb_code[src_ptr++]);
-            break;
-        case 0x1e:
-            emit_move_b_dn(block, 2, gb_code[src_ptr++]);
-            break;
-
-        case 0x06: // ld b, imm8 (high byte of BC/D1)
-            emit_swap(block, 1);
-            emit_move_b_dn(block, 1, gb_code[src_ptr++]);
-            emit_swap(block, 1);
+        case 0x06: // ld b, imm8
+            emit_swap(block, REG_68K_D_BC);
+            emit_move_b_dn(block, REG_68K_D_BC, gb_code[src_ptr++]);
+            emit_swap(block, REG_68K_D_BC);
             break;
 
-        case 0x16: // ld d, imm8 (high byte of DE/D2)
-            emit_swap(block, 2);
-            emit_move_b_dn(block, 2, gb_code[src_ptr++]);
-            emit_swap(block, 2);
+        case 0x0e: // ld c, imm8
+            emit_move_b_dn(block, REG_68K_D_BC, gb_code[src_ptr++]);
+            break;
+
+        case 0x16: // ld d, imm8
+            emit_swap(block, REG_68K_D_DE);
+            emit_move_b_dn(block, REG_68K_D_DE, gb_code[src_ptr++]);
+            emit_swap(block, REG_68K_D_DE);
+            break;
+
+        case 0x1e: // ld e, imm8
+            emit_move_b_dn(block, REG_68K_D_DE, gb_code[src_ptr++]);
             break;
 
         case 0x26: // ld h, imm8
-            emit_move_w_an_dn(block, 0, 3);      // move.w a0, d3
-            emit_rol_w_8(block, 3);              // rol.w #8, d3
-            emit_move_b_dn(block, 3, gb_code[src_ptr++]);
-            emit_ror_w_8(block, 3);              // ror.w #8, d3
-            emit_movea_w_dn_an(block, 3, 0);     // movea.w d3, a0
+            // move.w a0, d5
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+             // rol.w #8, d5
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+            emit_move_b_dn(block, REG_68K_D_SCRATCH_1, gb_code[src_ptr++]);
+            // ror.w #8, d5
+            emit_ror_w_8(block, REG_68K_D_SCRATCH_1);
+            // movea.w d5, a0
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
             break;
 
         case 0x2e: // ld l, imm8
-            emit_move_w_an_dn(block, 0, 3);      // move.w a0, d3
-            emit_move_b_dn(block, 3, gb_code[src_ptr++]);
-            emit_movea_w_dn_an(block, 3, 0);     // movea.w d3, a0
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            emit_move_b_dn(block, REG_68K_D_SCRATCH_1, gb_code[src_ptr++]);
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
             break;
 
         case 0x3e: // ld a, imm8
-            emit_moveq_dn(block, 0, gb_code[src_ptr++]);
+            emit_moveq_dn(block, REG_68K_D_A, gb_code[src_ptr++]);
             break;
 
         case 0x10: // stop - end of execution
-            emit_move_l_dn(block, 4, 0xffffffff);
+            emit_move_l_dn(block, REG_68K_D_NEXT_PC, 0xffffffff);
             emit_rts(block);
             done = 1;
             break;
@@ -228,22 +264,22 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             break;
 
         case 0x3d: // dec a
-            emit_subq_b_dn(block, 0, 1);
-            emit_set_z_flag(block);
-            emit_ori_b_dn(block, 7, 0x40);  // D7 |= 0x40 (N flag)
+            emit_subq_b_dn(block, REG_68K_D_A, 1);
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // D7 |= 0x40 (N flag)
             break;
 
         case 0xfe: // cp a, imm8
-            emit_cmp_b_imm_dn(block, 0, gb_code[src_ptr++]);
-            emit_set_znc_flags(block);
+            emit_cmp_b_imm_dn(block, REG_68K_D_A, gb_code[src_ptr++]);
+            compile_set_znc_flags(block);
             break;
 
         case 0xc3: // jp imm16
             {
                 uint16_t target = gb_code[src_ptr] | (gb_code[src_ptr + 1] << 8);
                 src_ptr += 2;
-                emit_moveq_dn(block, 4, 0);
-                emit_move_w_dn(block, 4, target);
+                emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+                emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
                 emit_rts(block);
                 done = 1;
             }
@@ -253,11 +289,11 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             {
                 // pop return address from stack (A1 = base + SP)
                 // use byte operations to handle odd SP addresses
-                emit_moveq_dn(block, 4, 0);
-                emit_move_b_disp_an_dn(block, 1, 1, 4);  // D4 = [SP+1] (high byte)
-                emit_rol_w_8(block, 4);                  // shift to high position
-                emit_move_b_ind_an_dn(block, 1, 4);      // D4.b = [SP] (low byte)
-                emit_addq_w_an(block, 1, 2);             // SP += 2
+                emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+                emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC);  // D4 = [SP+1] (high byte)
+                emit_rol_w_8(block, REG_68K_D_NEXT_PC);                  // shift to high position
+                emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);      // D4.b = [SP] (low byte)
+                emit_addq_w_an(block, REG_68K_A_SP, 2);             // SP += 2
                 emit_rts(block);
                 done = 1;
             }
@@ -271,16 +307,16 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
 
                 // push return address (A1 = base + SP)
                 // use byte operations to handle odd SP addresses
-                emit_moveq_dn(block, 3, 0);
-                emit_move_w_dn(block, 3, ret_addr);
-                emit_subq_w_an(block, 1, 2);             // SP -= 2
-                emit_move_b_dn_ind_an(block, 3, 1);      // [SP] = low byte
-                emit_rol_w_8(block, 3);                  // swap bytes
-                emit_move_b_dn_disp_an(block, 3, 1, 1);  // [SP+1] = high byte
+                emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
+                emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
+                emit_subq_w_an(block, REG_68K_A_SP, 2);             // SP -= 2
+                emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);      // [SP] = low byte
+                emit_rol_w_8(block, REG_68K_D_SCRATCH_1);                  // swap bytes
+                emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);  // [SP+1] = high byte
 
                 // jump to target
-                emit_moveq_dn(block, 4, 0);
-                emit_move_w_dn(block, 4, target);
+                emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+                emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
                 emit_rts(block);
                 done = 1;
             }
@@ -290,7 +326,7 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             // call interpreter as a fallback?
             fprintf(stderr, "compile_block: unknown opcode 0x%02x at 0x%04x\n",
                     op, src_address + src_ptr - 1);
-            emit_move_l_dn(block, 4, 0xffffffff);
+            emit_move_l_dn(block, REG_68K_D_NEXT_PC, 0xffffffff);
             emit_rts(block);
             done = 1;
             break;

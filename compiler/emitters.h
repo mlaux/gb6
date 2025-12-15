@@ -37,9 +37,6 @@ void emit_andi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
 void emit_ori_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
 void emit_or_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 
-void emit_set_z_flag(struct code_block *block);
-void emit_set_znc_flags(struct code_block *block);
-
 void emit_rts(struct code_block *block);
 void emit_bra_w(struct code_block *block, int16_t disp);
 void emit_beq_w(struct code_block *block, int16_t disp);

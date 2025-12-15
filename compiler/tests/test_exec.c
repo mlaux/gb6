@@ -29,8 +29,9 @@ TEST(test_exec_jp_skip)
         0x10              // 0x0009: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 1);           // A = 1
-    ASSERT_EQ(get_dreg(1) & 0x00ff00ff, 0x03);  // B = 0, C = 3
+    // A = 1, B = 0, C = 3
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 1);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0x00ff00ff, 0x03);
 }
 
 TEST(test_exec_jr_forward)
@@ -44,8 +45,8 @@ TEST(test_exec_jr_forward)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x11);        // A should still be 0x11
-    ASSERT_EQ(get_dreg(1) & 0xff, 0x33);        // C = 0x33
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x11);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x33);
 }
 
 TEST(test_exec_jr_zero)
@@ -58,8 +59,8 @@ TEST(test_exec_jr_zero)
         0x10              // 0x0006: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0xaa);
-    ASSERT_EQ(get_dreg(1) & 0xff, 0xbb);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xaa);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0xbb);
 }
 
 TEST(test_exec_dec_a_loop)
@@ -73,7 +74,7 @@ TEST(test_exec_dec_a_loop)
         0x10              // 0x0005: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x00);  // A should be 0 after loop
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x00);  // A should be 0 after loop
 }
 
 TEST(test_exec_cp_equal)
@@ -85,8 +86,8 @@ TEST(test_exec_cp_equal)
         0x10              // 0x0004: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged by cp
-    ASSERT_EQ(get_dreg(7) & 0x80, 0x80);  // Z flag set (bit 7)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged by cp
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x80, 0x80);  // Z flag set (bit 7)
 }
 
 TEST(test_exec_cp_not_equal)
@@ -98,8 +99,8 @@ TEST(test_exec_cp_not_equal)
         0x10              // 0x0004: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged
-    ASSERT_EQ(get_dreg(7) & 0x80, 0x00);  // Z flag clear
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x80, 0x00);  // Z flag clear
 }
 
 TEST(test_exec_cp_carry)
@@ -111,7 +112,7 @@ TEST(test_exec_cp_carry)
         0x10              // 0x0004: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(7) & 0x10, 0x10);  // C flag set (bit 4)
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x10, 0x10);  // C flag set (bit 4)
 }
 
 TEST(test_exec_jr_z_taken)
@@ -125,7 +126,7 @@ TEST(test_exec_jr_z_taken)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged (skip was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged (skip was taken)
 }
 
 TEST(test_exec_jr_z_not_taken)
@@ -139,7 +140,7 @@ TEST(test_exec_jr_z_not_taken)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x99);  // A changed (skip not taken)
 }
 
 TEST(test_exec_jr_c_taken)
@@ -153,7 +154,7 @@ TEST(test_exec_jr_c_taken)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x10);  // A unchanged (skip was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x10);  // A unchanged (skip was taken)
 }
 
 TEST(test_exec_jr_c_not_taken)
@@ -167,7 +168,7 @@ TEST(test_exec_jr_c_not_taken)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x99);  // A changed (skip not taken)
 }
 
 TEST(test_exec_jr_nc_taken)
@@ -181,7 +182,7 @@ TEST(test_exec_jr_nc_taken)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x42);  // A unchanged (skip was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged (skip was taken)
 }
 
 TEST(test_exec_jr_nc_not_taken)
@@ -195,7 +196,7 @@ TEST(test_exec_jr_nc_not_taken)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x99);  // A changed (skip not taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x99);  // A changed (skip not taken)
 }
 
 TEST(test_exec_call_ret_simple)
@@ -211,8 +212,8 @@ TEST(test_exec_call_ret_simple)
         0xc9              // 0x000a: ret
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x33);        // A = 0x33 (set after return)
-    ASSERT_EQ((get_dreg(1) >> 16) & 0xff, 0x22); // B = 0x22 (set in subroutine)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x33);        // A = 0x33 (set after return)
+    ASSERT_EQ((get_dreg(REG_68K_D_BC) >> 16) & 0xff, 0x22); // B = 0x22 (set in subroutine)
 }
 
 TEST(test_exec_call_ret_nested)
@@ -233,7 +234,7 @@ TEST(test_exec_call_ret_nested)
         0xc9              // 0x0012: ret from sub2
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0x04);  // A = 4 (final value after all returns)
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x04);  // A = 4 (final value after all returns)
 }
 
 TEST(test_exec_call_preserves_regs)
@@ -250,9 +251,9 @@ TEST(test_exec_call_preserves_regs)
         0xc9              // 0x000c: ret
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_dreg(0) & 0xff, 0xaa);         // A preserved
-    ASSERT_EQ((get_dreg(1) >> 16) & 0xff, 0xbb); // B preserved
-    ASSERT_EQ(get_dreg(1) & 0xff, 0xcc);         // C set by subroutine
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xaa);         // A preserved
+    ASSERT_EQ((get_dreg(REG_68K_D_BC) >> 16) & 0xff, 0xbb); // B preserved
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0xcc);         // C set by subroutine
 }
 
 void register_exec_tests(void)
