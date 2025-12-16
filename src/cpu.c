@@ -6,7 +6,7 @@
 #include "types.h"
 #include "instructions.h"
 
-int flag_isset(struct cpu *cpu, int flag)
+inline int flag_isset(struct cpu *cpu, int flag)
 {
     return (cpu->f & flag) != 0;
 }
@@ -20,6 +20,9 @@ static inline void clear_flag(struct cpu *cpu, int flag)
 {
     cpu->f &= ~flag;
 }
+
+// Update zero flag based on value, preserving other flags
+#define UPDATE_ZERO(cpu, val) ((cpu)->f = ((cpu)->f & ~FLAG_ZERO) | ((val) ? 0 : FLAG_ZERO))
 
 static inline u16 read_double_reg(struct cpu *cpu, u8 *rh, u8 *rl)
 {
@@ -77,192 +80,96 @@ static inline void write16(struct cpu *cpu, u16 address, u16 data)
     dmg_write(cpu->dmg, address + 1, data >> 8);
 }
 
-static void inc_with_carry(struct cpu *regs, u8 *reg)
+static void inc_with_carry(struct cpu *cpu, u8 *reg)
 {
-	clear_flag(regs, FLAG_SIGN);
-	if((*reg & 0xf) == 0xf)
-		set_flag(regs, FLAG_HALF_CARRY);
-    else clear_flag(regs, FLAG_HALF_CARRY);
+	int half = (*reg & 0xf) == 0xf;
 	(*reg)++;
-	if(*reg == 0)
-		set_flag(regs, FLAG_ZERO);
-    else clear_flag(regs, FLAG_ZERO);
+	cpu->f = (cpu->f & FLAG_CARRY) | (*reg ? 0 : FLAG_ZERO) | (half ? FLAG_HALF_CARRY : 0);
 }
 
-static void dec_with_carry(struct cpu *regs, u8 *reg)
+static void dec_with_carry(struct cpu *cpu, u8 *reg)
 {
-	set_flag(regs, FLAG_SIGN);
-	if((*reg & 0xf) == 0)
-		set_flag(regs, FLAG_HALF_CARRY);
-    else clear_flag(regs, FLAG_HALF_CARRY);
+	int half = (*reg & 0xf) == 0;
 	(*reg)--;
-	if(*reg == 0)
-		set_flag(regs, FLAG_ZERO);
-    else clear_flag(regs, FLAG_ZERO);
+	cpu->f = (cpu->f & FLAG_CARRY) | (*reg ? 0 : FLAG_ZERO) | FLAG_SIGN | (half ? FLAG_HALF_CARRY : 0);
 }
 
-static u8 rotate_left(struct cpu *regs, u8 reg)
+static u8 rotate_left(struct cpu *cpu, u8 val)
 {
-    int old_carry = flag_isset(regs, FLAG_CARRY);
-	int result = (u8) ((reg & 0x7f) << 1) | old_carry;
-    
-    if (!result) {
-        set_flag(regs, FLAG_ZERO);
-    } else {
-        clear_flag(regs, FLAG_ZERO);
-    }
-    clear_flag(regs, FLAG_SIGN);
-    clear_flag(regs, FLAG_HALF_CARRY);
-    if (reg & 0x80) {
-        set_flag(regs, FLAG_CARRY);
-    } else {
-        clear_flag(regs, FLAG_CARRY);
-    }
-    return result;
+	int old_carry = flag_isset(cpu, FLAG_CARRY);
+	u8 result = (val << 1) | old_carry;
+	cpu->f = (result ? 0 : FLAG_ZERO) | ((val & 0x80) ? FLAG_CARRY : 0);
+	return result;
 }
 
 static u8 rlc(struct cpu *cpu, u8 val)
 {
-    int old_msb = (val & 0x80) >> 7;
-    int result = (val & 0x7f) << 1 | old_msb;
-    if (!result)
-        set_flag(cpu, FLAG_ZERO);
-    else clear_flag(cpu, FLAG_ZERO);
-    clear_flag(cpu, FLAG_SIGN);
-    clear_flag(cpu, FLAG_HALF_CARRY);
-    if (old_msb) 
-        set_flag(cpu, FLAG_CARRY);
-    else clear_flag(cpu, FLAG_CARRY);
-    return result;
+	int old_msb = (val & 0x80) >> 7;
+	u8 result = (val << 1) | old_msb;
+	cpu->f = (result ? 0 : FLAG_ZERO) | (old_msb ? FLAG_CARRY : 0);
+	return result;
 }
 
-static u8 rotate_right(struct cpu *regs, u8 reg)
+static u8 rotate_right(struct cpu *cpu, u8 val)
 {
-    int old_carry = flag_isset(regs, FLAG_CARRY) << 7;
-	// copy old rightmost bit to carry flag, clear ZNH
-	regs->f = (reg & 0x01) << 4;
-	// rotate
-	int result = old_carry | reg >> 1;
-    if (!result) set_flag(regs, FLAG_ZERO);
-    return result;
+	int old_carry = flag_isset(cpu, FLAG_CARRY);
+	u8 result = (old_carry << 7) | (val >> 1);
+	cpu->f = (result ? 0 : FLAG_ZERO) | ((val & 0x01) ? FLAG_CARRY : 0);
+	return result;
 }
 
 static u8 rrc(struct cpu *cpu, u8 val)
 {
-    int old_lsb = (val & 1) << 7;
-    int result = old_lsb | (val & 0xfe) >> 1;
-    if (!result)
-        set_flag(cpu, FLAG_ZERO);
-    else clear_flag(cpu, FLAG_ZERO);
-    clear_flag(cpu, FLAG_SIGN);
-    clear_flag(cpu, FLAG_HALF_CARRY);
-    if (old_lsb) 
-        set_flag(cpu, FLAG_CARRY);
-    else clear_flag(cpu, FLAG_CARRY);
-    return result;
+	int old_lsb = val & 1;
+	u8 result = (old_lsb << 7) | (val >> 1);
+	cpu->f = (result ? 0 : FLAG_ZERO) | (old_lsb ? FLAG_CARRY : 0);
+	return result;
 }
 
 static u8 shift_left(struct cpu *cpu, u8 value)
 {
-    u8 result = value << 1;
-    if (result == 0) {
-        set_flag(cpu, FLAG_ZERO);
-    } else {
-        clear_flag(cpu, FLAG_ZERO);
-    }
-    if (value & 0x80) {
-        set_flag(cpu, FLAG_CARRY);
-    } else {
-        clear_flag(cpu, FLAG_CARRY);
-    }
-    clear_flag(cpu, FLAG_SIGN);
-    clear_flag(cpu, FLAG_HALF_CARRY);
-    return result;
+	u8 result = value << 1;
+	cpu->f = (result ? 0 : FLAG_ZERO) | ((value & 0x80) ? FLAG_CARRY : 0);
+	return result;
 }
 
 static u8 shift_right(struct cpu *cpu, u8 value)
 {
-    u8 result = (signed char) value >> 1;
-    if (result == 0) {
-        set_flag(cpu, FLAG_ZERO);
-    } else {
-        clear_flag(cpu, FLAG_ZERO);
-    }
-    if (value & 0x1) {
-        set_flag(cpu, FLAG_CARRY);
-    } else {
-        clear_flag(cpu, FLAG_CARRY);
-    }
-    clear_flag(cpu, FLAG_SIGN);
-    clear_flag(cpu, FLAG_HALF_CARRY);
-    return result;
+	u8 result = (signed char) value >> 1;
+	cpu->f = (result ? 0 : FLAG_ZERO) | ((value & 0x01) ? FLAG_CARRY : 0);
+	return result;
 }
 
 static u8 srl(struct cpu *cpu, u8 value)
 {
-    int result = value >> 1;
-    if (result == 0) {
-        set_flag(cpu, FLAG_ZERO);
-    } else {
-        clear_flag(cpu, FLAG_ZERO);
-    }
-    if (value & 0x1) {
-        set_flag(cpu, FLAG_CARRY);
-    } else {
-        clear_flag(cpu, FLAG_CARRY);
-    }
-    clear_flag(cpu, FLAG_SIGN);
-    clear_flag(cpu, FLAG_HALF_CARRY);
-    return result;
+	u8 result = value >> 1;
+	cpu->f = (result ? 0 : FLAG_ZERO) | ((value & 0x01) ? FLAG_CARRY : 0);
+	return result;
 }
 
 static u8 swap(struct cpu *cpu, u8 value)
 {
-    u8 ret = ((value & 0xf0) >> 4) | ((value & 0x0f) << 4);
-	if(ret == 0) {
-		set_flag(cpu, FLAG_ZERO);
-    } else {
-        clear_flag(cpu, FLAG_ZERO);
-    }
-	clear_flag(cpu, FLAG_SIGN);
-	clear_flag(cpu, FLAG_HALF_CARRY);
-	clear_flag(cpu, FLAG_CARRY);
-    return ret;
+	u8 ret = ((value & 0xf0) >> 4) | ((value & 0x0f) << 4);
+	cpu->f = ret ? 0 : FLAG_ZERO;
+	return ret;
 }
 
 static void xor(struct cpu *regs, u8 value)
 {
 	regs->a ^= value;
-	if(regs->a == 0)
-		set_flag(regs, FLAG_ZERO);
-    else clear_flag(regs, FLAG_ZERO);
-	clear_flag(regs, FLAG_SIGN);
-	clear_flag(regs, FLAG_HALF_CARRY);
-	clear_flag(regs, FLAG_CARRY);
+	regs->f = regs->a ? 0 : FLAG_ZERO;
 }
 
 static void or(struct cpu *regs, u8 value)
 {
 	regs->a |= value;
-	if(regs->a == 0)
-		set_flag(regs, FLAG_ZERO);
-    else clear_flag(regs, FLAG_ZERO);
-	clear_flag(regs, FLAG_SIGN);
-	clear_flag(regs, FLAG_HALF_CARRY);
-	clear_flag(regs, FLAG_CARRY);
+	regs->f = regs->a ? 0 : FLAG_ZERO;
 }
 
 static void and(struct cpu *cpu, u8 value)
 {
-    cpu->a &= value;
-	if(cpu->a == 0) {
-		set_flag(cpu, FLAG_ZERO);
-    } else {
-        clear_flag(cpu, FLAG_ZERO);
-    }
-    clear_flag(cpu, FLAG_SIGN);
-    set_flag(cpu, FLAG_HALF_CARRY);
-    clear_flag(cpu, FLAG_CARRY);
+	cpu->a &= value;
+	cpu->f = (cpu->a ? 0 : FLAG_ZERO) | FLAG_HALF_CARRY;
 }
 
 static void add(struct cpu *cpu, u8 value, int with_carry)
@@ -497,9 +404,9 @@ static void daa(struct cpu *cpu)
     }
 
     if (cpu->a) {
-        set_flag(cpu, FLAG_ZERO);
-    } else {
         clear_flag(cpu, FLAG_ZERO);
+    } else {
+        set_flag(cpu, FLAG_ZERO);
     }
     clear_flag(cpu, FLAG_HALF_CARRY);
 }
@@ -751,8 +658,8 @@ void cpu_step(struct cpu *cpu)
         // A = r16
         case 0x0a: cpu->a = read8(cpu, read_bc(cpu)); break; // A = *BC
         case 0x1a: cpu->a = read8(cpu, read_de(cpu)); break; // A = *DE
-        case 0x2a: cpu->a = read8(cpu, read_hl(cpu)); write_hl(cpu, read_hl(cpu) + 1); break;
-        case 0x3a: cpu->a = read8(cpu, read_hl(cpu)); write_hl(cpu, read_hl(cpu) - 1); break;
+        case 0x2a: temp16 = read_hl(cpu); cpu->a = read8(cpu, temp16); write_hl(cpu, temp16 + 1); break;
+        case 0x3a: temp16 = read_hl(cpu); cpu->a = read8(cpu, temp16); write_hl(cpu, temp16 - 1); break;
 
         case 0x12: // LD (DE),A
             write8(cpu, read_de(cpu), cpu->a);
@@ -786,12 +693,14 @@ void cpu_step(struct cpu *cpu)
             cpu->pc += 2;
             break;
         case 0x22: // LD (HL+), A
-            write8(cpu, read_hl(cpu), cpu->a);
-            write_hl(cpu, read_hl(cpu) + 1);
+            temp16 = read_hl(cpu);
+            write8(cpu, temp16, cpu->a);
+            write_hl(cpu, temp16 + 1);
             break;
         case 0x32: // LD (HL-), A
-            write8(cpu, read_hl(cpu), cpu->a);
-            write_hl(cpu, read_hl(cpu) - 1);
+            temp16 = read_hl(cpu);
+            write8(cpu, temp16, cpu->a);
+            write_hl(cpu, temp16 - 1);
             break;
         case 0x39: // ADD HL, SP
             add16(cpu, cpu->sp);

@@ -53,38 +53,71 @@ void InitEverything(void)
   g_running = 1;
 }
 
-// 160 pixels / 8 bits per pixel = 20 bytes per line
-char offscreen[20 * 144];
-Rect offscreenRect = { 0, 0, 144, 160 };
+// 2x scaled: 320x288 @ 1bpp = 40 bytes per row
+char offscreen[40 * 288];
+Rect offscreenRect = { 0, 0, 288, 320 };
 
 BitMap offscreenBmp;
 
-int execTime;
+// lookup tables for 2x dithered rendering
+// index = 4 packed GB pixels (2 bits each), output = 8 screen pixels (1bpp)
+static unsigned char dither_row0[256];
+static unsigned char dither_row1[256];
 
-void Render(void)
+void init_dither_lut(void)
 {
-  char debug[128];
-  double ms;
-  long k = 0, dst, bit;
-  for (dst = 0; dst < 20 * 144; dst++) {
-    for (bit = 7; bit >= 0; bit--) {
-      offscreen[dst] |= lcd.pixels[k++];
-      offscreen[dst] <<= 1;
+  // 2x2 dither patterns for each GB color (0-3)
+  // stored in high 2 bits: 00=white, 01=right black, 10=left black, 11=both black
+  // color 0 (white):      top=00 bot=00
+  // color 1 (light gray): top=00 bot=01 (one black pixel, bottom-right)
+  // color 2 (dark gray):  top=10 bot=01 (checkerboard)
+  // color 3 (black):      top=11 bot=11
+  static const unsigned char pat_top[4] = { 0x00, 0x00, 0x80, 0xc0 };
+  static const unsigned char pat_bot[4] = { 0x00, 0x40, 0x40, 0xc0 };
+  int idx;
+
+  for (idx = 0; idx < 256; idx++) {
+    int p0 = (idx >> 6) & 3;
+    int p1 = (idx >> 4) & 3;
+    int p2 = (idx >> 2) & 3;
+    int p3 = idx & 3;
+
+    dither_row0[idx] = pat_top[p0] | (pat_top[p1] >> 2) |
+                       (pat_top[p2] >> 4) | (pat_top[p3] >> 6);
+    dither_row1[idx] = pat_bot[p0] | (pat_bot[p1] >> 2) |
+                       (pat_bot[p2] >> 4) | (pat_bot[p3] >> 6);
+  }
+}
+
+// called by dmg_step at vblank
+void lcd_draw(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst = (unsigned char *) offscreen;
+
+  for (gy = 0; gy < 144; gy++) {
+    unsigned char *row0 = dst;
+    unsigned char *row1 = dst + 40;
+    int gx;
+
+    for (gx = 0; gx < 160; gx += 4) {
+      // pack 4 GB pixels into LUT index
+      unsigned char idx = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
+      src += 4;
+
+      *row0++ = dither_row0[idx];
+      *row1++ = dither_row1[idx];
     }
-    dst++;
+
+    dst += 80; // advance 2 screen rows
   }
 
   SetPort(g_wp);
   CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
-
-  EraseRect(&g_wp->portRect);
-  MoveTo(10, 180);
-  ms = execTime / 600.0;
-  sprintf(debug, "10000 in %d ticks, %.2f ms per instruction", execTime, ms);
-  C2PStr(debug);
-  DrawString(debug);
 }
 
+// with interpreter and 8 Mhz 68000:
 // 417 ticks
 // 10000 instructions
 
@@ -102,17 +135,17 @@ void Render(void)
 
 void StartEmulation(void)
 {
-  g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true, 
+  g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true,
         noGrowDocProc, (WindowPtr) -1, true, 0);
   SetPort(g_wp);
 
   offscreenBmp.baseAddr = offscreen;
   offscreenBmp.bounds = offscreenRect;
-  offscreenBmp.rowBytes = 20;
+  offscreenBmp.rowBytes = 40;
   emulationOn = 1;
 }
 
-bool LoadRom(Str255 fileName, short vRefNum)
+int LoadRom(Str255 fileName, short vRefNum)
 {
   int err;
   short fileNo;
@@ -152,7 +185,7 @@ bool LoadRom(Str255 fileName, short vRefNum)
 
 // -- DIALOG BOX FUNCTIONS --
 
-bool ShowOpenBox(void)
+int ShowOpenBox(void)
 {
   SFReply reply;
   Point pt = { 0, 0 };
@@ -263,54 +296,67 @@ void OnMouseDown(EventRecord *pEvt)
   }
 }
 
-// -- ENTRY POINT --
-int main(int argc, char *argv[])
+// process pending events, returns 0 if app should quit
+static int ProcessEvents(void)
 {
   EventRecord evt;
 
-  int executed;
-  int paused = 0;
-  int pause_next = 0;
+  // timeout=0 for non-blocking when emulating, 1 to yield CPU when idle
+  while (WaitNextEvent(everyEvent, &evt, emulationOn ? 0 : 1, 0)) {
+    if (IsDialogEvent(&evt)) {
+      DialogRef hitBox;
+      DialogItemIndex hitItem;
+      if (DialogSelect(&evt, &hitBox, &hitItem)) {
+        stateDialog = NULL;
+      }
+    } else switch (evt.what) {
+      case mouseDown:
+        OnMouseDown(&evt);
+        break;
+      case updateEvt:
+        BeginUpdate((WindowPtr) evt.message);
+        EndUpdate((WindowPtr) evt.message);
+        break;
+      case keyDown:
+        if (evt.modifiers & cmdKey) {
+          OnMenuAction(MenuKey(evt.message & charCodeMask));
+        }
+        break;
+    }
 
+    if (!g_running) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+// -- ENTRY POINT --
+int main(int argc, char *argv[])
+{
   InitEverything();
+  init_dither_lut();
 
   lcd_new(&lcd);
   dmg_new(&dmg, &cpu, &rom, &lcd);
   cpu.dmg = &dmg;
-
   cpu.pc = 0x100;
 
-  while(g_running) {
+  while (g_running) {
+    if (!ProcessEvents()) {
+      break;
+    }
+
     if (emulationOn) {
-      int k;
-      int start = TickCount();
-      for (k = 0; k < 10000; k++) {
+      // run one frame (70224 cycles = 154 scanlines * 456 cycles each)
+      unsigned long frame_end = cpu.cycle_count + 70224;
+      while (cpu.cycle_count < frame_end) {
         dmg_step(&dmg);
       }
-      execTime = TickCount() - start;
-      emulationOn = false;
-      Render();
-    } else {
-      if(WaitNextEvent(everyEvent, &evt, 0, 0) != nullEvent) {
-        if (IsDialogEvent(&evt)) {
-          DialogRef hitBox;
-          DialogItemIndex hitItem;
-          if (DialogSelect(&evt, &hitBox, &hitItem)) {
-            stateDialog = NULL;
-          }
-        } else switch(evt.what) {
-          case mouseDown:
-            OnMouseDown(&evt);
-            break;
-          case updateEvt:
-            BeginUpdate((WindowPtr) evt.message);
-            // Render();
-            EndUpdate((WindowPtr) evt.message);
-            break;
-        }
-      }
+      // lcd_draw is called automatically by dmg_step at vblank
     }
   }
-  
+
   return 0;
 }

@@ -9,10 +9,10 @@
 
 #define WINDOW_TITLE "\pOutput"
 
-#define WINDOW_X 100
-#define WINDOW_Y 100
-#define WINDOW_WIDTH 256
-#define WINDOW_HEIGHT 256
+#define WINDOW_X 3
+#define WINDOW_Y 40
+#define WINDOW_WIDTH 320
+#define WINDOW_HEIGHT 288
 
 #define ALRT_NOT_ENOUGH_RAM 128
 #define ALRT_4_LINE 129

@@ -14,6 +14,5 @@ add_application(Emulator
     ../src/rom.c
     ../src/mbc.c
     emulator.c
-    lcd_mac.c
     resources.r
 )

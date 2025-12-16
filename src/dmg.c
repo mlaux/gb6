@@ -59,9 +59,6 @@ u8 dmg_read(void *_dmg, u16 address)
         return mbc_data;
     }
 
-//    if (address < 0x100) {
-//        return dmg_boot_rom[address];
-//    } else if (address < 0x4000) {
     if (address < 0x4000) {
         return dmg->rom->data[address];
     } else if (address < 0x8000) {
@@ -222,15 +219,9 @@ void dmg_step(void *_dmg)
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
-                lcd_render_background(dmg, lcdc, 0);
+                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+                lcd_render_background_scrolled(dmg, lcdc, window_enabled);
             }
-
-            int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-            if (window_enabled) {
-                lcd_render_background(dmg, lcdc, 1);
-            }
-
-            lcd_apply_scroll(dmg->lcd, window_enabled);
 
             if (lcdc & LCDC_ENABLE_OBJ) {
                 lcd_render_objs(dmg);
