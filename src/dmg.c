@@ -158,108 +158,6 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
     dmg->interrupt_requested |= nr;
 }
 
-// TODO move to lcd.c, it needs to be able to access dmg_read though
-static void render_background(struct dmg *dmg, int lcdc, int is_window)
-{
-    int bg_map = (lcdc & LCDC_BG_TILE_MAP) ? 0x9c00 : 0x9800;
-    int window_map = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x9c00 : 0x9800;
-    int map_base_addr = is_window ? window_map : bg_map;
-    int unsigned_mode = lcdc & LCDC_BG_TILE_DATA;
-    int tile_base_addr = unsigned_mode ? 0x8000 : 0x9000;
-    int palette = lcd_read(dmg->lcd, REG_BGP);
-    u8 *dest = is_window ? dmg->lcd->window : dmg->lcd->buf;
-
-    int tile_y, tile_x;
-    for (tile_y = 0; tile_y < 32; tile_y++) {
-        for (tile_x = 0; tile_x < 32; tile_x++) {
-            int eff_addr, b, i;
-
-            int off = 256 * 8 * tile_y + 8 * tile_x;
-            int tile_index = dmg_read(dmg, map_base_addr + (tile_y * 32 + tile_x));
-
-            if (unsigned_mode) {
-                eff_addr = tile_base_addr + 16 * tile_index;
-            } else {
-                eff_addr = tile_base_addr + 16 * (signed char) tile_index;
-            }
-
-            for (b = 0; b < 16; b += 2) {
-                int data1 = dmg_read(dmg, eff_addr + b);
-                int data2 = dmg_read(dmg, eff_addr + b + 1);
-                for (i = 7; i >= 0; i--) {
-                    int col_index = (data1 & (1 << i)) ? 1 : 0;
-                    col_index |= ((data2 & (1 << i)) ? 1 : 0) << 1;
-                    dest[off] = (palette >> (col_index << 1)) & 3;
-                    off++;
-                }
-                off += 248;
-            }
-        }
-    }
-}
-
-struct oam_entry {
-    u8 pos_y;
-    u8 pos_x;
-    u8 tile;
-    u8 attrs;
-};
-
-// TODO: only ten per scanline, priority, attributes, move to lcd.c
-static void render_objs(struct dmg *dmg)
-{
-    int k, lcd_x, lcd_y, off;
-    struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
-    int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
-
-    for (k = 0; k < 40; k++, oam++) {
-        if (oam->pos_y == 0 || oam->pos_y >= 160) {
-            continue;
-        }
-        if (oam->pos_x == 0 || oam->pos_x >= 168) {
-            continue;
-        }
-        int first_tile = 0x8000 + 16 * oam->tile;
-        int palette = oam->attrs & OAM_ATTR_PALETTE 
-            ? lcd_read(dmg->lcd, REG_OBP1)
-            : lcd_read(dmg->lcd, REG_OBP0);
-
-        lcd_x = oam->pos_x - 8;
-        lcd_y = oam->pos_y - 16;
-
-        off = 160 * lcd_y + lcd_x;
-        int b, i, tile_bytes = 16;
-        if (tall) {
-            tile_bytes = 32;
-        }
-        for (b = 0; b < tile_bytes; b += 2) {
-            int use_tile = b;
-            if (oam->attrs & OAM_ATTR_MIRROR_Y) {
-                use_tile = (tile_bytes - 2) - b;
-            }
-            int data1 = dmg_read(dmg, first_tile + use_tile);
-            int data2 = dmg_read(dmg, first_tile + use_tile + 1);
-            for (i = 7; i >= 0; i--) {
-                if (off < 0 || off >= 160 * 144) {
-                    // terrible clipping. need to not have an if per-pixel
-                    continue;
-                }
-                int use_index = i;
-                if (oam->attrs & OAM_ATTR_MIRROR_X) {
-                    use_index = 7 - i;
-                }
-                int col_index = ((data1 & (1 << use_index)) ? 1 : 0)
-                              | ((data2 & (1 << use_index)) ? 1 : 0) << 1;
-                if (col_index) {
-                    dmg->lcd->pixels[off] = (palette >> (col_index << 1)) & 3;
-                }
-                off++;
-            }
-            off += 152;
-        }
-    }
-}
-
 static void timer_step(struct dmg *dmg)
 {
     dmg->timer_div++;
@@ -324,18 +222,18 @@ void dmg_step(void *_dmg)
 
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
-                render_background(dmg, lcdc, 0);
+                lcd_render_background(dmg, lcdc, 0);
             }
 
             int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
             if (window_enabled) {
-                render_background(dmg, lcdc, 1);
+                lcd_render_background(dmg, lcdc, 1);
             }
 
             lcd_apply_scroll(dmg->lcd, window_enabled);
 
             if (lcdc & LCDC_ENABLE_OBJ) {
-                render_objs(dmg);
+                lcd_render_objs(dmg);
             }
 
             lcd_draw(dmg->lcd);

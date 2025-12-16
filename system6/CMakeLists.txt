@@ -17,8 +17,3 @@ add_application(Emulator
     lcd_mac.c
     resources.r
 )
-
-add_application(CompilerTest
-    compiler68k.c
-    CONSOLE
-)

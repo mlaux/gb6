@@ -21,7 +21,6 @@ add_executable(gb6
     ../src/lcd.c
     ../src/rom.c
     ../src/mbc.c
-    emulator.c
     lcd_imgui.c
     imgui/imgui_demo.cpp
     imgui/imgui_draw.cpp
@@ -30,11 +29,12 @@ add_executable(gb6
     imgui/imgui.cpp
     imgui/imgui_tables.cpp
     imgui/imgui_widgets.cpp
-    imgui_example.cpp
+    main_imgui.cpp
 )
 
 target_link_libraries(gb6
-    "-lGL"
+    "-framework OpenGL"
+    # "-lGL"
     "-ldl"
     "${SDL_LIBS}"
 )

@@ -63,44 +63,11 @@ GLuint make_output_texture() {
     return image_texture;
 }
 
-unsigned int default_palette[] = { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
-// ugly evenly spaced: { 0xffffff, 0xaaaaaa, 0x555555, 0x000000 };
-// bgb default: {0xe0f8d0, 0x88c070, 0x346856, 0x081820};
-
-// https://lospec.com/palette-list/blk-aqu4
-// { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
-
-// https://lospec.com/palette-list/velvet-cherry-gb
-// { 0x9775a6, 0x683a68, 0x412752, 0x2d162c };
-
-
 void convert_output(struct lcd *lcd) {
-    int x, y;
-    int out_index = 0;
-    for (y = 0; y < 256; y++) {
-        for (x = 0; x < 256; x++) {
-            int val = lcd->buf[y * 256 + x];
-            int fill = default_palette[val];
-            //int fill = val ? 255 : 0;
-            output_image[out_index++] = (fill >> 16) & 0xff;
-            output_image[out_index++] = (fill >> 8) & 0xff;
-            output_image[out_index++] = fill & 0xff;
-            output_image[out_index++] = 255;
-        }
-    }
-    out_index = 0;
-    for (y = 0; y < 144; y++) {
-        for (x = 0; x < 160; x++) {
-            int val = lcd->pixels[y * 160 + x];
-            int fill = default_palette[val];
-            visible_pixels[out_index++] = (fill >> 16) & 0xff;
-            visible_pixels[out_index++] = (fill >> 8) & 0xff;
-            visible_pixels[out_index++] = fill & 0xff;
-            visible_pixels[out_index++] = 255;
-        }
-    }
+
 }
 
+unsigned int vram_palette[] = { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
 void convert_vram(struct dmg *dmg) {
     int tile_y, tile_x;
     int off, in;
@@ -114,10 +81,12 @@ void convert_vram(struct dmg *dmg) {
                 int data2 = dmg->video_ram[in + b + 1];
                 for (i = 7; i >= 0; i--) {
                     // monochrome for now
-                    int fill = (data1 & (1 << i)) ? 255 : 0;
-                    vram_tiles[4 * off + 0] = fill;
-                    vram_tiles[4 * off + 1] = fill;
-                    vram_tiles[4 * off + 2] = fill;
+                    int fill = (data1 & (1 << i)) ? 1 : 0;
+                    fill |= ((data2 & (1 << i)) ? 1 : 0) << 1;
+                    fill = vram_palette[fill];
+                    vram_tiles[4 * off + 0] = (fill >> 16) & 0xff;
+                    vram_tiles[4 * off + 1] = (fill >> 8) & 0xff;
+                    vram_tiles[4 * off + 2] = fill & 0xff;
                     vram_tiles[4 * off + 3] = 255;
                     //dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
                     off++;
@@ -138,7 +107,6 @@ static void write_mem(ImU8 *data, size_t off, ImU8 d)
     dmg_write(data, (u16) off, d);
 }
 
-// Main code
 int main(int argc, char *argv[])
 {
     struct cpu cpu = { 0 };
@@ -356,7 +324,7 @@ int main(int argc, char *argv[])
                 convert_vram(&dmg);
                 glBindTexture(GL_TEXTURE_2D, vram_texture);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 96, 0, GL_RGBA, GL_UNSIGNED_BYTE, vram_tiles);
-                ImGui::Image((void*)(intptr_t) vram_texture, ImVec2(256, 96));
+                ImGui::Image((void*)(intptr_t) vram_texture, ImVec2(512, 192));
 
                 ImGui::End();
             }

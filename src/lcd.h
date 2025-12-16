@@ -70,4 +70,8 @@ void lcd_apply_scroll(struct lcd *lcd, int use_window);
 // output the pixels to the screen
 void lcd_draw(struct lcd *lcd);
 
+struct dmg;
+void lcd_render_background(struct dmg *dmg, int lcdc, int is_window);
+void lcd_render_objs(struct dmg *dmg);
+
 #endif

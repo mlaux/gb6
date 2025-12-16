@@ -4,6 +4,7 @@
 
 #include "types.h"
 #include "lcd.h"
+#include "dmg.h"
 
 void lcd_set_bit(struct lcd *lcd, u16 addr, u8 bit)
 {
@@ -100,5 +101,141 @@ int lcd_step(struct lcd *lcd)
     lcd_write(lcd, REG_LY, next_scanline);
 
     return next_scanline;
-    // printf("update lcd %d\n", next_scanline);
+}
+
+void lcd_render_background(struct dmg *dmg, int lcdc, int is_window)
+{
+    int bg_map = (lcdc & LCDC_BG_TILE_MAP) ? 0x1c00 : 0x1800;
+    int window_map = (lcdc & LCDC_WINDOW_TILE_MAP) ? 0x1c00 : 0x1800;
+    int map_off = is_window ? window_map : bg_map;
+    int unsigned_mode = lcdc & LCDC_BG_TILE_DATA;
+    int tile_base_off = unsigned_mode ? 0 : 0x1000;
+    u8 palette = lcd_read(dmg->lcd, REG_BGP);
+    u8 *vram = dmg->video_ram;
+    u8 *dest = is_window ? dmg->lcd->window : dmg->lcd->buf;
+
+    u8 pal[4] = {
+        palette & 3,
+        (palette >> 2) & 3,
+        (palette >> 4) & 3,
+        (palette >> 6) & 3
+    };
+
+    int tile_y, tile_x;
+    for (tile_y = 0; tile_y < 32; tile_y++) {
+        for (tile_x = 0; tile_x < 32; tile_x++) {
+            u8 *p = dest + 256 * 8 * tile_y + 8 * tile_x;
+            int tile_index = vram[map_off + tile_y * 32 + tile_x];
+            int tile_off;
+
+            if (unsigned_mode) {
+                tile_off = tile_base_off + 16 * tile_index;
+            } else {
+                tile_off = tile_base_off + 16 * (signed char) tile_index;
+            }
+
+            int b;
+            for (b = 0; b < 16; b += 2) {
+                u8 data1 = vram[tile_off + b];
+                u8 data2 = vram[tile_off + b + 1];
+                int k;
+                for (k = 0; k < 8; k++) {
+                    int col_index = ((data1 >> 7) & 1) | (((data2 >> 7) & 1) << 1);
+                    data1 <<= 1;
+                    data2 <<= 1;
+                    *p++ = pal[col_index];
+                }
+                p += 248;
+            }
+        }
+    }
+}
+
+struct oam_entry {
+    u8 pos_y;
+    u8 pos_x;
+    u8 tile;
+    u8 attrs;
+};
+
+// TODO: only ten per scanline, priority, attributes
+void lcd_render_objs(struct dmg *dmg)
+{
+    struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
+    int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
+    u8 *vram = dmg->video_ram;
+    u8 *pixels = dmg->lcd->pixels;
+
+    int k;
+    for (k = 0; k < 40; k++, oam++) {
+        if (oam->pos_y == 0 || oam->pos_y >= 160) {
+            continue;
+        }
+        if (oam->pos_x == 0 || oam->pos_x >= 168) {
+            continue;
+        }
+
+        int tile_off = 16 * oam->tile;
+        u8 palette = oam->attrs & OAM_ATTR_PALETTE
+            ? lcd_read(dmg->lcd, REG_OBP1)
+            : lcd_read(dmg->lcd, REG_OBP0);
+        u8 pal[4] = {
+            palette & 3,
+            (palette >> 2) & 3,
+            (palette >> 4) & 3,
+            (palette >> 6) & 3
+        };
+
+        int lcd_x = oam->pos_x - 8;
+        int lcd_y = oam->pos_y - 16;
+        int tile_bytes = tall ? 32 : 16;
+        int mirror_x = oam->attrs & OAM_ATTR_MIRROR_X;
+        int mirror_y = oam->attrs & OAM_ATTR_MIRROR_Y;
+
+        int b;
+        for (b = 0; b < tile_bytes; b += 2) {
+            int row_y = lcd_y + (b >> 1);
+            if (row_y < 0 || row_y >= 144) {
+                continue;
+            }
+
+            int use_b = mirror_y ? (tile_bytes - 2) - b : b;
+            u8 data1 = vram[tile_off + use_b];
+            u8 data2 = vram[tile_off + use_b + 1];
+
+            // calculate visible x range for this row
+            int x_start = lcd_x < 0 ? -lcd_x : 0;
+            int x_end = lcd_x + 8 > 160 ? 160 - lcd_x : 8;
+
+            u8 *p = pixels + row_y * 160 + lcd_x + x_start;
+            int x;
+            if (mirror_x) {
+                // mirrored: read bits from LSB to MSB
+                data1 >>= x_start;
+                data2 >>= x_start;
+                for (x = x_start; x < x_end; x++) {
+                    int col_index = (data1 & 1) | ((data2 & 1) << 1);
+                    data1 >>= 1;
+                    data2 >>= 1;
+                    if (col_index) {
+                        *p = pal[col_index];
+                    }
+                    p++;
+                }
+            } else {
+                // normal: read bits from MSB to LSB
+                data1 <<= x_start;
+                data2 <<= x_start;
+                for (x = x_start; x < x_end; x++) {
+                    int col_index = ((data1 >> 7) & 1) | (((data2 >> 7) & 1) << 1);
+                    data1 <<= 1;
+                    data2 <<= 1;
+                    if (col_index) {
+                        *p = pal[col_index];
+                    }
+                    p++;
+                }
+            }
+        }
+    }
 }

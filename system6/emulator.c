@@ -63,35 +63,26 @@ int execTime;
 
 void Render(void)
 {
-  // long k = 0, dst, bit;
-  // for (dst = 0; dst < 20 * 144; dst++) {
-  //   for (bit = 7; bit >= 0; bit--) {
-  //     offscreen[dst] |= lcd.pixels[k++];
-  //     offscreen[dst] <<= 1;
-  //   }
-  //   dst++;
-  // }
+  char debug[128];
+  double ms;
+  long k = 0, dst, bit;
+  for (dst = 0; dst < 20 * 144; dst++) {
+    for (bit = 7; bit >= 0; bit--) {
+      offscreen[dst] |= lcd.pixels[k++];
+      offscreen[dst] <<= 1;
+    }
+    dst++;
+  }
 
-  /*
-    offscreen[dst] = lcd.pixels[k++] << 7;
-    offscreen[dst] |= lcd.pixels[k++] << 6;
-    offscreen[dst] |= lcd.pixels[k++] << 5;
-    offscreen[dst] |= lcd.pixels[k++] << 4;
-    offscreen[dst] |= lcd.pixels[k++] << 3;
-    offscreen[dst] |= lcd.pixels[k++] << 2;
-    offscreen[dst] |= lcd.pixels[k++] << 1;
-    offscreen[dst] |= lcd.pixels[k++];
-  */
   SetPort(g_wp);
-  // CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
+  CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
 
-  // EraseRect(&g_wp->portRect);
-  // MoveTo(10, 180);
-  // char debug[128];
-  // double ms = execTime / 600.0;
-  // sprintf(debug, "10000 in %d ticks, %.2f ms per instruction", execTime, ms);
-  // C2PStr(debug);
-  // DrawString(debug);
+  EraseRect(&g_wp->portRect);
+  MoveTo(10, 180);
+  ms = execTime / 600.0;
+  sprintf(debug, "10000 in %d ticks, %.2f ms per instruction", execTime, ms);
+  C2PStr(debug);
+  DrawString(debug);
 }
 
 // 417 ticks
@@ -286,7 +277,6 @@ int main(int argc, char *argv[])
   lcd_new(&lcd);
   dmg_new(&dmg, &cpu, &rom, &lcd);
   cpu.dmg = &dmg;
-  // cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
   cpu.pc = 0x100;
 
@@ -314,7 +304,7 @@ int main(int argc, char *argv[])
             break;
           case updateEvt:
             BeginUpdate((WindowPtr) evt.message);
-            Render();
+            // Render();
             EndUpdate((WindowPtr) evt.message);
             break;
         }
