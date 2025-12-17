@@ -20,9 +20,6 @@ static uint8_t mem[MEM_SIZE];
 #define GB_MEM_BASE 0x0000
 #define DEFAULT_GB_SP 0x0fff
 
-int tests_run = 0;
-int tests_passed = 0;
-
 // Memory access callbacks for Musashi
 unsigned int m68k_read_memory_8(unsigned int address)
 {
@@ -220,7 +217,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
         m68k_execute(1000);
 
         // Check D0 for next PC or halt
-        pc = get_dreg(0);
+        pc = get_dreg(REG_68K_D_NEXT_PC);
         if (pc == HALT_SENTINEL) {
             break;
         }
@@ -262,7 +259,7 @@ int main(int argc, char *argv[])
     register_unit_tests();
     register_exec_tests();
 
-    printf("\n%d/%d tests passed\n", tests_passed, tests_run);
+    printf("all tests passed\n");
 
-    return tests_passed == tests_run ? 0 : 1;
+    return 0;
 }

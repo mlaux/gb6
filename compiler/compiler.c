@@ -83,7 +83,7 @@ static void compile_call_dmg_read(struct code_block *block)
     emit_addq_l_an(block, 7, 6);  // clean up stack (4 + 2 = 6 bytes)
 
     // Move result from D0 to D4 (A register)
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+    emit_move_b_dn_dn(block, 0, REG_68K_D_A);
 }
 
 static void compile_ld_imm16_split(
@@ -213,6 +213,13 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
     uint16_t src_ptr = 0;
     uint8_t op;
     int done = 0;
+
+#ifdef DEBUG_COMPILE
+    printf("compile_block: src_address=0x%04x, gb_code=%p\n",
+           src_address, (void *)gb_code);
+    printf("  first bytes: %02x %02x %02x\n",
+           gb_code[0], gb_code[1], gb_code[2]);
+#endif
 
     block = malloc(sizeof *block);
     if (!block) {

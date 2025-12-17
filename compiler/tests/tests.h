@@ -6,9 +6,6 @@
 #include <stdint.h>
 #include "../compiler.h"
 
-extern int tests_run;
-extern int tests_passed;
-
 // Register encoding:
 //   bits 0-3: register number (0-7)
 //   bit 4: 0 = data reg, 1 = address reg
@@ -26,9 +23,7 @@ extern int tests_passed;
 #define TEST(name) static void name(void)
 #define RUN_TEST(name) do { \
     printf("  %s... ", #name); \
-    tests_run++; \
     name(); \
-    tests_passed++; \
     printf("ok\n"); \
 } while (0)
 
