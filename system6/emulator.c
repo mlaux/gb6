@@ -1,8 +1,25 @@
 /* Game Boy emulator for 68k Macs
    emulator.c - entry point */
 
+// with interpreter and 8 MHz 68000:
+// 10000 instructions
+// 417 ticks
+
+// 0.0417 tick per instruction
+// 1/60 second per tick
+// 0.000695 second per instruction
+// 0.695 ms per instruction
+
+// REAL GB:
+// 4194304 Hz
+// 1048576 NOPs per second
+// 174763 CALL 16s per second
+// 0.001 ms per NOP
+// 0.006 ms per CALL 16
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <Windows.h>
 #include <Quickdraw.h>
 #include <StandardFile.h>
@@ -117,27 +134,29 @@ void lcd_draw(struct lcd *lcd_ptr)
   CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
 }
 
-// with interpreter and 8 MHz 68000:
-// 10000 instructions
-// 417 ticks
-
-// 0.0417 tick per instruction
-// 1/60 second per tick
-// 0.000695 second per instruction
-// 0.695 ms per instruction
-
-// REAL GB:
-// 4194304 Hz
-// 1048576 NOPs per second
-// 174763 CALL 16s per second
-// 0.001 ms per NOP
-// 0.006 ms per CALL 16
-
 void StartEmulation(void)
 {
+  if (g_wp) {
+    DisposeWindow(g_wp);
+    g_wp = NULL;
+  }
   g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true,
         noGrowDocProc, (WindowPtr) -1, true, 0);
   SetPort(g_wp);
+
+  memset(&dmg, 0, sizeof(dmg));
+  memset(&cpu, 0, sizeof(cpu));
+
+  if (lcd.pixels) {
+    free(lcd.pixels);
+  }
+  memset(&lcd, 0, sizeof(lcd));
+  lcd_new(&lcd);
+
+  dmg_new(&dmg, &cpu, &rom, &lcd);
+
+  cpu.dmg = &dmg;
+  cpu.pc = 0x100;
 
   offscreenBmp.baseAddr = offscreen;
   offscreenBmp.bounds = offscreenRect;
@@ -172,6 +191,7 @@ int LoadRom(Str63 fileName, short vRefNum)
   
   amtRead = rom.length;
   FSRead(fileNo, &amtRead, rom.data);
+  FSClose(fileNo);
 
   rom.mbc = mbc_new(rom.data[0x147]);
   if (!rom.mbc) {
@@ -282,8 +302,11 @@ void OnMouseDown(EventRecord *pEvt)
       DragWindow(clicked, pEvt->where, &qd.screenBits.bounds);
       break;
     case inGoAway:
-      if(TrackGoAway(clicked, pEvt->where))
+      if(TrackGoAway(clicked, pEvt->where)) {
+        emulationOn = 0;
         DisposeWindow(clicked);
+        g_wp = NULL;
+      }
       break;
     case inContent:
       if(clicked != FrontWindow())
@@ -339,11 +362,6 @@ int main(int argc, char *argv[])
 
   InitEverything();
   init_dither_lut();
-
-  lcd_new(&lcd);
-  dmg_new(&dmg, &cpu, &rom, &lcd);
-  cpu.dmg = &dmg;
-  cpu.pc = 0x100;
 
   while (g_running) {
     unsigned int now;
