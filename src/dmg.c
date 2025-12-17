@@ -84,6 +84,8 @@ u8 dmg_read(void *_dmg, u16 address)
         return dmg->timer_mod;
     } else if (address == REG_TIMER_CONTROL) {
         return dmg->timer_control;
+    } else if (address >= 0xff10 && address <= 0xff3f) {
+        return dmg->audio_regs[address - 0xff10];
     } else if (address == 0xff0f) {
         return dmg->interrupt_requested;
     } else if (address == 0xffff) {
@@ -127,7 +129,9 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     } else if (address == REG_TIMER_CONTROL) {
         printf("write timer control\n");
         dmg->timer_control = data;
-    } else if (address == 0xFF46) {
+    } else if (address >= 0xff10 && address <= 0xff3f) {
+        dmg->audio_regs[address - 0xff10] = data;
+    } else if (address == 0xff46) {
         u16 src = data << 8;
         int k = 0;
         // printf("oam dma %04x\n", src);
@@ -157,7 +161,7 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 
 static void timer_step(struct dmg *dmg)
 {
-    dmg->timer_div++;
+    dmg->timer_div += 4;
     return;
 
     if (!(dmg_read(dmg, REG_TIMER_CONTROL) & TIMER_CONTROL_ENABLED)) {
@@ -220,7 +224,7 @@ void dmg_step(void *_dmg)
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
                 int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                lcd_render_background_scrolled(dmg, lcdc, window_enabled);
+                lcd_render_background(dmg, lcdc, window_enabled);
             }
 
             if (lcdc & LCDC_ENABLE_OBJ) {

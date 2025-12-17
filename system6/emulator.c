@@ -117,9 +117,9 @@ void lcd_draw(struct lcd *lcd_ptr)
   CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
 }
 
-// with interpreter and 8 Mhz 68000:
-// 417 ticks
+// with interpreter and 8 MHz 68000:
 // 10000 instructions
+// 417 ticks
 
 // 0.0417 tick per instruction
 // 1/60 second per tick
@@ -145,7 +145,7 @@ void StartEmulation(void)
   emulationOn = 1;
 }
 
-int LoadRom(Str255 fileName, short vRefNum)
+int LoadRom(Str63 fileName, short vRefNum)
 {
   int err;
   short fileNo;
@@ -301,8 +301,7 @@ static int ProcessEvents(void)
 {
   EventRecord evt;
 
-  // timeout=0 for non-blocking when emulating, 1 to yield CPU when idle
-  while (WaitNextEvent(everyEvent, &evt, emulationOn ? 0 : 1, 0)) {
+  while (GetNextEvent(everyEvent, &evt)) {
     if (IsDialogEvent(&evt)) {
       DialogRef hitBox;
       DialogItemIndex hitItem;
@@ -335,6 +334,9 @@ static int ProcessEvents(void)
 // -- ENTRY POINT --
 int main(int argc, char *argv[])
 {
+  unsigned int frame_count = 0;
+  unsigned int last_ticks = 0;
+
   InitEverything();
   init_dither_lut();
 
@@ -344,17 +346,20 @@ int main(int argc, char *argv[])
   cpu.pc = 0x100;
 
   while (g_running) {
+    unsigned int now;
+
     if (!ProcessEvents()) {
       break;
     }
 
-    if (emulationOn) {
-      // run one frame (70224 cycles = 154 scanlines * 456 cycles each)
+    if (emulationOn && (now = TickCount()) != last_ticks) {
+      last_ticks = now;
+      // run one frame (70224 cycles = 154 scanlines * 456 cycles each
       unsigned long frame_end = cpu.cycle_count + 70224;
-      while (cpu.cycle_count < frame_end) {
+      while ((long) (frame_end - cpu.cycle_count) > 0) {
         dmg_step(&dmg);
       }
-      // lcd_draw is called automatically by dmg_step at vblank
+      frame_count++;
     }
   }
 

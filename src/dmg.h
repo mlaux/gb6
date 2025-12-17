@@ -46,6 +46,9 @@ struct dmg {
     u8 timer_count;
     u8 timer_mod;
     u8 timer_control;
+
+    // audio registers $ff10-$ff3f, no-op, just stores values
+    u8 audio_regs[0x30];
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);

@@ -28,7 +28,6 @@ static const char *SP_FORMAT = "SP: 0x%02x";
 static const char *PC_FORMAT = "PC: 0x%02x";
 static const char *INSN_FORMAT = "Next instruction: %s";
 
-unsigned char output_image[256 * 256 * 4];
 unsigned char visible_pixels[160 * 144 * 4];
 unsigned char vram_tiles[256 * 96 * 4];
 
@@ -61,10 +60,6 @@ GLuint make_output_texture() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     return image_texture;
-}
-
-void convert_output(struct lcd *lcd) {
-
 }
 
 unsigned int vram_palette[] = { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
@@ -133,7 +128,6 @@ int main(int argc, char *argv[])
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu.dmg = &dmg;
     mbc_load_ram(dmg.rom->mbc, "save.sav");
-    // cpu_bind_mem_model(&cpu, &dmg, dmg_read, dmg_write);
 
     cpu.pc = 0x100;
 
@@ -184,7 +178,6 @@ int main(int argc, char *argv[])
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // setup output
-    GLuint texture = make_output_texture();
     GLuint vis_texture = make_output_texture();
     GLuint vram_texture = make_output_texture();
 
@@ -270,6 +263,7 @@ int main(int argc, char *argv[])
 
                 u8 opc = dmg_read(&dmg, dmg.cpu->pc);
                 ImGui::Text(INSN_FORMAT, instructions[opc].format);
+                ImGui::Text("MBC Bank: %02x", dmg.rom->mbc->rom_bank);
 
                 ImGui::Checkbox("Z", &z_flag);
                 ImGui::SameLine();
@@ -294,17 +288,6 @@ int main(int argc, char *argv[])
                 }
 
                 ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-                ImGui::End();
-            }
-
-            convert_output(dmg.lcd);
-            {
-                ImGui::Begin("Output");
-
-                glBindTexture(GL_TEXTURE_2D, texture);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, output_image);
-                ImGui::Image((void*)(intptr_t) texture, ImVec2(512, 512));
-
                 ImGui::End();
             }
 
