@@ -261,7 +261,9 @@ int main(int argc, char *argv[])
 
                 u8 opc = dmg_read(&dmg, dmg.cpu->pc);
                 ImGui::Text(INSN_FORMAT, instructions[opc].format);
-                ImGui::Text("MBC Bank: %02x", dmg.rom->mbc->rom_bank);
+                if (dmg.rom->mbc) {
+                    ImGui::Text("MBC Bank: %02x", dmg.rom->mbc->rom_bank);
+                }
 
                 ImGui::Checkbox("Z", &z_flag);
                 ImGui::SameLine();

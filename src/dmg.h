@@ -30,6 +30,11 @@ struct dmg {
     struct cpu *cpu;
     struct rom *rom;
     struct lcd *lcd;
+
+    // page table for fast memory access (256 pages of 256 bytes each)
+    u8 *read_page[256];
+    u8 *write_page[256];
+
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
     u8 zero_page[0x80];
@@ -59,5 +64,11 @@ u8 dmg_read(void *dmg, u16 address);
 void dmg_write(void *dmg, u16 address, u8 data);
 
 void dmg_step(void *dmg);
+void dmg_request_interrupt(struct dmg *dmg, int nr);
+
+// page table management
+void dmg_init_pages(struct dmg *dmg);
+void dmg_update_rom_bank(struct dmg *dmg, int bank);
+void dmg_update_ram_bank(struct dmg *dmg, u8 *ram_base);
 
 #endif

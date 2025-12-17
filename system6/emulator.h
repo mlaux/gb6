@@ -12,7 +12,7 @@
 #define WINDOW_X 3
 #define WINDOW_Y 40
 #define WINDOW_WIDTH 320
-#define WINDOW_HEIGHT 288
+#define WINDOW_HEIGHT 299
 
 #define ALRT_NOT_ENOUGH_RAM 128
 #define ALRT_4_LINE 129

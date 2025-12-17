@@ -17,6 +17,80 @@ void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 
     dmg->joypad = 0xf; // nothing pressed
     dmg->action_buttons = 0xf;
+
+    dmg_init_pages(dmg);
+}
+
+void dmg_init_pages(struct dmg *dmg)
+{
+    int k;
+
+    // start with everything as slow path
+    for (k = 0; k < 256; k++) {
+        dmg->read_page[k] = NULL;
+        dmg->write_page[k] = NULL;
+    }
+
+    // ROM bank 0: 0x0000-0x3fff (pages 0x00-0x3f)
+    for (k = 0x00; k <= 0x3f; k++) {
+        dmg->read_page[k] = &dmg->rom->data[k << 8];
+    }
+
+    // ROM bank 1: 0x4000-0x7fff (pages 0x40-0x7f)
+    // MBC will update this when switching banks
+    for (k = 0x40; k <= 0x7f; k++) {
+        dmg->read_page[k] = &dmg->rom->data[k << 8];
+    }
+
+    // video RAM: 0x8000-0x9fff (pages 0x80-0x9f)
+    for (k = 0x80; k <= 0x9f; k++) {
+        int offset = (k - 0x80) << 8;
+        dmg->read_page[k] = &dmg->video_ram[offset];
+        dmg->write_page[k] = &dmg->video_ram[offset];
+    }
+
+    // external RAM: 0xa000-0xbfff (pages 0xa0-0xbf)
+    // leave NULL - MBC handles this
+
+    // work RAM: 0xc000-0xdfff (pages 0xc0-0xdf)
+    for (k = 0xc0; k <= 0xdf; k++) {
+        int offset = (k - 0xc0) << 8;
+        dmg->read_page[k] = &dmg->main_ram[offset];
+        dmg->write_page[k] = &dmg->main_ram[offset];
+    }
+
+    // echo RAM: 0xe000-0xfdff (pages 0xe0-0xfd)
+    for (k = 0xe0; k <= 0xfd; k++) {
+        int offset = (k - 0xe0) << 8;
+        dmg->read_page[k] = &dmg->main_ram[offset];
+        dmg->write_page[k] = &dmg->main_ram[offset];
+    }
+
+    // pages 0xfe and 0xff stay NULL for special handling
+}
+
+void dmg_update_rom_bank(struct dmg *dmg, int bank)
+{
+    int k;
+    u8 *bank_base = &dmg->rom->data[bank * 0x4000];
+    for (k = 0x40; k <= 0x7f; k++) {
+        dmg->read_page[k] = &bank_base[(k - 0x40) << 8];
+    }
+}
+
+void dmg_update_ram_bank(struct dmg *dmg, u8 *ram_base)
+{
+    int k;
+    for (k = 0xa0; k <= 0xbf; k++) {
+        if (ram_base) {
+            int offset = (k - 0xa0) << 8;
+            dmg->read_page[k] = &ram_base[offset];
+            dmg->write_page[k] = &ram_base[offset];
+        } else {
+            dmg->read_page[k] = NULL;
+            dmg->write_page[k] = NULL;
+        }
+    }
 }
 
 void dmg_set_button(struct dmg *dmg, int field, int button, int pressed)
@@ -50,108 +124,147 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
+static u8 dmg_read_slow(struct dmg *dmg, u16 address)
+{
+    // OAM and LCD registers
+    if (lcd_is_valid_addr(address)) {
+        return lcd_read(dmg->lcd, address);
+    }
+
+    // high RAM
+    if (address >= 0xff80 && address <= 0xfffe) {
+        return dmg->zero_page[address - 0xff80];
+    }
+
+    // I/O registers
+    if (address == 0xff00) {
+        return get_button_state(dmg);
+    }
+    if (address == REG_TIMER_DIV) {
+        return (dmg->timer_div & 0xff00) >> 8;
+    }
+    if (address == REG_TIMER_COUNT) {
+        return dmg->timer_count;
+    }
+    if (address == REG_TIMER_MOD) {
+        return dmg->timer_mod;
+    }
+    if (address == REG_TIMER_CONTROL) {
+        return dmg->timer_control;
+    }
+    if (address >= 0xff10 && address <= 0xff3f) {
+        return dmg->audio_regs[address - 0xff10];
+    }
+    if (address == 0xff0f) {
+        return dmg->interrupt_requested;
+    }
+    if (address == 0xffff) {
+        return dmg->interrupt_enabled;
+    }
+
+    // external RAM not enabled, or RTC register selected
+    if (address >= 0xa000 && address < 0xc000) {
+        u8 val;
+        if (mbc_ram_read(dmg->rom->mbc, address, &val)) {
+            return val;
+        }
+        return 0xff;
+    }
+
+    return 0xff;
+}
+
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
-    u8 mbc_data;
+    u8 *page = dmg->read_page[address >> 8];
+    if (page) {
+        return page[address & 0xff];
+    }
+    return dmg_read_slow(dmg, address);
+}
 
-    if (mbc_read(dmg->rom->mbc, dmg, address, &mbc_data)) {
-        return mbc_data;
+static void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
+{
+    // ROM region writes go to MBC for bank switching
+    if (address < 0x8000) {
+        mbc_write(dmg->rom->mbc, dmg, address, data);
+        return;
     }
 
-    if (address < 0x4000) {
-        return dmg->rom->data[address];
-    } else if (address < 0x8000) {
-        return dmg->rom->data[address];
-    } else if (address < 0xa000) {
-        return dmg->video_ram[address - 0x8000];
-    } else if (address < 0xc000) {
-        printf("RAM bank not handled by MBC\n");
-        return 0xff;
-    } else if (address < 0xe000) {
-        return dmg->main_ram[address - 0xc000];
-    } else if (lcd_is_valid_addr(address)) {
-        return lcd_read(dmg->lcd, address);
-    } else if (address >= 0xff80 && address <= 0xfffe) {
-        return dmg->zero_page[address - 0xff80];
-    } else if (address == 0xff00) {
-        return get_button_state(dmg);
-    } else if (address == REG_TIMER_DIV) {
-        return (dmg->timer_div & 0xff00) >> 8;
-    } else if (address == REG_TIMER_COUNT) {
-        return dmg->timer_count;
-    } else if (address == REG_TIMER_MOD) {
-        return dmg->timer_mod;
-    } else if (address == REG_TIMER_CONTROL) {
-        return dmg->timer_control;
-    } else if (address >= 0xff10 && address <= 0xff3f) {
-        return dmg->audio_regs[address - 0xff10];
-    } else if (address == 0xff0f) {
-        return dmg->interrupt_requested;
-    } else if (address == 0xffff) {
-        return dmg->interrupt_enabled;
-    } else {
-        // not sure about any of this yet
-        // commented out bc of memory view window
-        // fprintf(stderr, "don't know how to read 0x%04x\n", address);
-        return 0xff;
+    // external RAM not enabled, or RTC register selected
+    if (address >= 0xa000 && address < 0xc000) {
+        mbc_ram_write(dmg->rom->mbc, address, data);
+        return;
+    }
+
+    // OAM DMA
+    if (address == 0xff46) {
+        u16 src = data << 8;
+        int k = 0;
+        for (u16 addr = src; addr < src + 0xa0; addr++) {
+            dmg->lcd->oam[k++] = dmg_read(dmg, addr);
+        }
+        return;
+    }
+
+    // OAM and LCD registers
+    if (lcd_is_valid_addr(address)) {
+        lcd_write(dmg->lcd, address, data);
+        return;
+    }
+
+    // high RAM
+    if (address >= 0xff80 && address <= 0xfffe) {
+        dmg->zero_page[address - 0xff80] = data;
+        return;
+    }
+
+    // I/O registers
+    if (address == 0xff00) {
+        dmg->joypad_selected = !(data & (1 << 4));
+        dmg->action_selected = !(data & (1 << 5));
+        return;
+    }
+    if (address == REG_TIMER_DIV) {
+        dmg->timer_div = 0;
+        return;
+    }
+    if (address == REG_TIMER_COUNT) {
+        dmg->timer_count = data;
+        return;
+    }
+    if (address == REG_TIMER_MOD) {
+        dmg->timer_mod = data;
+        return;
+    }
+    if (address == REG_TIMER_CONTROL) {
+        dmg->timer_control = data;
+        return;
+    }
+    if (address >= 0xff10 && address <= 0xff3f) {
+        dmg->audio_regs[address - 0xff10] = data;
+        return;
+    }
+    if (address == 0xff0f) {
+        dmg->interrupt_requested = data;
+        return;
+    }
+    if (address == 0xffff) {
+        dmg->interrupt_enabled = data;
+        return;
     }
 }
 
 void dmg_write(void *_dmg, u16 address, u8 data)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
-
-    if (mbc_write(dmg->rom->mbc, dmg, address, data)) {
+    u8 *page = dmg->write_page[address >> 8];
+    if (page) {
+        page[address & 0xff] = data;
         return;
     }
-
-    if (address < 0x4000) {
-        printf("warning: writing 0x%04x in rom\n", address);
-    } else if (address < 0x8000) {
-        // TODO switchable rom bank
-        printf("warning: writing 0x%04x in rom\n", address);
-    } else if (address < 0xa000) {
-        dmg->video_ram[address - 0x8000] = data;
-    } else if (address < 0xc000) {
-        // TODO switchable ram bank
-    } else if (address < 0xe000) {
-        // printf("write ram %04x %02x\n", address, data);
-        dmg->main_ram[address - 0xc000] = data;
-    } else if (address == REG_TIMER_DIV) {
-        dmg->timer_div = 0;
-    } else if (address == REG_TIMER_COUNT) {
-        printf("write timer count\n");
-        dmg->timer_count = data;
-    } else if (address == REG_TIMER_MOD) {
-        printf("write timer mod\n");
-        dmg->timer_mod = data;
-    } else if (address == REG_TIMER_CONTROL) {
-        printf("write timer control\n");
-        dmg->timer_control = data;
-    } else if (address >= 0xff10 && address <= 0xff3f) {
-        dmg->audio_regs[address - 0xff10] = data;
-    } else if (address == 0xff46) {
-        u16 src = data << 8;
-        int k = 0;
-        // printf("oam dma %04x\n", src);
-        for (u16 addr = src; addr < src + 0xa0; addr++) {
-            dmg->lcd->oam[k++] = dmg_read(dmg, addr);
-        }
-    } else if (lcd_is_valid_addr(address)) {
-        lcd_write(dmg->lcd, address, data);
-    } else if (address >= 0xff80 && address <= 0xfffe) {
-        dmg->zero_page[address - 0xff80] = data;
-    } else if (address == 0xff00) {
-        dmg->joypad_selected = !(data & (1 << 4));
-        dmg->action_selected = !(data & (1 << 5));
-    } else if (address == 0xff0f) {
-        dmg->interrupt_requested = data;
-    } else if (address == 0xffff) {
-        dmg->interrupt_enabled = data;
-    } else {
-        // not sure about any of this yet
-    }
+    dmg_write_slow(dmg, address, data);
 }
 
 void dmg_request_interrupt(struct dmg *dmg, int nr)

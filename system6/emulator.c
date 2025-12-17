@@ -1,22 +1,6 @@
 /* Game Boy emulator for 68k Macs
    emulator.c - entry point */
 
-// with interpreter and 8 MHz 68000:
-// 10000 instructions
-// 417 ticks
-
-// 0.0417 tick per instruction
-// 1/60 second per tick
-// 0.000695 second per instruction
-// 0.695 ms per instruction
-
-// REAL GB:
-// 4194304 Hz
-// 1048576 NOPs per second
-// 174763 CALL 16s per second
-// 0.001 ms per NOP
-// 0.006 ms per CALL 16
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,6 +82,11 @@ void InitEverything(void)
 char offscreen[40 * 288];
 Rect offscreenRect = { 0, 0, 288, 320 };
 
+// FPS tracking
+static unsigned long fps_frame_count = 0;
+static unsigned long fps_last_tick = 0;
+static unsigned long fps_display = 0;
+
 BitMap offscreenBmp;
 
 // lookup tables for 2x dithered rendering
@@ -156,6 +145,28 @@ void lcd_draw(struct lcd *lcd_ptr)
 
   SetPort(g_wp);
   CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
+
+  // FPS display
+  {
+    unsigned long now = TickCount();
+    Str255 fpsStr;
+
+    fps_frame_count++;
+    if (now - fps_last_tick >= 60) {
+      fps_display = fps_frame_count;
+      fps_frame_count = 0;
+      fps_last_tick = now;
+    }
+
+    NumToString(fps_display, fpsStr);
+    {
+      Rect fpsRect = { 288, 0, 299, 60 };
+      EraseRect(&fpsRect);
+    }
+    MoveTo(4, 298);
+    DrawString("\pFPS: ");
+    DrawString(fpsStr);
+  }
 }
 
 void StartEmulation(void)
@@ -343,6 +354,19 @@ void OnMouseDown(EventRecord *pEvt)
   }
 }
 
+static void HandleKeyEvent(int ch, int down)
+{
+  if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
+  struct key_input *key = key_inputs;
+  while (key->key) {
+    if (key->key == ch) {
+      dmg_set_button(&dmg, key->field, key->button, down);
+      break;
+    }
+    key++;
+  }
+}
+
 // process pending events, returns 0 if app should quit
 static int ProcessEvents(void)
 {
@@ -368,30 +392,12 @@ static int ProcessEvents(void)
         if (evt.modifiers & cmdKey) {
           OnMenuAction(MenuKey(evt.message & charCodeMask));
         } else if (emulationOn) {
-          char ch = evt.message & charCodeMask;
-          if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
-          struct key_input *key = key_inputs;
-          while (key->key) {
-            if (key->key == ch) {
-              dmg_set_button(&dmg, key->field, key->button, 1);
-              break;
-            }
-            key++;
-          }
+          HandleKeyEvent(evt.message & charCodeMask, 1);
         }
         break;
       case keyUp:
         if (emulationOn) {
-          char ch = evt.message & charCodeMask;
-          if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
-          struct key_input *key = key_inputs;
-          while (key->key) {
-            if (key->key == ch) {
-              dmg_set_button(&dmg, key->field, key->button, 0);
-              break;
-            }
-            key++;
-          }
+          HandleKeyEvent(evt.message & charCodeMask, 0);
         }
         break;
     }
@@ -412,6 +418,9 @@ int main(int argc, char *argv[])
 
   InitEverything();
   init_dither_lut();
+  if(ShowOpenBox()) {
+    StartEmulation();
+  }
 
   while (g_running) {
     unsigned int now;
