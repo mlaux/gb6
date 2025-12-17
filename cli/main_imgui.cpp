@@ -75,7 +75,6 @@ void convert_vram(struct dmg *dmg) {
                 int data1 = dmg->video_ram[in + b];
                 int data2 = dmg->video_ram[in + b + 1];
                 for (i = 7; i >= 0; i--) {
-                    // monochrome for now
                     int fill = (data1 & (1 << i)) ? 1 : 0;
                     fill |= ((data2 & (1 << i)) ? 1 : 0) << 1;
                     fill = vram_palette[fill];
@@ -83,7 +82,6 @@ void convert_vram(struct dmg *dmg) {
                     vram_tiles[4 * off + 1] = (fill >> 8) & 0xff;
                     vram_tiles[4 * off + 2] = fill & 0xff;
                     vram_tiles[4 * off + 3] = 255;
-                    //dmg->lcd->buf[off] |= (data2 & (1 << i)) ? 1 : 0;
                     off++;
                 }
                 off += 248;

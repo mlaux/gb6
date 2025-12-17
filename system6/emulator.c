@@ -28,6 +28,7 @@
 #include <ToolUtils.h>
 #include <Devices.h>
 #include <Memory.h>
+#include <Sound.h>
 
 #include "emulator.h"
 
@@ -42,6 +43,26 @@ DialogPtr stateDialog;
 unsigned char g_running;
 unsigned char emulationOn;
 
+// key input mapping for game controls
+// using ASCII character codes (case-insensitive handled in code)
+struct key_input {
+    char key;
+    int button;
+    int field;
+};
+
+static struct key_input key_inputs[] = {
+    { 'd', BUTTON_RIGHT, FIELD_JOY },
+    { 'a', BUTTON_LEFT, FIELD_JOY },
+    { 'w', BUTTON_UP, FIELD_JOY },
+    { 's', BUTTON_DOWN, FIELD_JOY },
+    { 'l', BUTTON_A, FIELD_ACTION },
+    { 'k', BUTTON_B, FIELD_ACTION },
+    { 'n', BUTTON_SELECT, FIELD_ACTION },
+    { 'm', BUTTON_START, FIELD_ACTION },
+    { 0, 0, 0 }
+};
+
 static Point windowPt = { WINDOW_Y, WINDOW_X };
 
 static Rect windowBounds = { WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT, WINDOW_X + WINDOW_WIDTH };
@@ -52,9 +73,9 @@ struct lcd lcd;
 struct dmg dmg;
 
 void InitEverything(void)
-{	
+{
   Handle mbar;
-  
+
   InitGraf(&qd.thePort);
   InitFonts();
   InitWindows();
@@ -62,11 +83,14 @@ void InitEverything(void)
   TEInit();
   InitDialogs(0L);
   InitCursor();
-  
+
+  // enable keyUp events (not delivered by default)
+  SetEventMask(everyEvent);
+
   mbar = GetNewMBar(MBAR_DEFAULT);
   SetMenuBar(mbar);
   DrawMenuBar();
-  
+
   g_running = 1;
 }
 
@@ -340,8 +364,34 @@ static int ProcessEvents(void)
         EndUpdate((WindowPtr) evt.message);
         break;
       case keyDown:
+      case autoKey:
         if (evt.modifiers & cmdKey) {
           OnMenuAction(MenuKey(evt.message & charCodeMask));
+        } else if (emulationOn) {
+          char ch = evt.message & charCodeMask;
+          if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
+          struct key_input *key = key_inputs;
+          while (key->key) {
+            if (key->key == ch) {
+              dmg_set_button(&dmg, key->field, key->button, 1);
+              break;
+            }
+            key++;
+          }
+        }
+        break;
+      case keyUp:
+        if (emulationOn) {
+          char ch = evt.message & charCodeMask;
+          if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
+          struct key_input *key = key_inputs;
+          while (key->key) {
+            if (key->key == ch) {
+              dmg_set_button(&dmg, key->field, key->button, 0);
+              break;
+            }
+            key++;
+          }
         }
         break;
     }
