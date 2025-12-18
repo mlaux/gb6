@@ -211,13 +211,13 @@ void lcd_render_background(struct dmg *dmg, int lcdc, int window_enabled)
 // TODO: only ten per scanline, priority, attributes
 void lcd_render_objs(struct dmg *dmg)
 {
-    struct oam_entry *oam = (struct oam_entry *) dmg->lcd->oam;
+    struct oam_entry *oam = &((struct oam_entry *) dmg->lcd->oam)[39];
     int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
     u8 *vram = dmg->video_ram;
     u8 *pixels = dmg->lcd->pixels;
 
     int k;
-    for (k = 0; k < 40; k++, oam++) {
+    for (k = 39; k >= 0; k--, oam--) {
         if (oam->pos_y == 0 || oam->pos_y >= 160) {
             continue;
         }

@@ -6,7 +6,6 @@
 #include <SDL.h>
 #include <SDL_timer.h>
 #include <SDL_opengl.h>
-#include <string>
 
 extern "C" {
 #include "dmg.h"
@@ -36,6 +35,7 @@ static const char *INSN_FORMAT = "Next instruction: %s";
 
 unsigned char visible_pixels[160 * 144 * 4];
 unsigned char vram_tiles[256 * 96 * 4];
+extern "C" void convert_vram(struct dmg *);
 
 struct key_input {
     int scancode;
@@ -66,34 +66,6 @@ GLuint make_output_texture() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     return image_texture;
-}
-
-unsigned int vram_palette[] = { 0x9ff4e5, 0x00b9be, 0x005f8c, 0x002b59 };
-void convert_vram(struct dmg *dmg) {
-    int tile_y, tile_x;
-    int off, in;
-    for (tile_y = 0; tile_y < 12; tile_y++) {
-        for (tile_x = 0; tile_x < 32; tile_x++) {
-            off = 256 * 8 * tile_y + 8 * tile_x;
-            in = 16 * (tile_y * 32 + tile_x);
-            int b, i;
-            for (b = 0; b < 16; b += 2) {
-                int data1 = dmg->video_ram[in + b];
-                int data2 = dmg->video_ram[in + b + 1];
-                for (i = 7; i >= 0; i--) {
-                    int fill = (data1 & (1 << i)) ? 1 : 0;
-                    fill |= ((data2 & (1 << i)) ? 1 : 0) << 1;
-                    fill = vram_palette[fill];
-                    vram_tiles[4 * off + 0] = (fill >> 16) & 0xff;
-                    vram_tiles[4 * off + 1] = (fill >> 8) & 0xff;
-                    vram_tiles[4 * off + 2] = fill & 0xff;
-                    vram_tiles[4 * off + 3] = 255;
-                    off++;
-                }
-                off += 248;
-            }
-        }
-    }
 }
 
 static ImU8 read_mem(const ImU8* data, size_t off)
@@ -199,15 +171,26 @@ int main(int argc, char *argv[])
     unsigned int lastDrawTime = 0, currentTime;
 
     while (!done) {
-        if (!paused) {
-            dmg_step(&dmg);
-        }
-        if (pause_next) {
-            paused = 1;
-        }
+        // super speed
+        // if (!paused) {
+        //     dmg_step(&dmg);
+        // }
+        // if (pause_next) {
+        //     paused = 1;
+        // }
 
         currentTime = SDL_GetTicks();
         if (currentTime >= lastDrawTime + 16) {
+            // real speed
+            if (!paused) {
+                unsigned long frame_end = cpu.cycle_count + 70224;
+                while ((long) (frame_end - cpu.cycle_count) > 0) {
+                    dmg_step(&dmg);
+                }
+            }
+            if (pause_next) {
+                paused = 1;
+            }
             // Poll and handle events (inputs, window resize, etc.)
             // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
             // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
