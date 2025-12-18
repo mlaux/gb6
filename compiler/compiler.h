@@ -48,17 +48,28 @@ struct code_block {
     uint16_t m68k_offsets[256];
     size_t length;
     uint16_t gb_cycles; // for timing
-    uint16_t src_address;  // GB address this block starts at
-    uint16_t end_address;  // GB address after last instruction
+    uint16_t src_address;
+    uint16_t end_address; // address after last instruction
+
+    // set when compilation hits unknown opcode
+    uint8_t error;
+    uint8_t failed_opcode;
+    uint16_t failed_address;
 };
 
-// Initialize the compiler (call once at startup)
+// base pointers for address calculation
+struct compile_ctx {
+    void *wram_base;
+    void *hram_base;
+};
+
 void compiler_init(void);
 
-// Compile a basic block starting at the given GB address
-// Returns NULL on failure
-// The block ends when a control flow instruction is encountered
-struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code);
+struct code_block *compile_block(
+    uint16_t src_address,
+    uint8_t *gb_code,
+    struct compile_ctx *ctx
+);
 
 // Free a compiled block
 void block_free(struct code_block *block);

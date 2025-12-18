@@ -16,7 +16,6 @@ static uint8_t mem[MEM_SIZE];
 #define STACK_BASE 0x8000
 
 // GB memory is mapped at base of 68k address space
-// A1 = GB_MEM_BASE + GB_SP for stack operations
 #define GB_MEM_BASE 0x0000
 #define DEFAULT_GB_SP 0x0fff
 
@@ -200,7 +199,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
             block = cache[pc];
         }
         if (!block) {
-            block = compile_block(pc, gb_rom + pc);
+            block = compile_block(pc, gb_rom + pc, NULL);
             if (pc < MAX_CACHED_BLOCKS) {
                 cache[pc] = block;
             }

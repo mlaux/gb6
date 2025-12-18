@@ -3,41 +3,12 @@
 
 #include "compiler.h"
 #include "emitters.h"
+#include "branches.h"
+#include "flags.h"
 
 void compiler_init(void)
 {
     // nothing for now
-}
-
-// Set Z flag in D7 based on current 68k CCR, preserving other flags
-static void compile_set_z_flag(struct code_block *block)
-{
-    // seq D5 (D5 = 0xff if Z, 0x00 if NZ)
-    emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);
-    // scratch = 0x80 if Z was set
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);
-    // clear Z bit in D7
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x7f);
-    // D7 |= new Z bit
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
-}
-
-// Set Z and C flags in D7 based on current 68k CCR, also set N=1 (for sub/cp)
-static void compile_set_znc_flags(struct code_block *block)
-{
-    // extract both flags first using scc (scc doesn't affect CCR)
-    // seq D5 (D5 = 0xff if Z, 0x00 if NZ)
-    emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);
-    // scs D7 (D7 = 0xff if C, 0x00 if NC)
-    emit_scc(block, 0x5, REG_68K_D_FLAGS);
-
-    // now CCR doesn't matter anymore
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80); // D5 = 0x80 if Z was set
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10); // D7 = 0x10 if C was set
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);   // D7 = Z_bit | C_bit
-
-    // Add N=1 flag for subtract operations
-    emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // D7 |= 0x40 (N flag)
 }
 
 // Reconstruct BC from split format (0x00BB00CC) into D1.w as 0xBBCC
@@ -111,104 +82,35 @@ static void compile_ld_imm16_contiguous(
     emit_movea_w_imm16(block, reg, hibyte << 8 | lobyte);
 }
 
-// returns 1 if jr ended the block, 0 if it's a backward jump within block
-static int compile_jr(
+void compile_ld_sp_imm16(
+    struct compile_ctx *ctx,
     struct code_block *block,
     uint8_t *gb_code,
-    uint16_t *src_ptr,
-    uint16_t src_address
+    uint16_t *src_ptr
 ) {
-    int8_t disp;
-    int16_t target_gb_offset;
-    uint16_t target_m68k, target_gb_pc;
-    int16_t m68k_disp;
+    uint16_t gb_sp = gb_code[*src_ptr] | (gb_code[*src_ptr + 1] << 8);
+    *src_ptr += 2;
 
-    disp = (int8_t) gb_code[*src_ptr];
-    (*src_ptr)++;
-
-    // jr displacement is relative to PC after the jr instruction
-    // *src_ptr now points to the byte after jr, so target = *src_ptr + disp
-    target_gb_offset = (int16_t) *src_ptr + disp;
-
-    // Check if this is a backward jump to a location we've already compiled
-    if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
-        // Backward jump within block - emit bra.w
-        target_m68k = block->m68k_offsets[target_gb_offset];
-        // bra.w displacement is relative to PC after the opcode word (before extension)
-        // current position = block->length, PC after opcode = block->length + 2
-        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
-        emit_bra_w(block, m68k_disp);
-        return 0;
-    }
-
-    // Forward jump or outside block - go through dispatcher
-    target_gb_pc = src_address + target_gb_offset;
-    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
-    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_rts(block);
-    return 1;
-}
-
-// Compile conditional relative jump (jr nz, jr z, jr nc, jr c)
-// flag_bit: which bit in D7 to test (7=Z, 4=C)
-// branch_if_set: if true, branch when flag is set; if false, branch when clear
-static void compile_jr_cond(
-    struct code_block *block,
-    uint8_t *gb_code,
-    uint16_t *src_ptr,
-    uint16_t src_address,
-    uint8_t flag_bit,
-    int branch_if_set
-) {
-    int8_t disp;
-    int16_t target_gb_offset;
-    uint16_t target_m68k, target_gb_pc;
-    int16_t m68k_disp;
-
-    disp = (int8_t) gb_code[*src_ptr];
-    (*src_ptr)++;
-
-    target_gb_offset = (int16_t) *src_ptr + disp;
-
-    // Test the flag bit in D7
-    // btst sets 68k Z=1 if tested bit is 0, Z=0 if tested bit is 1
-    emit_btst_imm_dn(block, flag_bit, 7);
-
-    // Check if this is a backward jump within block
-    if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
-        // Backward jump - emit conditional branch
-        target_m68k = block->m68k_offsets[target_gb_offset];
-        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
-
-        if (branch_if_set) {
-            // Branch if flag is set: btst gives Z=0 when bit=1, so use bne
-            emit_bne_w(block, m68k_disp);
-        } else {
-            // Branch if flag is clear: btst gives Z=1 when bit=0, so use beq
-            emit_beq_w(block, m68k_disp);
-        }
-        return; // block continues (fall-through path)
-    }
-
-    // Forward/external jump - conditionally exit to dispatcher
-    // If condition NOT met, skip the exit sequence
-    target_gb_pc = src_address + target_gb_offset;
-
-    if (branch_if_set) {
-        // Skip exit if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 10);  // skip: moveq(2) + move.w(4) + rts(2) + ext(2) = 10
+    // calculate mac pointer based on GB SP range
+    if (ctx && gb_sp >= 0xc000 && gb_sp <= 0xdfff) {
+        // WRAM: main_ram + (gb_sp - 0xC000)
+        uint32_t addr = (uint32_t) ctx->wram_base + (gb_sp - 0xc000);
+        emit_movea_l_imm32(block, REG_68K_A_SP, addr);
+    } else if (ctx && gb_sp >= 0xff80 && gb_sp <= 0xfffe) {
+        // HRAM: zero_page + (gb_sp - 0xFF80)
+        uint32_t addr = (uint32_t) ctx->hram_base + (gb_sp - 0xff80);
+        emit_movea_l_imm32(block, REG_68K_A_SP, addr);
     } else {
-        // Skip exit if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 10);
+        // for testing
+        emit_movea_w_imm16(block, REG_68K_A_SP, gb_sp);
     }
-
-    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
-    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_rts(block);
 }
 
-struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
-{
+struct code_block *compile_block(
+    uint16_t src_address,
+    uint8_t *gb_code,
+    struct compile_ctx *ctx
+) {
     struct code_block *block;
     uint16_t src_ptr = 0;
     uint8_t op;
@@ -228,6 +130,9 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
 
     block->length = 0;
     block->src_address = src_address;
+    block->error = 0;
+    block->failed_opcode = 0;
+    block->failed_address = 0;
 
     while (!done) {
         block->m68k_offsets[src_ptr] = block->length;
@@ -239,23 +144,23 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             break;
 
         case 0x02: // ld (bc), a
-            compile_bc_to_addr(block);  // BC -> D5.w
-            compile_call_dmg_write(block);  // dmg_write(dmg, D5.w, A)
+            compile_bc_to_addr(block);  // BC -> D1.w
+            compile_call_dmg_write(block);  // dmg_write(dmg, D1.w, A)
             break;
 
         case 0x0a: // ld a, (bc)
-            compile_bc_to_addr(block);  // BC -> D5.w
-            compile_call_dmg_read(block);  // A = dmg_read(dmg, D5.w)
+            compile_bc_to_addr(block);  // BC -> D1.w
+            compile_call_dmg_read(block);  // A = dmg_read(dmg, D1.w)
             break;
 
         case 0x12: // ld (de), a
-            compile_de_to_addr(block);  // DE -> D5.w
-            compile_call_dmg_write(block);  // dmg_write(dmg, D5.w, A)
+            compile_de_to_addr(block);  // DE -> D1.w
+            compile_call_dmg_write(block);  // dmg_write(dmg, D1.w, A)
             break;
 
         case 0x1a: // ld a, (de)
-            compile_de_to_addr(block);  // DE -> D5.w
-            compile_call_dmg_read(block);  // A = dmg_read(dmg, D5.w)
+            compile_de_to_addr(block);  // DE -> D1.w
+            compile_call_dmg_read(block);  // A = dmg_read(dmg, D1.w)
             break;
 
         case 0x01: // ld bc, imm16
@@ -268,7 +173,7 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             compile_ld_imm16_contiguous(block, REG_68K_A_HL, gb_code, &src_ptr);
             break;
         case 0x31: // ld sp, imm16
-            compile_ld_imm16_contiguous(block, REG_68K_A_SP, gb_code, &src_ptr);
+            compile_ld_sp_imm16(ctx, block, gb_code, &src_ptr);
             break;
 
         case 0x06: // ld b, imm8
@@ -347,6 +252,11 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             compile_set_znc_flags(block);
             break;
 
+        case 0xaf: // xor a, a - always results in 0, Z=1
+            emit_moveq_dn(block, REG_68K_D_A, 0);
+            emit_move_b_dn(block, REG_68K_D_FLAGS, 0x80); // Z=1, N=0, H=0, C=0
+            break;
+
         case 0xc3: // jp imm16
             {
                 uint16_t target = gb_code[src_ptr] | (gb_code[src_ptr + 1] << 8);
@@ -359,46 +269,20 @@ struct code_block *compile_block(uint16_t src_address, uint8_t *gb_code)
             break;
 
         case 0xc9: // ret
-            {
-                // pop return address from stack (A1 = base + SP)
-                // use byte operations to handle odd SP addresses
-                emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
-                emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC);  // D4 = [SP+1] (high byte)
-                emit_rol_w_8(block, REG_68K_D_NEXT_PC);                  // shift to high position
-                emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);      // D4.b = [SP] (low byte)
-                emit_addq_w_an(block, REG_68K_A_SP, 2);             // SP += 2
-                emit_rts(block);
-                done = 1;
-            }
+            compile_ret(block);
+            done = 1;
             break;
 
         case 0xcd: // call imm16
-            {
-                uint16_t target = gb_code[src_ptr] | (gb_code[src_ptr + 1] << 8);
-                uint16_t ret_addr = src_address + src_ptr + 2;  // address after call
-                src_ptr += 2;
-
-                // push return address (A1 = base + SP)
-                // use byte operations to handle odd SP addresses
-                emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
-                emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
-                emit_subq_w_an(block, REG_68K_A_SP, 2);             // SP -= 2
-                emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);      // [SP] = low byte
-                emit_rol_w_8(block, REG_68K_D_SCRATCH_1);                  // swap bytes
-                emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);  // [SP+1] = high byte
-
-                // jump to target
-                emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
-                emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-                emit_rts(block);
-                done = 1;
-            }
+            compile_call_imm16(block, gb_code, &src_ptr);
+            done = 1;
             break;
 
         default:
-            // call interpreter as a fallback?
-            fprintf(stderr, "compile_block: unknown opcode 0x%02x at 0x%04x\n",
-                    op, src_address + src_ptr - 1);
+            // unknown opcode - set error info and halt
+            block->error = 1;
+            block->failed_opcode = op;
+            block->failed_address = src_address + src_ptr - 1;
             emit_move_l_dn(block, REG_68K_D_NEXT_PC, 0xffffffff);
             emit_rts(block);
             done = 1;

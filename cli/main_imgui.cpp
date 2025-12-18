@@ -15,6 +15,12 @@ extern "C" {
 #include "lcd.h"
 #include "mbc.h"
 #include "instructions.h"
+#include "platform.h"
+
+void set_status_bar(const char *str)
+{
+    (void)str;  // no-op on imgui version
+}
 }
 
 static const char *A_FORMAT = "A: 0x%02x";

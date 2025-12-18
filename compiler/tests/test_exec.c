@@ -18,6 +18,7 @@ TEST_EXEC(test_exec_ld_hl_imm16,    REG_HL, 0x5566,  0x21, 0x66, 0x55, 0x10)
 TEST_EXEC(test_exec_ld_sp_imm16,    REG_SP, 0x7788,  0x31, 0x88, 0x77, 0x10)
 
 TEST_EXEC(test_dec_a,               REG_A,  0x1,  0x3e, 0x02, 0x3d, 0x10)
+TEST_EXEC(test_xor_a,               REG_A,  0x0,  0x3e, 0x20, 0xaf, 0x10)
 
 TEST(test_exec_jp_skip)
 {
@@ -333,6 +334,7 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_ld_sp_imm16);
 
     RUN_TEST(test_dec_a);
+    RUN_TEST(test_xor_a);
 
     printf("\nMulti-block tests:\n");
     RUN_TEST(test_exec_jp_skip);

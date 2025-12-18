@@ -367,3 +367,18 @@ void emit_move_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     // 00 01 ddd 000 000 sss
     emit_word(block, 0x1000 | (dest << 9) | src);
 }
+
+// movea.l #imm32, An - load 32-bit immediate into address register
+void emit_movea_l_imm32(struct code_block *block, uint8_t areg, uint32_t val)
+{
+    // 00 10 aaa 001 111 100 = 0x207C | (areg << 9)
+    emit_word(block, 0x207c | (areg << 9));
+    emit_long(block, val);
+}
+
+// eor.b Ds, Dd - XOR data registers (result to Dd)
+void emit_eor_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1011 sss 1 00 000 ddd
+    emit_word(block, 0xb100 | (src << 9) | dest);
+}

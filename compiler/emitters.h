@@ -54,5 +54,7 @@ void emit_addq_l_an(struct code_block *block, uint8_t areg, uint8_t val);
 void emit_movem_l_to_predec(struct code_block *block, uint16_t mask);
 void emit_movem_l_from_postinc(struct code_block *block, uint16_t mask);
 void emit_move_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+void emit_movea_l_imm32(struct code_block *block, uint8_t areg, uint32_t val);
+void emit_eor_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 
 #endif

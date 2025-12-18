@@ -21,6 +21,37 @@
 #include "rom.h"
 #include "lcd.h"
 #include "mbc.h"
+#include "compiler.h"
+
+// compiler infrastructure
+
+#define MAX_CACHED_BLOCKS 256
+#define HALT_SENTINEL 0xffffffff
+
+// block cache indexed by GB PC
+static struct code_block *block_cache[MAX_CACHED_BLOCKS];
+
+// register state that persists between block executions
+static unsigned long jit_dregs[8];
+static unsigned long jit_aregs[8];
+
+// runtime context for JIT (must match JIT_CTX_* offsets)
+typedef struct {
+    void *dmg;
+    void *read_func;
+    void *write_func;
+} jit_context;
+
+static jit_context jit_ctx;
+
+// Compile-time context for address calculation
+static struct compile_ctx compile_ctx;
+
+// Flag: 0 = interpreter, 1 = JIT
+static int use_jit = 1;
+
+// Flag: JIT hit an error
+static int jit_halted = 0;
 
 WindowPtr g_wp;
 DialogPtr stateDialog;
@@ -28,7 +59,6 @@ unsigned char g_running;
 unsigned char emulationOn;
 
 // key input mapping for game controls
-// using ASCII character codes (case-insensitive handled in code)
 struct key_input {
     char key;
     int button;
@@ -87,6 +117,18 @@ static unsigned long fps_frame_count = 0;
 static unsigned long fps_last_tick = 0;
 static unsigned long fps_display = 0;
 
+// Status bar - if set, displayed instead of FPS
+static char status_bar[64] = "";
+
+void set_status_bar(const char *str)
+{
+  int k;
+  for (k = 0; k < 63 && str[k]; k++) {
+    status_bar[k] = str[k];
+  }
+  status_bar[k] = '\0';
+}
+
 BitMap offscreenBmp;
 
 // lookup tables for 2x dithered rendering
@@ -117,6 +159,153 @@ void init_dither_lut(void)
     dither_row1[idx] = pat_bot[p0] | (pat_bot[p1] >> 2) |
                        (pat_bot[p2] >> 4) | (pat_bot[p3] >> 6);
   }
+}
+
+// -- JIT EXECUTION --
+
+static void execute_block(void *code)
+{
+  asm volatile(
+    /* Save callee-saved registers */
+    "movem.l %%d2-%%d7/%%a2-%%a4, -(%%sp)\n\t"
+
+    /* Copy code pointer to A0 first */
+    "movea.l %[code], %%a0\n\t"
+
+    /* Load GB state into 68k registers */
+    "move.l %[d4], %%d4\n\t"
+    "move.l %[d5], %%d5\n\t"
+    "move.l %[d6], %%d6\n\t"
+    "move.l %[d7], %%d7\n\t"
+    "movea.l %[a2], %%a2\n\t"
+    "movea.l %[a3], %%a3\n\t"
+    "movea.l %[a4], %%a4\n\t"
+
+    /* Call the generated code */
+    "jsr (%%a0)\n\t"
+
+    /* Save results back to memory */
+    "move.l %%d0, %[out_d0]\n\t"
+    "move.l %%d4, %[out_d4]\n\t"
+    "move.l %%d5, %[out_d5]\n\t"
+    "move.l %%d6, %[out_d6]\n\t"
+    "move.l %%d7, %[out_d7]\n\t"
+    "move.l %%a2, %[out_a2]\n\t"
+    "move.l %%a3, %[out_a3]\n\t"
+
+    /* Restore callee-saved registers */
+    "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a4\n\t"
+
+    : [out_d0] "=m" (jit_dregs[0]),
+      [out_d4] "=m" (jit_dregs[4]),
+      [out_d5] "=m" (jit_dregs[5]),
+      [out_d6] "=m" (jit_dregs[6]),
+      [out_d7] "=m" (jit_dregs[7]),
+      [out_a2] "=m" (jit_aregs[2]),
+      [out_a3] "=m" (jit_aregs[3])
+    : [d4] "m" (jit_dregs[4]),
+      [d5] "m" (jit_dregs[5]),
+      [d6] "m" (jit_dregs[6]),
+      [d7] "m" (jit_dregs[7]),
+      [a2] "m" (jit_aregs[2]),
+      [a3] "m" (jit_aregs[3]),
+      [a4] "m" (jit_aregs[4]),
+      [code] "a" (code)
+    : "d0", "d1", "d2", "d3", "a0", "a1", "cc", "memory"
+  );
+}
+
+// Initialize JIT state for a new emulation session
+static void jit_init(void)
+{
+    int k;
+
+    compiler_init();
+
+    // Clear block cache
+    for (k = 0; k < MAX_CACHED_BLOCKS; k++) {
+        if (block_cache[k]) {
+            block_free(block_cache[k]);
+            block_cache[k] = NULL;
+        }
+    }
+
+    // Clear registers
+    for (k = 0; k < 8; k++) {
+        jit_dregs[k] = 0;
+        jit_aregs[k] = 0;
+    }
+
+    // Set up context - will be initialized properly in StartEmulation
+    jit_ctx.dmg = NULL;
+    jit_ctx.read_func = dmg_read;
+    jit_ctx.write_func = dmg_write;
+
+    jit_halted = 0;
+}
+
+// Execute one JIT block, returns cycles consumed (0 if halted/error)
+static int jit_step(void)
+{
+    struct code_block *block;
+    unsigned long next_pc;
+    char buf[64];
+
+    if (jit_halted) {
+        return 0;
+    }
+
+    // Look up or compile block
+    if (cpu.pc < MAX_CACHED_BLOCKS) {
+        block = block_cache[cpu.pc];
+    } else {
+        block = NULL;
+    }
+
+    if (!block) {
+        block = compile_block(cpu.pc, rom.data + cpu.pc, &compile_ctx);
+        if (!block) {
+            sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
+            set_status_bar(buf);
+            jit_halted = 1;
+            return 0;
+        }
+
+        // Check for compilation error
+        if (block->error) {
+            sprintf(buf, "pc=%04x op=%02x", block->failed_address, block->failed_opcode);
+            set_status_bar(buf);
+            jit_halted = 1;
+            block_free(block);
+            return 0;
+        }
+
+        // Cache the block
+        if (cpu.pc < MAX_CACHED_BLOCKS) {
+            block_cache[cpu.pc] = block;
+        }
+    }
+
+    // Execute the block
+    execute_block(block->code);
+
+    // Get next PC from D0
+    next_pc = jit_dregs[REG_68K_D_NEXT_PC];
+
+    if (next_pc == HALT_SENTINEL) {
+        set_status_bar("HALT");
+        jit_halted = 1;
+        return 0;
+    }
+
+    // Update CPU state
+    cpu.pc = (u16) next_pc;
+
+    // this is never actually set by the compiler lol so it'll always be 16
+    // for now
+    cpu.cycle_count += block->gb_cycles ? block->gb_cycles : 16;
+
+    return 1;
 }
 
 // called by dmg_step at vblank
@@ -158,14 +347,26 @@ void lcd_draw(struct lcd *lcd_ptr)
       fps_last_tick = now;
     }
 
-    NumToString(fps_display, fpsStr);
     {
-      Rect fpsRect = { 288, 0, 299, 60 };
-      EraseRect(&fpsRect);
+      Rect statusRect = { 288, 0, 299, 320 };
+      EraseRect(&statusRect);
     }
     MoveTo(4, 298);
-    DrawString("\pFPS: ");
-    DrawString(fpsStr);
+
+    if (status_bar[0]) {
+      // Convert C string to Pascal string and draw
+      Str255 pstr;
+      int k;
+      for (k = 0; k < 255 && status_bar[k]; k++) {
+        pstr[k + 1] = status_bar[k];
+      }
+      pstr[0] = k;
+      DrawString(pstr);
+    } else {
+      NumToString(fps_display, fpsStr);
+      DrawString("\pFPS: ");
+      DrawString(fpsStr);
+    }
   }
 }
 
@@ -196,6 +397,16 @@ void StartEmulation(void)
   offscreenBmp.baseAddr = offscreen;
   offscreenBmp.bounds = offscreenRect;
   offscreenBmp.rowBytes = 40;
+
+  // Initialize JIT
+  jit_init();
+  jit_ctx.dmg = &dmg;
+  jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
+
+  // Initialize compile-time context
+  compile_ctx.wram_base = dmg.main_ram;
+  compile_ctx.hram_base = dmg.zero_page;
+
   emulationOn = 1;
 }
 
@@ -356,8 +567,11 @@ void OnMouseDown(EventRecord *pEvt)
 
 static void HandleKeyEvent(int ch, int down)
 {
-  if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
   struct key_input *key = key_inputs;
+
+  // idk if this is needed? does caps lock make the char capitalized?
+  if (ch >= 'A' && ch <= 'Z') ch += 32;
+
   while (key->key) {
     if (key->key == ch) {
       dmg_set_button(&dmg, key->field, key->button, down);
@@ -433,8 +647,21 @@ int main(int argc, char *argv[])
       last_ticks = now;
       // run one frame (70224 cycles = 154 scanlines * 456 cycles each
       unsigned long frame_end = cpu.cycle_count + 70224;
-      while ((long) (frame_end - cpu.cycle_count) > 0) {
-        dmg_step(&dmg);
+
+      if (use_jit) {
+        // JIT mode: compile and execute blocks
+        while ((long) (frame_end - cpu.cycle_count) > 0 && !jit_halted) {
+          jit_step();
+        }
+        if (!jit_halted) {
+          // since dmg_step is bypassed...
+          lcd_draw(&lcd);
+        }
+      } else {
+        // Interpreter mode
+        while ((long) (frame_end - cpu.cycle_count) > 0) {
+          dmg_step(&dmg);
+        }
       }
       frame_count++;
     }

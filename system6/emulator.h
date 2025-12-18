@@ -37,4 +37,6 @@
 #define EMULATION_PREFERENCES 4
 #define EMULATION_KEY_MAPPINGS 5
 
+#include "platform.h"
+
 #endif

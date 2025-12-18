@@ -82,7 +82,7 @@ static void setup_runtime(void)
         /* Save callee-saved registers */
         "movem.l %%d2-%%d7/%%a2-%%a4, -(%%sp)\n\t"
 
-        /* Copy code pointer to A0 FIRST - GCC may have used A2-A4 */
+        /* Copy code pointer to A0 */
         "movea.l %[code], %%a0\n\t"
 
         /* Load GB state into 68k registers */
@@ -124,7 +124,7 @@ static void setup_runtime(void)
           [a3] "m" (aregs[3]),
           [a4] "m" (aregs[4]),
           [code] "a" (code)
-        : "d0", "d1", "d2", "d3", "a0", "a1", "cc", "memory"
+        : "d1", "d2", "d3", "a0", "a1", "cc", "memory"
     );
 }
 
@@ -188,7 +188,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
             block = cache[pc];
         }
         if (!block) {
-            block = compile_block(pc, gb_rom + pc);
+            block = compile_block(pc, gb_rom + pc, NULL);
             if (pc < MAX_CACHED_BLOCKS) {
                 cache[pc] = block;
             }
