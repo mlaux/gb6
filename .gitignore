@@ -18,3 +18,5 @@ examples/*.bin
 *.dSYM
 *.o
 test_compiler
+build_native
+*.md
