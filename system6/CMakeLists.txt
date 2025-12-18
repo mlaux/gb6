@@ -15,6 +15,8 @@ add_application(Emulator
     ../src/mbc.c
     ../compiler/compiler.c
     ../compiler/emitters.c
+    ../compiler/branches.c
+    ../compiler/flags.c
     emulator.c
     resources.r
 )

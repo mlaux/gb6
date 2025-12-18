@@ -176,10 +176,30 @@ struct code_block *compile_block(
             compile_ld_sp_imm16(ctx, block, gb_code, &src_ptr);
             break;
 
+        case 0x32: // ld (hl-), a
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);  // D1.w = HL
+            compile_call_dmg_write(block);  // dmg_write(dmg, D1.w, A)
+            emit_subq_w_an(block, REG_68K_A_HL, 1);  // HL--
+            break;
+
+        case 0x05: // dec b
+            emit_swap(block, REG_68K_D_BC);
+            emit_subq_b_dn(block, REG_68K_D_BC, 1);
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
+            emit_swap(block, REG_68K_D_BC);
+            break;
+
         case 0x06: // ld b, imm8
             emit_swap(block, REG_68K_D_BC);
             emit_move_b_dn(block, REG_68K_D_BC, gb_code[src_ptr++]);
             emit_swap(block, REG_68K_D_BC);
+            break;
+
+        case 0x0d: // dec c
+            emit_subq_b_dn(block, REG_68K_D_BC, 1);
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
             break;
 
         case 0x0e: // ld c, imm8

@@ -18,6 +18,8 @@ TEST_EXEC(test_exec_ld_hl_imm16,    REG_HL, 0x5566,  0x21, 0x66, 0x55, 0x10)
 TEST_EXEC(test_exec_ld_sp_imm16,    REG_SP, 0x7788,  0x31, 0x88, 0x77, 0x10)
 
 TEST_EXEC(test_dec_a,               REG_A,  0x1,  0x3e, 0x02, 0x3d, 0x10)
+TEST_EXEC(test_dec_b,               REG_BC, 0x00040000,  0x06, 0x05, 0x05, 0x10)
+TEST_EXEC(test_dec_c,               REG_BC, 0x00000004,  0x0e, 0x05, 0x0d, 0x10)
 TEST_EXEC(test_xor_a,               REG_A,  0x0,  0x3e, 0x20, 0xaf, 0x10)
 
 TEST(test_exec_jp_skip)
@@ -313,6 +315,23 @@ TEST(test_exec_ld_a_de_ind)
     ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A should have value read from memory
 }
 
+TEST(test_exec_ld_hld_a)
+{
+    // ld (hl-), a - write A to memory address HL, then decrement HL
+    uint8_t rom[] = {
+        0x21, 0x02, 0x50, // 0x0000: ld hl, 0x5002
+        0x3e, 0xaa,       // 0x0003: ld a, 0xaa
+        0x32,             // 0x0005: ld (hl-), a  ; write 0xaa to 0x5002, HL becomes 0x5001
+        0x3e, 0xbb,       // 0x0006: ld a, 0xbb
+        0x32,             // 0x0008: ld (hl-), a  ; write 0xbb to 0x5001, HL becomes 0x5000
+        0x10              // 0x0009: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_mem_byte(0x5002), 0xaa);
+    ASSERT_EQ(get_mem_byte(0x5001), 0xbb);
+    ASSERT_EQ(get_areg(REG_68K_A_HL), 0x5000);  // HL decremented twice
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -334,6 +353,8 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_ld_sp_imm16);
 
     RUN_TEST(test_dec_a);
+    RUN_TEST(test_dec_b);
+    RUN_TEST(test_dec_c);
     RUN_TEST(test_xor_a);
 
     printf("\nMulti-block tests:\n");
@@ -365,4 +386,5 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_ld_a_bc_ind);
     RUN_TEST(test_exec_ld_de_ind_a);
     RUN_TEST(test_exec_ld_a_de_ind);
+    RUN_TEST(test_exec_ld_hld_a);
 }

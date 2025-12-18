@@ -653,10 +653,8 @@ int main(int argc, char *argv[])
         while ((long) (frame_end - cpu.cycle_count) > 0 && !jit_halted) {
           jit_step();
         }
-        if (!jit_halted) {
-          // since dmg_step is bypassed...
-          lcd_draw(&lcd);
-        }
+        // since dmg_step is bypassed...
+        lcd_draw(&lcd);
       } else {
         // Interpreter mode
         while ((long) (frame_end - cpu.cycle_count) > 0) {
