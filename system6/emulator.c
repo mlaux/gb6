@@ -189,6 +189,7 @@ void StartEmulation(void)
   lcd_new(&lcd);
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
+  mbc_load_ram(dmg.rom->mbc, "save.sav");
 
   cpu.dmg = &dmg;
   cpu.pc = 0x100;
@@ -439,6 +440,7 @@ int main(int argc, char *argv[])
       frame_count++;
     }
   }
+  mbc_save_ram(dmg.rom->mbc, "save.sav");
 
   return 0;
 }
