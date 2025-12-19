@@ -84,6 +84,6 @@ void register_unit_tests(void);
 void register_exec_tests(void);
 
 #define GLOBALS_BASE 0x4000 // random variables
-#define U8_INTERRUPTS_ENABLED 0x4000
+#define U16_INTERRUPTS_ENABLED 0x4000
 
 #endif

@@ -97,18 +97,17 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 static void setup_runtime_stubs(void)
 {
     // stub_write: writes value byte to address
-    // Stack layout after jsr: ret(4), dmg(4), addr(2), val(2)
-    // Note: must zero-extend address since movea.w sign-extends
+    // Stack layout after jsr: ret(4), dmg(4), addr(2), val(1), empty(1)
     // moveq #0, d0        ; clear d0
     // move.w 8(sp), d0    ; d0 = address (zero-extended)
     // movea.l d0, a0      ; a0 = address
-    // move.b 11(sp), (a0) ; write value to memory
+    // move.b 10(sp), (a0) ; write value to memory
     // rts
     static const uint8_t stub_write[] = {
         0x70, 0x00,              // moveq #0, d0
         0x30, 0x2f, 0x00, 0x08,  // move.w 8(sp), d0
         0x20, 0x40,              // movea.l d0, a0
-        0x10, 0xaf, 0x00, 0x0b,  // move.b 11(sp), (a0)
+        0x10, 0xaf, 0x00, 0x0a,  // move.b 10(sp), (a0)
         0x4e, 0x75               // rts
     };
 
@@ -129,7 +128,7 @@ static void setup_runtime_stubs(void)
     };
 
     static const uint8_t stub_ei_di[] = {
-        0x11, 0xef, 0x00, 0x09, 0x40, 0x00, // move.b 9(sp), (U8_INTERRUPTS_ENABLED)
+        0x31, 0xef, 0x00, 0x08, 0x40, 0x00, // move.w 8(sp), (U16_INTERRUPTS_ENABLED)
         0x4e, 0x75                          // rts
     };
 
@@ -242,7 +241,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
         m68k_set_reg(M68K_REG_SP, STACK_BASE - 4);
         m68k_set_reg(M68K_REG_PC, CODE_BASE);
 
-        m68k_execute(1000);
+        int cycles = m68k_execute(5000);
 
         // Check D0 for next PC or halt
         pc = get_dreg(REG_68K_D_NEXT_PC);

@@ -51,7 +51,7 @@ static uint8_t test_read(void *dmg, uint16_t address)
 /*
  * Assembly stubs that match the JIT calling convention.
  * JIT code pushes: value(2), addr(2), dmg(4), then JSR
- * So stack after jsr: ret(4), dmg(4), addr(2), value(2)
+ * So stack after jsr: ret(4), dmg(4), addr(2), value(1), empty(1)
  *
  * These access the mem[] array using indexed addressing.
  */
@@ -63,7 +63,7 @@ asm(
     "    moveq #0, %d0\n"              /* clear d0 */
     "    move.w 8(%sp), %d0\n"         /* d0 = gb addr (zero-extended) */
     "    lea mem, %a0\n"               /* a0 = mem base */
-    "    move.b 11(%sp), (%a0,%d0.l)\n" /* write value */
+    "    move.b 10(%sp), (%a0,%d0.l)\n" /* write value */
     "    rts\n"
 
     ".globl stub_read_asm\n"
@@ -80,7 +80,7 @@ asm(
     ".globl stub_ei_di\n"
     "stub_ei_di:\n"
     "    lea mem, %a0\n"               /* a0 = mem base */
-    "    move.b 9(%sp), 0x4000(%a0)\n" /* write to mem[U8_INTERRUPTS_ENABLED] */
+    "    move.b 8(%sp), 0x4000(%a0)\n" /* write to mem[U8_INTERRUPTS_ENABLED] */
     "    rts\n"
 );
 

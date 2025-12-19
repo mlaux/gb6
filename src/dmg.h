@@ -64,6 +64,7 @@ u8 dmg_read(void *dmg, u16 address);
 void dmg_write(void *dmg, u16 address, u8 data);
 
 void dmg_step(void *dmg);
+void dmg_sync_hw(struct dmg *dmg);
 void dmg_request_interrupt(struct dmg *dmg, int nr);
 
 // page table management

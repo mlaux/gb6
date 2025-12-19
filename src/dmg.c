@@ -124,48 +124,13 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
-// Advance LCD state based on elapsed CPU cycles (for JIT mode)
-static void sync_lcd(struct dmg *dmg)
-{
-    int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
-
-    while (cycle_diff >= 456) {
-        int next_ly = lcd_step(dmg->lcd);
-        dmg->last_lcd_update += 456;
-        cycle_diff -= 456;
-
-        // render at vblank
-        if (next_ly == 144) {
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                lcd_render_background(dmg, lcdc, window_enabled);
-            }
-            if (lcdc & LCDC_ENABLE_OBJ) {
-                lcd_render_objs(dmg);
-            }
-            lcd_draw(dmg->lcd);
-        }
-    }
-}
-
 static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     // Hacky: advance LCD every time LY is read (for JIT mode)
     if (address == REG_LY) {
-        int next_ly = lcd_step(dmg->lcd);
-        if (next_ly == 144) {
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                lcd_render_background(dmg, lcdc, window_enabled);
-            }
-            if (lcdc & LCDC_ENABLE_OBJ) {
-                lcd_render_objs(dmg);
-            }
-            lcd_draw(dmg->lcd);
-        }
-        return next_ly;
+        dmg->cpu->cycle_count += 456;
+        dmg_sync_hw(dmg);
+        return lcd_read(dmg->lcd, REG_LY);
     }
 
     // OAM and LCD registers
@@ -215,19 +180,27 @@ static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 
     return 0xff;
 }
+extern void debug_log_string(const char *str);
 
 u8 dmg_read(void *_dmg, u16 address)
 {
+    // char buf[128];
+    // u8 val;
     struct dmg *dmg = (struct dmg *) _dmg;
     u8 *page = dmg->read_page[address >> 8];
     if (page) {
         return page[address & 0xff];
     }
+    // sprintf(buf, "dmg_read pc=%04x addr=%04x value=%02x\n", dmg->cpu->pc, address, val);
+    // debug_log_string(buf);
     return dmg_read_slow(dmg, address);
 }
 
 static void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
 {
+    // char buf[128];
+    // sprintf(buf, "dmg_write pc=%04x addr=%04x value=%02x\n", dmg->cpu->pc, address, data);
+    // debug_log_string(buf);
     // ROM region writes go to MBC for bank switching
     if (address < 0x8000) {
         mbc_write(dmg->rom->mbc, dmg, address, data);
@@ -338,13 +311,9 @@ static void timer_step(struct dmg *dmg)
     dmg->last_timer_update = dmg->cpu->cycle_count;
 }
 
-void dmg_step(void *_dmg)
+// Sync hardware state without running CPU - for JIT mode
+void dmg_sync_hw(struct dmg *dmg)
 {
-    struct dmg *dmg = (struct dmg *) _dmg;
-
-    // order of dependencies? i think cpu needs to step first then update
-    // all other hw
-    cpu_step(dmg->cpu);
     timer_step(dmg);
 
     // each line takes 456 cycles
@@ -405,7 +374,15 @@ void dmg_step(void *_dmg)
     }
 }
 
-void dmg_ei_di(void *dmg, u16 enabled)
+void dmg_step(void *_dmg)
 {
-    ((struct dmg *) dmg)->interrupt_enabled = enabled;
+    struct dmg *dmg = (struct dmg *) _dmg;
+    cpu_step(dmg->cpu);
+    dmg_sync_hw(dmg);
+}
+
+void dmg_ei_di(void *_dmg, u16 enabled)
+{
+    struct dmg *dmg = (struct dmg *) _dmg;
+    dmg->cpu->interrupt_enable = enabled ? 1 : 0;
 }

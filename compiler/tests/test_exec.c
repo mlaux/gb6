@@ -780,7 +780,8 @@ TEST(test_ei)
         0x10              // 0x0001: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_mem_byte(U8_INTERRUPTS_ENABLED), 1);
+    // big endian...
+    ASSERT_EQ(get_mem_byte(U16_INTERRUPTS_ENABLED + 1), 1);
 }
 
 TEST(test_di)
@@ -793,7 +794,7 @@ TEST(test_di)
         0x10              // 0x0001: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_mem_byte(U8_INTERRUPTS_ENABLED), 0);
+    ASSERT_EQ(get_mem_byte(U16_INTERRUPTS_ENABLED + 1), 0);
 }
 
 TEST(test_push_pop_de_hl)
@@ -866,6 +867,43 @@ TEST(test_rst_28)
     run_program(rom, 0);
     ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x33);
     ASSERT_EQ((get_dreg(REG_68K_D_BC) >> 16) & 0xff, 0x22);
+}
+
+TEST(test_ldh_dec_ldh_loop)
+{
+    // Test the pattern: ldh a, (n); dec a; ldh (n), a; jr nz, loop
+    // This is similar to the sprite counter decrement loop
+    uint8_t rom[] = {
+        0x3e, 0x03,       // 0x0000: ld a, 3
+        0xe0, 0x90,       // 0x0002: ldh ($ff90), a  ; counter = 3
+        // loop:
+        0xf0, 0x90,       // 0x0004: ldh a, ($ff90)  ; read counter
+        0x3d,             // 0x0006: dec a
+        0xe0, 0x90,       // 0x0007: ldh ($ff90), a  ; write counter
+        0x20, 0xf9,       // 0x0009: jr nz, -7 (back to 0x0004)
+        0x10              // 0x000b: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x00);  // A should be 0
+    ASSERT_EQ(get_mem_byte(0xff90), 0x00);          // counter should be 0
+}
+
+TEST(test_ldh_dec_preserves_value)
+{
+    // Verify that ldh read -> dec -> ldh write preserves the correct byte value
+    // even if other registers have garbage in high bytes
+    uint8_t rom[] = {
+        0x3e, 0x05,       // 0x0000: ld a, 5
+        0xe0, 0x91,       // 0x0002: ldh ($ff91), a  ; mem = 5
+        0x3e, 0xff,       // 0x0004: ld a, 0xff      ; pollute A with 0xff
+        0xf0, 0x91,       // 0x0006: ldh a, ($ff91)  ; read back (should be 5)
+        0x3d,             // 0x0008: dec a           ; a = 4
+        0xe0, 0x91,       // 0x0009: ldh ($ff91), a  ; write 4
+        0x10              // 0x000b: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x04);
+    ASSERT_EQ(get_mem_byte(0xff91), 0x04);
 }
 
 void register_exec_tests(void)
@@ -992,4 +1030,8 @@ void register_exec_tests(void)
     RUN_TEST(test_ei);
     RUN_TEST(test_di);
     RUN_TEST(test_exec_jr_nz_then_call);
+
+    printf("\nLDH counter tests:\n");
+    RUN_TEST(test_ldh_dec_ldh_loop);
+    RUN_TEST(test_ldh_dec_preserves_value);
 }

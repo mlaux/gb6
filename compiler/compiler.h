@@ -45,8 +45,8 @@
 
 
 struct code_block {
-    uint8_t code[256];
-    uint16_t m68k_offsets[256];
+    uint8_t code[2048];
+    uint16_t m68k_offsets[2048];
     size_t length;
     uint16_t gb_cycles; // for timing
     uint16_t src_address;

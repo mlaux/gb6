@@ -6,7 +6,7 @@
 void compile_call_dmg_write(struct code_block *block)
 {
     // Push args right-to-left: val, addr, dmg
-    emit_push_w_dn(block, REG_68K_D_A);  // push value (A register = D4)
+    emit_push_b_dn(block, REG_68K_D_A);  // push value (A register = D4)
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // push address (D1)
     emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);  // push dmg pointer
     emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);  // A0 = write func
@@ -17,12 +17,23 @@ void compile_call_dmg_write(struct code_block *block)
 // Call dmg_write(dmg, addr, val) - addr in D1
 void compile_call_dmg_write_imm(struct code_block *block, uint8_t val)
 {
-    emit_push_w_imm(block, val);
+    emit_push_b_imm(block, val);
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
     emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
     emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
     emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
     emit_addq_l_an(block, 7, 8);
+}
+
+// Call dmg_write(dmg, addr, val) - addr in D1, val in D0
+void compile_call_dmg_write_d0(struct code_block *block)
+{
+    emit_push_b_dn(block, REG_68K_D_NEXT_PC);  // push value (D0)
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // push address (D1)
+    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);  // push dmg pointer
+    emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);  // A0 = write func
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);  // call dmg_write
+    emit_addq_l_an(block, 7, 8);  // clean up stack (4 + 2 + 2 = 8 bytes)
 }
 
 // Call dmg_read(dmg, addr) - addr in D1, result stays in D0 (scratch)
@@ -48,6 +59,7 @@ void compile_call_ei_di(struct code_block *block, int enabled)
 {
     // push enabled
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, (int8_t) enabled);
+    // i actually have this as a 16-bit int for some reason
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
     // push dmg pointer
     emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);

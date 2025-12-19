@@ -34,6 +34,29 @@ static struct code_block *block_cache[MAX_CACHED_BLOCKS];
 // Debug logging - open/close each time to avoid losing data on crash
 static int debug_enabled = 1;
 
+void debug_log_string(const char *str)
+{
+  short fref;
+  char buf[128];
+  long len;
+  OSErr err;
+  err = FSOpen("\pjit_log.txt", 0, &fref);
+  if (err == fnfErr) {
+      Create("\pjit_log.txt", 0, 'ttxt', 'TEXT');
+      err = FSOpen("\pjit_log.txt", 0, &fref);
+  }
+  if (err != noErr) return;
+  // Seek to end
+  SetFPos(fref, fsFromLEOF, 0);
+  len = strlen(str);
+  FSWrite(fref, &len, str);
+  buf[0] = '\n';
+  len = 1;
+  FSWrite(fref, &len, buf);
+
+  FSClose(fref);
+}
+
 static void debug_log_block(struct code_block *block)
 {
     short fref;
@@ -322,6 +345,8 @@ static int jit_step(void)
         if (!block) {
             sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
             set_status_bar(buf);
+
+            lcd_draw(dmg.lcd);
             jit_halted = 1;
             return 0;
         }
@@ -330,13 +355,13 @@ static int jit_step(void)
         if (block->error) {
             sprintf(buf, "pc=%04x op=%02x", block->failed_address, block->failed_opcode);
             set_status_bar(buf);
+
+            lcd_draw(dmg.lcd);
             jit_halted = 1;
             block_free(block);
             return 0;
         }
 
-        // Log the compiled block
-        debug_log_block(block);
 
         // Cache the block
         // if (cpu.pc < MAX_CACHED_BLOCKS) {
@@ -344,6 +369,8 @@ static int jit_step(void)
         // }
     }
 
+    // Log the compiled block
+    debug_log_block(block);
     // Execute the block
     execute_block(block->code);
 
@@ -356,12 +383,63 @@ static int jit_step(void)
         return 0;
     }
 
+    // Debug: show interrupt state every ~1000 blocks
+    {
+        static int dbg_cnt = 0;
+        static u16 min_pc = 0xffff, max_pc = 0;
+        if (cpu.pc < min_pc) min_pc = cpu.pc;
+        if (cpu.pc > max_pc) max_pc = cpu.pc;
+        if (++dbg_cnt >= 1000) {
+            dbg_cnt = 0;
+            sprintf(buf, "PC=%04x-%04x IE=%02x", min_pc, max_pc,
+                    dmg.interrupt_enabled);
+            set_status_bar(buf);
+            lcd_draw(dmg.lcd);
+            min_pc = 0xffff;
+            max_pc = 0;
+        }
+    }
+
+    // Check for pending interrupts
+    if (cpu.interrupt_enable) {
+        u8 pending = dmg.interrupt_enabled & dmg.interrupt_requested & 0x1f;
+        if (pending) {
+            static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
+            int k;
+            for (k = 0; k < 5; k++) {
+                if (pending & (1 << k)) {
+
+                    sprintf(buf, "INT %d -> %04x", k, handlers[k]);
+                    set_status_bar(buf);
+                    lcd_draw(dmg.lcd);
+                    // Clear IF bit and disable IME
+                    dmg.interrupt_requested &= ~(1 << k);
+                    cpu.interrupt_enable = 0;
+
+                    // Push PC to stack
+                    u16 sp = (u16) jit_aregs[REG_68K_A_SP];
+                    sp -= 2;
+                    dmg_write(&dmg, sp + 1, (next_pc >> 8) & 0xff);
+                    dmg_write(&dmg, sp, next_pc & 0xff);
+                    jit_aregs[REG_68K_A_SP] = sp;
+
+                    // Jump to handler
+                    next_pc = handlers[k];
+                    break;
+                }
+            }
+        }
+    }
+
     // Update CPU state
     cpu.pc = (u16) next_pc;
 
     // this is never actually set by the compiler lol so it'll always be 16
     // for now
     cpu.cycle_count += block->gb_cycles ? block->gb_cycles : 16;
+
+    // Sync LCD/timer state
+    dmg_sync_hw(&dmg);
 
     return 1;
 }
@@ -714,8 +792,6 @@ int main(int argc, char *argv[])
         while ((long) (frame_end - cpu.cycle_count) > 0 && !jit_halted) {
           jit_step();
         }
-        // since dmg_step is bypassed...
-        lcd_draw(&lcd);
       } else {
         // Interpreter mode
         while ((long) (frame_end - cpu.cycle_count) > 0) {

@@ -156,6 +156,19 @@ void emit_addq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val)
     emit_word(block, 0x5000 | ddd << 9 | dreg);
 }
 
+void emit_addq_l_dn(struct code_block *block, uint8_t dreg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 0 10 000 rrr
+    if (val == 0 || val > 8) {
+        printf("can only addq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5080 | ddd << 9 | dreg);
+}
+
 // addq.w #val, An
 void emit_addq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
 {
@@ -230,6 +243,13 @@ void emit_cmp_b_imm_dn(struct code_block *block, uint8_t dreg, uint8_t imm)
     emit_word(block, imm);
 }
 
+// cmp.b Ds, Dd - compare data registers (Dd - Ds, set flags)
+void emit_cmp_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1011 ddd 000 000 sss
+    emit_word(block, 0xb000 | (dest << 9) | src);
+}
+
 // scc Dn - set byte based on condition
 // cond: 0x7 = seq (Z=1), 0x6 = sne (Z=0), 0x5 = scs (C=1), 0x4 = scc (C=0)
 void emit_scc(struct code_block *block, uint8_t cond, uint8_t dreg)
@@ -251,6 +271,22 @@ void emit_ori_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm)
 {
     // 0000 0000 00 000 rrr
     emit_word(block, 0x0000 | dreg);
+    emit_word(block, imm);
+}
+
+// subi.b #imm, Dn
+void emit_subi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm)
+{
+    // 0000 0100 00 000 rrr
+    emit_word(block, 0x0400 | dreg);
+    emit_word(block, imm);
+}
+
+// addi.b #imm, Dn
+void emit_addi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm)
+{
+    // 0000 0110 00 000 rrr
+    emit_word(block, 0x0600 | dreg);
     emit_word(block, imm);
 }
 
@@ -296,6 +332,22 @@ void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg)
     emit_word(block, bit);
 }
 
+// bclr #bit, Dn - clear bit, sets Z based on previous bit value
+void emit_bclr_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg)
+{
+    // 0000 1000 10 000 rrr, followed by bit number
+    emit_word(block, 0x0880 | dreg);
+    emit_word(block, bit);
+}
+
+// bset #bit, Dn - set bit, sets Z based on previous bit value
+void emit_bset_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg)
+{
+    // 0000 1000 11 000 rrr, followed by bit number
+    emit_word(block, 0x08c0 | dreg);
+    emit_word(block, bit);
+}
+
 // move.l Ds, Dd - copy data register to data register (long)
 void emit_move_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
 {
@@ -324,12 +376,28 @@ void emit_lsl_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
     emit_word(block, 0xe148 | (ccc << 9) | dreg);
 }
 
+// move.b #imm, -(A7) - push immediate word
+void emit_push_b_imm(struct code_block *block, uint16_t val)
+{
+    // 00 01 111 100 111 100  (dest = -(A7), src = immediate word)
+    emit_word(block, 0x1f3c);
+    emit_word(block, val);
+}
+
 // move.w #imm, -(A7) - push immediate word
 void emit_push_w_imm(struct code_block *block, uint16_t val)
 {
     // 00 11 111 100 111 100  (dest = -(A7), src = immediate word)
     emit_word(block, 0x3f3c);
     emit_word(block, val);
+}
+
+// move.b Dn, -(A7) - push byte from data register
+// this actually decreases SP by 2
+void emit_push_b_dn(struct code_block *block, uint8_t dreg)
+{
+    // 00 01 111 100 000 ddd  (dest = -(A7), src = Dn)
+    emit_word(block, 0x1f00 | dreg);
 }
 
 // move.w Dn, -(A7) - push word from data register
@@ -418,6 +486,14 @@ void emit_eor_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     emit_word(block, 0xb100 | (src << 9) | dest);
 }
 
+// eori.b #imm, Dn - XOR immediate with data register
+void emit_eor_b_imm_dn(struct code_block *block, uint8_t imm, uint8_t dreg)
+{
+    // 0000 1010 00 000 rrr
+    emit_word(block, 0x0a00 | dreg);
+    emit_word(block, imm);
+}
+
 void emit_ext_w_dn(struct code_block *block, uint8_t dreg)
 {
     // 0100 100 010 000 ddd
@@ -450,6 +526,20 @@ void emit_ror_b_imm(struct code_block *block, uint8_t count, uint8_t dreg)
     }
     ccc = count == 8 ? 0 : count;
     emit_word(block, 0xe018 | (ccc << 9) | dreg);
+}
+
+// rol.b #count, Dn - rotate left byte by immediate (1-8)
+void emit_rol_b_imm(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 1 00 0 11 rrr (d=1 for left, size=00 for byte, i=0 for imm)
+    if (count == 0 || count > 8) {
+        printf("can only rol by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe118 | (ccc << 9) | dreg);
 }
 
 // add.b Ds, Dd - ADD data registers (result to Dd)
