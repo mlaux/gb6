@@ -48,10 +48,15 @@
     } \
 } while (0)
 
+// Test compile context - must be set up by test harness
+extern struct compile_ctx *test_compile_ctx;
+extern uint8_t *test_gb_rom;
+
 #define TEST_EXEC(name, reg, expected, ...) \
     TEST(name) { \
         uint8_t gb_code[] = { __VA_ARGS__ }; \
-        struct code_block *block = compile_block(0, gb_code, NULL); \
+        test_gb_rom = gb_code; \
+        struct code_block *block = compile_block(0, test_compile_ctx); \
         run_code(block); \
         uint32_t raw = REG_IS_ADDR(reg) ? get_areg(REG_INDEX(reg)) : get_dreg(REG_INDEX(reg)); \
         uint32_t result = raw & REG_MASK(reg); \
@@ -72,9 +77,13 @@ uint32_t get_areg(int reg);
 
 // Get simulated memory byte
 uint8_t get_mem_byte(uint16_t addr);
+void set_mem_byte(uint16_t addr, uint8_t value);
 
 // Test registration functions
 void register_unit_tests(void);
 void register_exec_tests(void);
+
+#define GLOBALS_BASE 0x4000 // random variables
+#define U8_INTERRUPTS_ENABLED 0x4000
 
 #endif

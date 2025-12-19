@@ -115,6 +115,20 @@ void emit_subq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val)
     emit_word(block, 0x5100 | ddd << 9 | dreg);
 }
 
+// subq.l #val, Dn
+void emit_subq_l_dn(struct code_block *block, uint8_t dreg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 1 10 000 rrr
+    if (val == 0 || val > 8) {
+        printf("can only subq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5180 | ddd << 9 | dreg);
+}
+
 // subq.w #val, An
 void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
 {
@@ -127,6 +141,19 @@ void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
     }
     ddd = val == 8 ? 0 : val;
     emit_word(block, 0x5148 | ddd << 9 | areg);
+}
+
+void emit_addq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 0 00 000 rrr
+    if (val == 0 || val > 8) {
+        printf("can only addq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5000 | ddd << 9 | dreg);
 }
 
 // addq.w #val, An
@@ -297,6 +324,14 @@ void emit_lsl_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
     emit_word(block, 0xe148 | (ccc << 9) | dreg);
 }
 
+// move.w #imm, -(A7) - push immediate word
+void emit_push_w_imm(struct code_block *block, uint16_t val)
+{
+    // 00 11 111 100 111 100  (dest = -(A7), src = immediate word)
+    emit_word(block, 0x3f3c);
+    emit_word(block, val);
+}
+
 // move.w Dn, -(A7) - push word from data register
 void emit_push_w_dn(struct code_block *block, uint8_t dreg)
 {
@@ -381,4 +416,38 @@ void emit_eor_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
 {
     // 1011 sss 1 00 000 ddd
     emit_word(block, 0xb100 | (src << 9) | dest);
+}
+
+void emit_ext_w_dn(struct code_block *block, uint8_t dreg)
+{
+    // 0100 100 010 000 ddd
+    emit_word(block, 0x4880 | dreg);
+}
+
+// not.b Dn - one's complement (flip all bits)
+void emit_not_b_dn(struct code_block *block, uint8_t dreg)
+{
+    // 0100 0110 00 000 rrr
+    emit_word(block, 0x4600 | dreg);
+}
+
+// and.b Ds, Dd - AND data registers (result to Dd)
+void emit_and_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1100 ddd 0 00 000 sss
+    emit_word(block, 0xc000 | (dest << 9) | src);
+}
+
+// ror.b #count, Dn - rotate right byte by immediate (1-8)
+void emit_ror_b_imm(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 0 00 0 11 rrr (d=0 for right, size=00 for byte, i=0 for imm)
+    if (count == 0 || count > 8) {
+        printf("can only ror by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe018 | (ccc << 9) | dreg);
 }

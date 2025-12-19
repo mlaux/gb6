@@ -22,7 +22,9 @@ void emit_movea_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg);
 void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t val);
 
 void emit_subq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val);
+void emit_subq_l_dn(struct code_block *block, uint8_t dreg, uint8_t val);
 void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val);
+void emit_addq_b_dn(struct code_block *block, uint8_t areg, uint8_t val);
 void emit_addq_w_an(struct code_block *block, uint8_t areg, uint8_t val);
 void emit_move_w_dn_ind_an(struct code_block *block, uint8_t dreg, uint8_t areg);
 void emit_move_w_ind_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg);
@@ -46,6 +48,7 @@ void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg);
 void emit_move_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 void emit_move_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 void emit_lsl_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg);
+void emit_push_w_imm(struct code_block *block, uint16_t val);
 void emit_push_w_dn(struct code_block *block, uint8_t dreg);
 void emit_push_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg);
 void emit_movea_l_disp_an_an(struct code_block *block, int16_t disp, uint8_t src_areg, uint8_t dest_areg);
@@ -56,5 +59,10 @@ void emit_movem_l_from_postinc(struct code_block *block, uint16_t mask);
 void emit_move_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 void emit_movea_l_imm32(struct code_block *block, uint8_t areg, uint32_t val);
 void emit_eor_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+
+void emit_ext_w_dn(struct code_block *block, uint8_t dreg);
+void emit_not_b_dn(struct code_block *block, uint8_t dreg);
+void emit_and_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+void emit_ror_b_imm(struct code_block *block, uint8_t count, uint8_t dreg);
 
 #endif

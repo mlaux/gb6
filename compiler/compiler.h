@@ -41,6 +41,7 @@
 #define JIT_CTX_DMG   0
 #define JIT_CTX_READ  4
 #define JIT_CTX_WRITE 8
+#define JIT_CTX_EI_DI 12
 
 
 struct code_block {
@@ -57,19 +58,20 @@ struct code_block {
     uint16_t failed_address;
 };
 
-// base pointers for address calculation
+// read function signature: u8 (*read)(void *dmg, u16 address)
+typedef uint8_t (*dmg_read_fn)(void *dmg, uint16_t address);
+
+// compile-time context
 struct compile_ctx {
-    void *wram_base;
+    void *dmg;              // dmg pointer for memory reads
+    dmg_read_fn read;       // read function
+    void *wram_base;        // for SP address calculation
     void *hram_base;
 };
 
 void compiler_init(void);
 
-struct code_block *compile_block(
-    uint16_t src_address,
-    uint8_t *gb_code,
-    struct compile_ctx *ctx
-);
+struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx);
 
 // Free a compiled block
 void block_free(struct code_block *block);

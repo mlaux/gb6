@@ -25,11 +25,64 @@
 
 // compiler infrastructure
 
-#define MAX_CACHED_BLOCKS 256
+#define MAX_CACHED_BLOCKS 65536
 #define HALT_SENTINEL 0xffffffff
 
 // block cache indexed by GB PC
 static struct code_block *block_cache[MAX_CACHED_BLOCKS];
+
+// Debug logging - open/close each time to avoid losing data on crash
+static int debug_enabled = 1;
+
+static void debug_log_block(struct code_block *block)
+{
+    short fref;
+    char buf[128];
+    long len;
+    int k;
+    OSErr err;
+
+    if (!debug_enabled) return;
+
+    err = FSOpen("\pjit_log.txt", 0, &fref);
+    if (err == fnfErr) {
+        Create("\pjit_log.txt", 0, 'ttxt', 'TEXT');
+        err = FSOpen("\pjit_log.txt", 0, &fref);
+    }
+    if (err != noErr) return;
+
+    // Seek to end
+    SetFPos(fref, fsFromLEOF, 0);
+
+    // Write block header
+    sprintf(buf, "Block %04x->%04x (%d bytes):\n",
+            block->src_address, block->end_address, (int) block->length);
+    len = strlen(buf);
+    FSWrite(fref, &len, buf);
+
+    // Write hex dump of generated code
+    for (k = 0; k < block->length; k++) {
+        sprintf(buf, "%02x", block->code[k]);
+        len = 2;
+        FSWrite(fref, &len, buf);
+        if ((k & 15) == 15 || k == block->length - 1) {
+            buf[0] = '\n';
+            len = 1;
+            FSWrite(fref, &len, buf);
+        } else {
+            buf[0] = ' ';
+            len = 1;
+            FSWrite(fref, &len, buf);
+        }
+    }
+
+    // Newline separator
+    buf[0] = '\n';
+    len = 1;
+    FSWrite(fref, &len, buf);
+
+    FSClose(fref);
+}
 
 // register state that persists between block executions
 static unsigned long jit_dregs[8];
@@ -40,6 +93,7 @@ typedef struct {
     void *dmg;
     void *read_func;
     void *write_func;
+    void *ei_di_func;
 } jit_context;
 
 static jit_context jit_ctx;
@@ -240,6 +294,7 @@ static void jit_init(void)
     jit_ctx.dmg = NULL;
     jit_ctx.read_func = dmg_read;
     jit_ctx.write_func = dmg_write;
+    jit_ctx.ei_di_func = dmg_ei_di;
 
     jit_halted = 0;
 }
@@ -256,14 +311,14 @@ static int jit_step(void)
     }
 
     // Look up or compile block
-    if (cpu.pc < MAX_CACHED_BLOCKS) {
+    // if (cpu.pc < MAX_CACHED_BLOCKS) {
         block = block_cache[cpu.pc];
-    } else {
-        block = NULL;
-    }
+    // } else {
+    //     block = NULL;
+    // }
 
     if (!block) {
-        block = compile_block(cpu.pc, rom.data + cpu.pc, &compile_ctx);
+        block = compile_block(cpu.pc, &compile_ctx);
         if (!block) {
             sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
             set_status_bar(buf);
@@ -280,10 +335,13 @@ static int jit_step(void)
             return 0;
         }
 
+        // Log the compiled block
+        debug_log_block(block);
+
         // Cache the block
-        if (cpu.pc < MAX_CACHED_BLOCKS) {
+        // if (cpu.pc < MAX_CACHED_BLOCKS) {
             block_cache[cpu.pc] = block;
-        }
+        // }
     }
 
     // Execute the block
@@ -405,6 +463,8 @@ void StartEmulation(void)
   jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
 
   // Initialize compile-time context
+  compile_ctx.dmg = &dmg;
+  compile_ctx.read = dmg_read;
   compile_ctx.wram_base = dmg.main_ram;
   compile_ctx.hram_base = dmg.zero_page;
 

@@ -3,10 +3,13 @@
 #include "branches.h"
 #include "emitters.h"
 
+// helper for reading GB memory during compilation
+#define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
+
 // returns 1 if jr ended the block, 0 if it's a backward jump within block
 int compile_jr(
     struct code_block *block,
-    uint8_t *gb_code,
+    struct compile_ctx *ctx,
     uint16_t *src_ptr,
     uint16_t src_address
 ) {
@@ -15,7 +18,7 @@ int compile_jr(
     uint16_t target_m68k, target_gb_pc;
     int16_t m68k_disp;
 
-    disp = (int8_t) gb_code[*src_ptr];
+    disp = (int8_t) READ_BYTE(*src_ptr);
     (*src_ptr)++;
 
     // jr displacement is relative to PC after the jr instruction
@@ -46,7 +49,7 @@ int compile_jr(
 // branch_if_set: if true, branch when flag is set; if false, branch when clear
 void compile_jr_cond(
     struct code_block *block,
-    uint8_t *gb_code,
+    struct compile_ctx *ctx,
     uint16_t *src_ptr,
     uint16_t src_address,
     uint8_t flag_bit,
@@ -57,7 +60,7 @@ void compile_jr_cond(
     uint16_t target_m68k, target_gb_pc;
     int16_t m68k_disp;
 
-    disp = (int8_t) gb_code[*src_ptr];
+    disp = (int8_t) READ_BYTE(*src_ptr);
     (*src_ptr)++;
 
     target_gb_offset = (int16_t) *src_ptr + disp;
@@ -99,10 +102,14 @@ void compile_jr_cond(
     emit_rts(block);
 }
 
-void compile_call_imm16(struct code_block *block, uint8_t *gb_code, uint16_t *src_ptr)
-{
-    uint16_t target = gb_code[*src_ptr] | (gb_code[*src_ptr + 1] << 8);
-    uint16_t ret_addr = block->src_address + *src_ptr + 2;  // address after call
+void compile_call_imm16(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address
+) {
+    uint16_t target = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
+    uint16_t ret_addr = src_address + *src_ptr + 2;  // address after call
     *src_ptr += 2;
 
     // push return address (A3 = base + SP)

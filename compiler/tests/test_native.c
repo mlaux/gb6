@@ -31,9 +31,22 @@ typedef struct {
     void *dmg;           /* offset 0 */
     void *read_func;     /* offset 4 */
     void *write_func;    /* offset 8 */
+    void *ei_di_func;
 } jit_context;
 
 static jit_context ctx;
+
+/* Test compile context */
+uint8_t *test_gb_rom;
+static struct compile_ctx test_ctx;
+struct compile_ctx *test_compile_ctx = &test_ctx;
+
+/* Read function for test compiler context */
+static uint8_t test_read(void *dmg, uint16_t address)
+{
+    (void)dmg;
+    return test_gb_rom[address];
+}
 
 /*
  * Assembly stubs that match the JIT calling convention.
@@ -47,29 +60,40 @@ asm(
 
     ".globl stub_write_asm\n"
     "stub_write_asm:\n"
-    "    move.w 8(%sp), %d0\n"          /* d0 = gb addr */
+    "    moveq #0, %d0\n"              /* clear d0 */
+    "    move.w 8(%sp), %d0\n"         /* d0 = gb addr (zero-extended) */
     "    lea mem, %a0\n"               /* a0 = mem base */
-    "    move.b 11(%sp), (%a0,%d0.w)\n" /* write value */
+    "    move.b 11(%sp), (%a0,%d0.l)\n" /* write value */
     "    rts\n"
 
     ".globl stub_read_asm\n"
     "stub_read_asm:\n"
-    "    move.w 8(%sp), %d1\n"          /* d1 = gb addr */
+    "    moveq #0, %d1\n"              /* clear d1 */
+    "    move.w 8(%sp), %d1\n"         /* d1 = gb addr (zero-extended) */
     "    lea mem, %a0\n"               /* a0 = mem base */
-    "    moveq #0, %d0\n"
-    "    move.w 8(%sp), %d1\n"          /* d1 = addr again */
-    "    move.b (%a0,%d1.w), %d0\n"     /* read value into d0 */
+    "    moveq #0, %d0\n"              /* clear return value */
+    "    move.b (%a0,%d1.l), %d0\n"    /* read value into d0 */
+    "    rts\n"
+);
+
+asm(
+    ".globl stub_ei_di\n"
+    "stub_ei_di:\n"
+    "    lea mem, %a0\n"               /* a0 = mem base */
+    "    move.b 9(%sp), 0x4000(%a0)\n" /* write to mem[U8_INTERRUPTS_ENABLED] */
     "    rts\n"
 );
 
 extern void stub_write_asm(void);
 extern uint32_t stub_read_asm(void);
+extern void stub_ei_di(void);
 
 static void setup_runtime(void)
 {
-    ctx.dmg = (void *)0x4000;  /* dummy, not used by our stubs */
+    ctx.dmg = (void *) 0x4000;  /* dummy, not used by our stubs */
     ctx.read_func = stub_read_asm;
     ctx.write_func = stub_write_asm;
+    ctx.ei_di_func = stub_ei_di;
 }
 
 /*
@@ -149,9 +173,9 @@ void run_code(struct code_block *block)
     }
 
     /* Initialize GB registers */
-    aregs[2] = 0;                                /* HL = 0 (it's a value, not a pointer) */
-    aregs[3] = (uint32_t)mem + DEFAULT_GB_SP;    /* SP = pointer into mem[] for call/ret */
-    aregs[4] = &ctx;
+    aregs[REG_68K_A_HL] = 0;
+    aregs[REG_68K_A_SP] = (uint32_t) mem + DEFAULT_GB_SP;
+    aregs[REG_68K_A_CTX] = (uint32_t) &ctx;
 
     execute_block(mem + CODE_BASE);
 }
@@ -176,9 +200,10 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
     }
 
     /* Initialize GB registers */
-    aregs[2] = 0;                                /* HL = 0 (it's a value, not a pointer) */
-    aregs[3] = (uint32_t)mem + DEFAULT_GB_SP;    /* SP = pointer into mem[] for call/ret */
-    aregs[4] = &ctx;
+    aregs[REG_68K_A_HL] = 0;
+    /* SP = pointer into mem[] for call/ret */
+    aregs[REG_68K_A_SP] = (uint32_t) mem + DEFAULT_GB_SP;
+    aregs[REG_68K_A_CTX] = (uint32_t) &ctx;
 
     while (1) {
         struct code_block *block = NULL;
@@ -188,7 +213,8 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
             block = cache[pc];
         }
         if (!block) {
-            block = compile_block(pc, gb_rom + pc, NULL);
+            test_gb_rom = gb_rom;
+            block = compile_block(pc, test_compile_ctx);
             if (pc < MAX_CACHED_BLOCKS) {
                 cache[pc] = block;
             }
@@ -243,6 +269,11 @@ uint8_t get_mem_byte(uint16_t addr)
     return mem[addr];
 }
 
+void set_mem_byte(uint16_t addr, uint8_t value)
+{
+    mem[addr] = value;
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -250,6 +281,12 @@ int main(int argc, char *argv[])
 
     printf("Native 68k compiler tests\n");
     compiler_init();
+
+    /* Initialize test compile context */
+    test_ctx.dmg = NULL;
+    test_ctx.read = test_read;
+    test_ctx.wram_base = NULL;
+    test_ctx.hram_base = NULL;
 
     register_unit_tests();
     register_exec_tests();

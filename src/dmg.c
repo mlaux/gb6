@@ -124,8 +124,50 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
+// Advance LCD state based on elapsed CPU cycles (for JIT mode)
+static void sync_lcd(struct dmg *dmg)
+{
+    int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
+
+    while (cycle_diff >= 456) {
+        int next_ly = lcd_step(dmg->lcd);
+        dmg->last_lcd_update += 456;
+        cycle_diff -= 456;
+
+        // render at vblank
+        if (next_ly == 144) {
+            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+            if (lcdc & LCDC_ENABLE_BG) {
+                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+                lcd_render_background(dmg, lcdc, window_enabled);
+            }
+            if (lcdc & LCDC_ENABLE_OBJ) {
+                lcd_render_objs(dmg);
+            }
+            lcd_draw(dmg->lcd);
+        }
+    }
+}
+
 static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
+    // Hacky: advance LCD every time LY is read (for JIT mode)
+    if (address == REG_LY) {
+        int next_ly = lcd_step(dmg->lcd);
+        if (next_ly == 144) {
+            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+            if (lcdc & LCDC_ENABLE_BG) {
+                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+                lcd_render_background(dmg, lcdc, window_enabled);
+            }
+            if (lcdc & LCDC_ENABLE_OBJ) {
+                lcd_render_objs(dmg);
+            }
+            lcd_draw(dmg->lcd);
+        }
+        return next_ly;
+    }
+
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {
         return lcd_read(dmg->lcd, address);
@@ -361,4 +403,9 @@ void dmg_step(void *_dmg)
             // in vblank. mode should stay as 1
         }
     }
+}
+
+void dmg_ei_di(void *dmg, u16 enabled)
+{
+    ((struct dmg *) dmg)->interrupt_enabled = enabled;
 }

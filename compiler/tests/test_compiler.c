@@ -19,6 +19,18 @@ static uint8_t mem[MEM_SIZE];
 #define GB_MEM_BASE 0x0000
 #define DEFAULT_GB_SP 0x0fff
 
+// Test compile context
+uint8_t *test_gb_rom;
+static struct compile_ctx test_ctx;
+struct compile_ctx *test_compile_ctx = &test_ctx;
+
+// Read function for test compiler context
+static uint8_t test_read(void *dmg, uint16_t address)
+{
+    (void)dmg;
+    return test_gb_rom[address];
+}
+
 // Memory access callbacks for Musashi
 unsigned int m68k_read_memory_8(unsigned int address)
 {
@@ -81,44 +93,60 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 
 // Set up stub functions for dmg_read/dmg_write
 // These are 68k code that the compiled JIT code can call
-// Use A0 as scratch (it's caller-saved, won't clobber our GB state)
+// Use A0 as scratch
 static void setup_runtime_stubs(void)
 {
     // stub_write: writes value byte to address
     // Stack layout after jsr: ret(4), dmg(4), addr(2), val(2)
-    // movea.w 8(sp), a0   ; a0 = address
+    // Note: must zero-extend address since movea.w sign-extends
+    // moveq #0, d0        ; clear d0
+    // move.w 8(sp), d0    ; d0 = address (zero-extended)
+    // movea.l d0, a0      ; a0 = address
     // move.b 11(sp), (a0) ; write value to memory
     // rts
     static const uint8_t stub_write[] = {
-        0x30, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a0
+        0x70, 0x00,              // moveq #0, d0
+        0x30, 0x2f, 0x00, 0x08,  // move.w 8(sp), d0
+        0x20, 0x40,              // movea.l d0, a0
         0x10, 0xaf, 0x00, 0x0b,  // move.b 11(sp), (a0)
         0x4e, 0x75               // rts
     };
 
     // stub_read: reads byte from address, returns in d0
     // Stack layout after jsr: ret(4), dmg(4), addr(2)
-    // movea.w 8(sp), a0   ; a0 = address
+    // Note: must zero-extend address since movea.w sign-extends
     // moveq #0, d0        ; clear d0
+    // move.w 8(sp), d0    ; d0 = address (zero-extended)
+    // movea.l d0, a0      ; a0 = address
     // move.b (a0), d0     ; read value
     // rts
     static const uint8_t stub_read[] = {
-        0x30, 0x6f, 0x00, 0x08,  // movea.w 8(sp), a0
         0x70, 0x00,              // moveq #0, d0
+        0x30, 0x2f, 0x00, 0x08,  // move.w 8(sp), d0
+        0x20, 0x40,              // movea.l d0, a0
         0x10, 0x10,              // move.b (a0), d0
         0x4e, 0x75               // rts
     };
 
+    static const uint8_t stub_ei_di[] = {
+        0x11, 0xef, 0x00, 0x09, 0x40, 0x00, // move.b 9(sp), (U8_INTERRUPTS_ENABLED)
+        0x4e, 0x75                          // rts
+    };
+
     // Copy stubs to memory
-    memcpy(mem + STUB_BASE, stub_write, sizeof(stub_write));
-    memcpy(mem + STUB_BASE + 0x20, stub_read, sizeof(stub_read));
+    memcpy(mem + STUB_BASE, stub_read, sizeof(stub_read));
+    memcpy(mem + STUB_BASE + 0x20, stub_write, sizeof(stub_write));
+    memcpy(mem + STUB_BASE + 0x40, stub_ei_di, sizeof(stub_ei_di));
 
     // Set up jit_runtime context structure at JIT_CTX_ADDR
     // offset 0: dmg pointer (just use a non-null dummy)
     // offset 4: read function pointer
     // offset 8: write function pointer
+    // 12: enable/disable interrupts pointer
     m68k_write_memory_32(JIT_CTX_ADDR + 0, 0x00004000);  // dmg = some address
-    m68k_write_memory_32(JIT_CTX_ADDR + 4, STUB_BASE + 0x20);  // read
-    m68k_write_memory_32(JIT_CTX_ADDR + 8, STUB_BASE);  // write
+    m68k_write_memory_32(JIT_CTX_ADDR + 4, STUB_BASE);
+    m68k_write_memory_32(JIT_CTX_ADDR + 8, STUB_BASE + 0x20);
+    m68k_write_memory_32(JIT_CTX_ADDR + 12, STUB_BASE + 0x40);
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run
@@ -199,7 +227,8 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
             block = cache[pc];
         }
         if (!block) {
-            block = compile_block(pc, gb_rom + pc, NULL);
+            test_gb_rom = gb_rom;
+            block = compile_block(pc, test_compile_ctx);
             if (pc < MAX_CACHED_BLOCKS) {
                 cache[pc] = block;
             }
@@ -245,6 +274,11 @@ uint8_t get_mem_byte(uint16_t addr)
     return mem[addr];
 }
 
+void set_mem_byte(uint16_t addr, uint8_t value)
+{
+    mem[addr] = value;
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -254,6 +288,12 @@ int main(int argc, char *argv[])
     compiler_init();
     m68k_init();
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+
+    // Initialize test compile context
+    test_ctx.dmg = NULL;
+    test_ctx.read = test_read;
+    test_ctx.wram_base = NULL;
+    test_ctx.hram_base = NULL;
 
     register_unit_tests();
     register_exec_tests();
