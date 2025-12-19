@@ -102,6 +102,37 @@ void compile_jr_cond(
     emit_rts(block);
 }
 
+// Compile conditional absolute jump (jp nz, jp z, jp nc, jp c)
+// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// branch_if_set: if true, branch when flag is set; if false, branch when clear
+void compile_jp_cond(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    uint8_t flag_bit,
+    int branch_if_set
+) {
+    uint16_t target = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
+    *src_ptr += 2;
+
+    // Test the flag bit in D7
+    emit_btst_imm_dn(block, flag_bit, 7);
+
+    // If condition NOT met, skip the exit sequence
+    if (branch_if_set) {
+        // Skip exit if flag is clear (btst Z=1 when bit=0)
+        emit_beq_w(block, 10);  // skip: moveq(2) + move.w(4) + rts(2) + ext(2) = 10
+    } else {
+        // Skip exit if flag is set (btst Z=0 when bit=1)
+        emit_bne_w(block, 10);
+    }
+
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
+    emit_rts(block);
+}
+
 void compile_call_imm16(
     struct code_block *block,
     struct compile_ctx *ctx,

@@ -64,5 +64,8 @@ void emit_ext_w_dn(struct code_block *block, uint8_t dreg);
 void emit_not_b_dn(struct code_block *block, uint8_t dreg);
 void emit_and_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 void emit_ror_b_imm(struct code_block *block, uint8_t count, uint8_t dreg);
+void emit_add_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+void emit_add_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
+void emit_adda_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg);
 
 #endif

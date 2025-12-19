@@ -451,3 +451,24 @@ void emit_ror_b_imm(struct code_block *block, uint8_t count, uint8_t dreg)
     ccc = count == 8 ? 0 : count;
     emit_word(block, 0xe018 | (ccc << 9) | dreg);
 }
+
+// add.b Ds, Dd - ADD data registers (result to Dd)
+void emit_add_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1101 ddd 0 00 000 sss
+    emit_word(block, 0xd000 | (dest << 9) | src);
+}
+
+// add.w Ds, Dd - ADD data registers (result to Dd)
+void emit_add_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1101 ddd 0 01 000 sss
+    emit_word(block, 0xd040 | (dest << 9) | src);
+}
+
+// adda.w Dn, An - ADD data register to address register
+void emit_adda_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
+{
+    // 1101 aaa 011 000 ddd
+    emit_word(block, 0xd0c0 | (areg << 9) | dreg);
+}

@@ -51,6 +51,24 @@ TEST_EXEC(test_xor_a_c,             REG_A,  0xf0, 0x3e, 0xff, 0x0e, 0x0f, 0xa9, 
 // ld a, $ff; ld c, $0f; and a, c -> A = 0x0f
 TEST_EXEC(test_and_a_c,             REG_A,  0x0f, 0x3e, 0xff, 0x0e, 0x0f, 0xa1, 0x10)
 
+// ld a, $42; and a, a -> A = 0x42, Z = 0
+TEST_EXEC(test_and_a_a_nonzero,     REG_A,  0x42, 0x3e, 0x42, 0xa7, 0x10)
+
+// ld a, $00; and a, a -> A = 0x00, Z = 1
+TEST_EXEC(test_and_a_a_zero,        REG_A,  0x00, 0x3e, 0x00, 0xa7, 0x10)
+
+// ld a, $20; add a, a -> A = 0x40
+TEST_EXEC(test_add_a_a,             REG_A,  0x40, 0x3e, 0x20, 0x87, 0x10)
+
+// ld e, $ab; ld a, $cd; ld e, a -> E = 0xcd
+TEST_EXEC(test_ld_e_a,              REG_DE, 0x000000cd, 0x1e, 0xab, 0x3e, 0xcd, 0x5f, 0x10)
+
+// ld hl, $1234; inc hl -> HL = 0x1235
+TEST_EXEC(test_inc_hl,              REG_HL, 0x1235, 0x21, 0x34, 0x12, 0x23, 0x10)
+
+// ld hl, $1000; ld de, $0234; add hl, de -> HL = 0x1234
+TEST_EXEC(test_add_hl_de,           REG_HL, 0x1234, 0x21, 0x00, 0x10, 0x11, 0x34, 0x02, 0x19, 0x10)
+
 TEST(test_exec_jp_skip)
 {
     uint8_t rom[] = {
@@ -244,6 +262,153 @@ TEST(test_exec_jr_nc_not_taken)
     };
     run_program(rom, 0);
     ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x99);  // A changed (skip not taken)
+}
+
+TEST(test_exec_and_a_a_with_jr)
+{
+    // and a, a sets Z flag correctly for conditional jump
+    uint8_t rom[] = {
+        0x3e, 0x00,       // 0x0000: ld a, 0x00
+        0xa7,             // 0x0002: and a, a (sets Z=1)
+        0x28, 0x02,       // 0x0003: jr z, +2 (taken)
+        0x0e, 0x11,       // 0x0005: ld c, 0x11 (skipped)
+        0x0e, 0x22,       // 0x0007: ld c, 0x22
+        0x10              // 0x0009: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x22);  // jumped over 0x11
+}
+
+TEST(test_exec_jp_z_taken)
+{
+    // jp z jumps when Z=1
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (sets Z=1)
+        0xca, 0x0a, 0x00, // 0x0004: jp z, 0x000a
+        0x3e, 0x00,       // 0x0007: ld a, 0x00 (skipped)
+        0x10,             // 0x0009: stop (skipped)
+        0x0e, 0x99,       // 0x000a: ld c, 0x99
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged (jump was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x99); // C set at target
+}
+
+TEST(test_exec_jp_z_not_taken)
+{
+    // jp z doesn't jump when Z=0
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (sets Z=0)
+        0xca, 0x0a, 0x00, // 0x0004: jp z, 0x000a (not taken)
+        0x3e, 0x99,       // 0x0007: ld a, 0x99 (executed)
+        0x10,             // 0x0009: stop
+        0x3e, 0x00,       // 0x000a: ld a, 0x00 (not reached)
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x99);  // A changed (fall-through)
+}
+
+TEST(test_exec_jp_nz_taken)
+{
+    // jp nz jumps when Z=0
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (sets Z=0)
+        0xc2, 0x0a, 0x00, // 0x0004: jp nz, 0x000a
+        0x3e, 0x00,       // 0x0007: ld a, 0x00 (skipped)
+        0x10,             // 0x0009: stop (skipped)
+        0x0e, 0x88,       // 0x000a: ld c, 0x88
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged (jump was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x88); // C set at target
+}
+
+TEST(test_exec_jp_nz_not_taken)
+{
+    // jp nz doesn't jump when Z=1
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (sets Z=1)
+        0xc2, 0x0a, 0x00, // 0x0004: jp nz, 0x000a (not taken)
+        0x3e, 0x77,       // 0x0007: ld a, 0x77 (executed)
+        0x10,             // 0x0009: stop
+        0x3e, 0x00,       // 0x000a: ld a, 0x00 (not reached)
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x77);  // A changed (fall-through)
+}
+
+TEST(test_exec_jp_c_taken)
+{
+    // jp c jumps when C=1
+    uint8_t rom[] = {
+        0x3e, 0x10,       // 0x0000: ld a, 0x10
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (0x10 < 0x42, sets C=1)
+        0xda, 0x0a, 0x00, // 0x0004: jp c, 0x000a
+        0x3e, 0x00,       // 0x0007: ld a, 0x00 (skipped)
+        0x10,             // 0x0009: stop (skipped)
+        0x0e, 0x55,       // 0x000a: ld c, 0x55
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x10);  // A unchanged (jump was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x55); // C set at target
+}
+
+TEST(test_exec_jp_c_not_taken)
+{
+    // jp c doesn't jump when C=0
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (0x42 >= 0x10, sets C=0)
+        0xda, 0x0a, 0x00, // 0x0004: jp c, 0x000a (not taken)
+        0x3e, 0x66,       // 0x0007: ld a, 0x66 (executed)
+        0x10,             // 0x0009: stop
+        0x3e, 0x00,       // 0x000a: ld a, 0x00 (not reached)
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x66);  // A changed (fall-through)
+}
+
+TEST(test_exec_jp_nc_taken)
+{
+    // jp nc jumps when C=0
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xfe, 0x10,       // 0x0002: cp a, 0x10 (0x42 >= 0x10, sets C=0)
+        0xd2, 0x0a, 0x00, // 0x0004: jp nc, 0x000a
+        0x3e, 0x00,       // 0x0007: ld a, 0x00 (skipped)
+        0x10,             // 0x0009: stop (skipped)
+        0x0e, 0x44,       // 0x000a: ld c, 0x44
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged (jump was taken)
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x44); // C set at target
+}
+
+TEST(test_exec_jp_nc_not_taken)
+{
+    // jp nc doesn't jump when C=1
+    uint8_t rom[] = {
+        0x3e, 0x10,       // 0x0000: ld a, 0x10
+        0xfe, 0x42,       // 0x0002: cp a, 0x42 (0x10 < 0x42, sets C=1)
+        0xd2, 0x0a, 0x00, // 0x0004: jp nc, 0x000a (not taken)
+        0x3e, 0xaa,       // 0x0007: ld a, 0xaa (executed)
+        0x10,             // 0x0009: stop
+        0x3e, 0x00,       // 0x000a: ld a, 0x00 (not reached)
+        0x10              // 0x000c: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xaa);  // A changed (fall-through)
 }
 
 TEST(test_exec_call_ret_simple)
@@ -475,6 +640,78 @@ TEST(test_di)
     ASSERT_EQ(get_mem_byte(U8_INTERRUPTS_ENABLED), 0);
 }
 
+TEST(test_push_pop_de_hl)
+{
+    // push de, pop hl - transfer DE to HL via stack
+    uint8_t rom[] = {
+        0x11, 0x34, 0x12, // 0x0000: ld de, 0x1234
+        0xd5,             // 0x0003: push de
+        0xe1,             // 0x0004: pop hl
+        0x10              // 0x0005: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_areg(REG_68K_A_HL), 0x1234);
+}
+
+TEST(test_jp_hl)
+{
+    // jp (hl) - jump to address in HL
+    uint8_t rom[] = {
+        0x21, 0x08, 0x00, // 0x0000: ld hl, 0x0008
+        0xe9,             // 0x0003: jp (hl)
+        0x3e, 0x11,       // 0x0004: ld a, 0x11 (skipped)
+        0x10,             // 0x0006: stop (skipped)
+        0x00,             // 0x0007: padding
+        0x3e, 0x22,       // 0x0008: ld a, 0x22
+        0x10              // 0x000a: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x22);
+}
+
+TEST(test_ld_d_hl_ind)
+{
+    // ld d, (hl) - load byte at (HL) into D
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0xab,       // 0x0003: ld (hl), 0xab
+        0x56,             // 0x0005: ld d, (hl)
+        0x10              // 0x0006: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ((get_dreg(REG_68K_D_DE) >> 16) & 0xff, 0xab);
+}
+
+TEST(test_ld_e_hl_ind)
+{
+    // ld e, (hl) - load byte at (HL) into E
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0xcd,       // 0x0003: ld (hl), 0xcd
+        0x5e,             // 0x0005: ld e, (hl)
+        0x10              // 0x0006: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_DE) & 0xff, 0xcd);
+}
+
+TEST(test_rst_28)
+{
+    // rst 28h - call to address 0x0028
+    uint8_t rom[0x100] = {0};
+    // main code at 0x0000
+    rom[0x00] = 0x3e; rom[0x01] = 0x11;  // ld a, 0x11
+    rom[0x02] = 0xef;                     // rst 28h
+    rom[0x03] = 0x3e; rom[0x04] = 0x33;  // ld a, 0x33 (after return)
+    rom[0x05] = 0x10;                     // stop
+    // handler at 0x0028
+    rom[0x28] = 0x06; rom[0x29] = 0x22;  // ld b, 0x22
+    rom[0x2a] = 0xc9;                     // ret
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x33);
+    ASSERT_EQ((get_dreg(REG_68K_D_BC) >> 16) & 0xff, 0x22);
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -521,13 +758,23 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_cp_not_equal);
     RUN_TEST(test_exec_cp_carry);
 
-    printf("\nConditional jump tests:\n");
+    printf("\nConditional jr tests:\n");
     RUN_TEST(test_exec_jr_z_taken);
     RUN_TEST(test_exec_jr_z_not_taken);
     RUN_TEST(test_exec_jr_c_taken);
     RUN_TEST(test_exec_jr_c_not_taken);
     RUN_TEST(test_exec_jr_nc_taken);
     RUN_TEST(test_exec_jr_nc_not_taken);
+
+    printf("\nConditional jp tests:\n");
+    RUN_TEST(test_exec_jp_z_taken);
+    RUN_TEST(test_exec_jp_z_not_taken);
+    RUN_TEST(test_exec_jp_nz_taken);
+    RUN_TEST(test_exec_jp_nz_not_taken);
+    RUN_TEST(test_exec_jp_c_taken);
+    RUN_TEST(test_exec_jp_c_not_taken);
+    RUN_TEST(test_exec_jp_nc_taken);
+    RUN_TEST(test_exec_jp_nc_not_taken);
 
     printf("\nCall/ret tests:\n");
     RUN_TEST(test_exec_call_ret_simple);
@@ -554,6 +801,26 @@ void register_exec_tests(void)
     RUN_TEST(test_or_a_b);
     RUN_TEST(test_xor_a_c);
     RUN_TEST(test_and_a_c);
+    RUN_TEST(test_and_a_a_nonzero);
+    RUN_TEST(test_and_a_a_zero);
+    RUN_TEST(test_exec_and_a_a_with_jr);
+    RUN_TEST(test_add_a_a);
+    RUN_TEST(test_ld_e_a);
+
+    printf("\n16-bit ALU:\n");
+    RUN_TEST(test_inc_hl);
+    RUN_TEST(test_add_hl_de);
+
+    printf("\nStack tests:\n");
+    RUN_TEST(test_push_pop_de_hl);
+    RUN_TEST(test_jp_hl);
+
+    printf("\nLoad from (HL):\n");
+    RUN_TEST(test_ld_d_hl_ind);
+    RUN_TEST(test_ld_e_hl_ind);
+
+    printf("\nRST tests:\n");
+    RUN_TEST(test_rst_28);
 
     printf("\nMisc tests:\n");
     RUN_TEST(test_ei);
