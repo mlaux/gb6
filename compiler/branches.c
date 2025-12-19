@@ -179,3 +179,46 @@ void compile_ret(struct code_block *block)
     emit_addq_w_an(block, REG_68K_A_SP, 2);
     emit_rts(block);
 }
+
+// Compile conditional return (ret nz, ret z, ret nc, ret c)
+// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// branch_if_set: if true, return when flag is set; if false, return when clear
+void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_set)
+{
+    // Test the flag bit in D7
+    emit_btst_imm_dn(block, flag_bit, 7);
+
+    // If condition NOT met, skip the return sequence
+    // Return sequence is 14 bytes: moveq(2) + move.b d(An),Dn(4) + rol.w(2) +
+    //                              move.b (An),Dn(2) + addq.w(2) + rts(2)
+    // bxx.w displacement is relative to PC after opcode word, so add 2
+    if (branch_if_set) {
+        // Skip return if flag is clear (btst Z=1 when bit=0)
+        emit_beq_w(block, 16);
+    } else {
+        // Skip return if flag is set (btst Z=0 when bit=1)
+        emit_bne_w(block, 16);
+    }
+
+    // Pop return address and return (same as compile_ret)
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC);
+    emit_rol_w_8(block, REG_68K_D_NEXT_PC);
+    emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
+    emit_addq_w_an(block, REG_68K_A_SP, 2);
+    emit_rts(block);
+}
+
+void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
+{
+    // push return address
+    emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
+    emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
+    emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+    emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
+    // jump to 0x0028
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0x28);
+    emit_rts(block);
+}

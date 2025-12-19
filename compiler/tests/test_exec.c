@@ -428,6 +428,162 @@ TEST(test_exec_call_ret_simple)
     ASSERT_EQ((get_dreg(REG_68K_D_BC) >> 16) & 0xff, 0x22); // B = 0x22 (set in subroutine)
 }
 
+TEST(test_exec_ret_nz_taken)
+{
+    // ret nz returns when Z=0
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xaa,       // 0x0003: ld a, 0xaa (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x42,       // 0x0007: ld a, 0x42
+        0xfe, 0x10,       // 0x0009: cp a, 0x10 (sets Z=0)
+        0xc0,             // 0x000b: ret nz (taken)
+        0x3e, 0x00,       // 0x000c: ld a, 0x00 (skipped)
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xaa);  // returned early, then set to 0xaa
+}
+
+TEST(test_exec_ret_nz_not_taken)
+{
+    // ret nz doesn't return when Z=1
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xaa,       // 0x0003: ld a, 0xaa (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x42,       // 0x0007: ld a, 0x42
+        0xfe, 0x42,       // 0x0009: cp a, 0x42 (sets Z=1)
+        0xc0,             // 0x000b: ret nz (not taken)
+        0x0e, 0x99,       // 0x000c: ld c, 0x99
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xaa);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x99);  // C was set (ret nz not taken)
+}
+
+TEST(test_exec_ret_z_taken)
+{
+    // ret z returns when Z=1
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xbb,       // 0x0003: ld a, 0xbb (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x42,       // 0x0007: ld a, 0x42
+        0xfe, 0x42,       // 0x0009: cp a, 0x42 (sets Z=1)
+        0xc8,             // 0x000b: ret z (taken)
+        0x3e, 0x00,       // 0x000c: ld a, 0x00 (skipped)
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xbb);  // returned early, then set to 0xbb
+}
+
+TEST(test_exec_ret_z_not_taken)
+{
+    // ret z doesn't return when Z=0
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xbb,       // 0x0003: ld a, 0xbb (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x42,       // 0x0007: ld a, 0x42
+        0xfe, 0x10,       // 0x0009: cp a, 0x10 (sets Z=0)
+        0xc8,             // 0x000b: ret z (not taken)
+        0x0e, 0x77,       // 0x000c: ld c, 0x77
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xbb);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x77);  // C was set (ret z not taken)
+}
+
+TEST(test_exec_ret_nc_taken)
+{
+    // ret nc returns when C=0
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xcc,       // 0x0003: ld a, 0xcc (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x42,       // 0x0007: ld a, 0x42
+        0xfe, 0x10,       // 0x0009: cp a, 0x10 (0x42 >= 0x10, sets C=0)
+        0xd0,             // 0x000b: ret nc (taken)
+        0x3e, 0x00,       // 0x000c: ld a, 0x00 (skipped)
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xcc);  // returned early, then set to 0xcc
+}
+
+TEST(test_exec_ret_nc_not_taken)
+{
+    // ret nc doesn't return when C=1
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xcc,       // 0x0003: ld a, 0xcc (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x10,       // 0x0007: ld a, 0x10
+        0xfe, 0x42,       // 0x0009: cp a, 0x42 (0x10 < 0x42, sets C=1)
+        0xd0,             // 0x000b: ret nc (not taken)
+        0x0e, 0x55,       // 0x000c: ld c, 0x55
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xcc);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x55);  // C was set (ret nc not taken)
+}
+
+TEST(test_exec_ret_c_taken)
+{
+    // ret c returns when C=1
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xdd,       // 0x0003: ld a, 0xdd (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x10,       // 0x0007: ld a, 0x10
+        0xfe, 0x42,       // 0x0009: cp a, 0x42 (0x10 < 0x42, sets C=1)
+        0xd8,             // 0x000b: ret c (taken)
+        0x3e, 0x00,       // 0x000c: ld a, 0x00 (skipped)
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xdd);  // returned early, then set to 0xdd
+}
+
+TEST(test_exec_ret_c_not_taken)
+{
+    // ret c doesn't return when C=0
+    uint8_t rom[] = {
+        0xcd, 0x07, 0x00, // 0x0000: call 0x0007
+        0x3e, 0xdd,       // 0x0003: ld a, 0xdd (after return)
+        0x10,             // 0x0005: stop
+        0x00,             // 0x0006: padding
+        // subroutine at 0x0007:
+        0x3e, 0x42,       // 0x0007: ld a, 0x42
+        0xfe, 0x10,       // 0x0009: cp a, 0x10 (0x42 >= 0x10, sets C=0)
+        0xd8,             // 0x000b: ret c (not taken)
+        0x0e, 0x66,       // 0x000c: ld c, 0x66
+        0xc9              // 0x000e: ret
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xdd);
+    ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x66);  // C was set (ret c not taken)
+}
+
 TEST(test_exec_call_ret_nested)
 {
     // Nested calls: main -> sub1 -> sub2
@@ -780,6 +936,16 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_call_ret_simple);
     RUN_TEST(test_exec_call_ret_nested);
     RUN_TEST(test_exec_call_preserves_regs);
+
+    printf("\nConditional ret tests:\n");
+    RUN_TEST(test_exec_ret_nz_taken);
+    RUN_TEST(test_exec_ret_nz_not_taken);
+    RUN_TEST(test_exec_ret_z_taken);
+    RUN_TEST(test_exec_ret_z_not_taken);
+    RUN_TEST(test_exec_ret_nc_taken);
+    RUN_TEST(test_exec_ret_nc_not_taken);
+    RUN_TEST(test_exec_ret_c_taken);
+    RUN_TEST(test_exec_ret_c_not_taken);
 
     printf("\nMemory access tests:\n");
     RUN_TEST(test_exec_ld_bc_ind_a);

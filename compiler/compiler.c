@@ -5,6 +5,7 @@
 #include "emitters.h"
 #include "branches.h"
 #include "flags.h"
+#include "interop.h"
 
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
@@ -32,69 +33,6 @@ static void compile_de_to_addr(struct code_block *block)
     emit_swap(block, REG_68K_D_SCRATCH_1);  // D1 = 0x00EE00DD
     emit_lsl_w_imm_dn(block, 8, REG_68K_D_SCRATCH_1);  // D1.w = 0xDD00
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // D1.w = 0xDDEE
-}
-
-// Call dmg_write(dmg, addr, val) - addr in D1, val in D4 (A register)
-static void compile_call_dmg_write(struct code_block *block)
-{
-    // Push args right-to-left: val, addr, dmg
-    emit_push_w_dn(block, REG_68K_D_A);  // push value (A register = D4)
-    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // push address (D1)
-    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);  // push dmg pointer
-    emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);  // A0 = write func
-    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);  // call dmg_write
-    emit_addq_l_an(block, 7, 8);  // clean up stack (4 + 2 + 2 = 8 bytes)
-}
-
-// Call dmg_write(dmg, addr, val) - addr in D1
-static void compile_call_dmg_write_imm(struct code_block *block, uint8_t val)
-{
-    emit_push_w_imm(block, val);
-    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
-    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
-    emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
-    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
-    emit_addq_l_an(block, 7, 8);
-}
-
-// Call dmg_read(dmg, addr) - addr in D1, result goes to D4 (A register)
-static void compile_call_dmg_read(struct code_block *block)
-{
-    // Push args right-to-left: addr, dmg
-    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // push address (D1)
-    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);  // push dmg pointer
-    emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);  // A0 = read func
-    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);  // call dmg_read
-    emit_addq_l_an(block, 7, 6);  // clean up stack (4 + 2 = 6 bytes)
-
-    // Move result from D0 to D4 (A register)
-    emit_move_b_dn_dn(block, 0, REG_68K_D_A);
-}
-
-// Call dmg_read(dmg, addr) - addr in D1, result stays in D0 (scratch)
-static void compile_call_dmg_read_to_d0(struct code_block *block)
-{
-    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
-    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
-    emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
-    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
-    emit_addq_l_an(block, 7, 6);
-    // Result stays in D0
-}
-
-static void compile_call_ei_di(struct code_block *block, int enabled)
-{
-    // push enabled
-    emit_moveq_dn(block, REG_68K_D_SCRATCH_1, (int8_t) enabled);
-    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
-    // push dmg pointer
-    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
-    // load address of function
-    emit_movea_l_disp_an_an(block, JIT_CTX_EI_DI, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
-    // call dmg_ei_di
-    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
-    // clean up stack
-    emit_addq_l_an(block, 7, 6);
 }
 
 static void compile_ld_imm16_split(
@@ -463,6 +401,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             }
             break;
 
+        case 0xc0: // ret nz
+            compile_ret_cond(block, 7, 0);
+            break;
+
         case 0xc2: // jp nz, imm16
             compile_jp_cond(block, ctx, &src_ptr, src_address, 7, 0);
             break;
@@ -482,6 +424,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             compile_jp_cond(block, ctx, &src_ptr, src_address, 7, 1);
             break;
 
+        case 0xc8: // ret z
+            compile_ret_cond(block, 7, 1);
+            break;
+
         case 0xc9: // ret
             compile_ret(block);
             done = 1;
@@ -490,6 +436,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         case 0xcd: // call imm16
             compile_call_imm16(block, ctx, &src_ptr, src_address);
             done = 1;
+            break;
+
+        case 0xd0: // ret nc
+            compile_ret_cond(block, 4, 0);
             break;
 
         case 0xd2: // jp nc, imm16
@@ -507,6 +457,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
             // [SP+1] = high byte (D)
             emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
+            break;
+
+        case 0xd8: // ret c
+            compile_ret_cond(block, 4, 1);
             break;
 
         case 0xda: // jp c, imm16
@@ -540,20 +494,8 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0xef: // rst 28h - like call $0028
-            {
-                uint16_t ret_addr = src_address + src_ptr;
-                // push return address
-                emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
-                emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
-                emit_subq_w_an(block, REG_68K_A_SP, 2);
-                emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
-                emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
-                emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
-                // jump to 0x0028
-                emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0x28);
-                emit_rts(block);
-                done = 1;
-            }
+            compile_rst_n(block, 0x28, src_address + src_ptr);
+            done = 1;
             break;
 
         case 0xe6: // and a, #nn

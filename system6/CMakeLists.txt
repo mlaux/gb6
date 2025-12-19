@@ -16,6 +16,7 @@ add_application(Emulator
     ../compiler/compiler.c
     ../compiler/emitters.c
     ../compiler/branches.c
+    ../compiler/interop.c
     ../compiler/flags.c
     emulator.c
     resources.r

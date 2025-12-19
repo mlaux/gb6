@@ -54,7 +54,7 @@ struct code_block {
 
     // set when compilation hits unknown opcode
     uint8_t error;
-    uint8_t failed_opcode;
+    uint16_t failed_opcode;
     uint16_t failed_address;
 };
 

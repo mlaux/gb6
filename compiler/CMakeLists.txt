@@ -7,6 +7,7 @@ add_application(CompilerTests
     compiler.c
     emitters.c
     branches.c
+    interop.c
     flags.c
     tests/test_native.c
     tests/test_unit.c
