@@ -8,7 +8,7 @@
 // Set Z flag in D7 based on current 68k CCR, preserving other flags
 void compile_set_z_flag(struct code_block *block)
 {
-    // seq D5 (D5 = 0xff if Z, 0x00 if NZ)
+    // seq D1 (D1 = 0xff if Z, 0x00 if NZ)
     emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);
     // scratch = 0x80 if Z was set
     emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);

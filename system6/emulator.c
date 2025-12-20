@@ -402,33 +402,32 @@ static int jit_step(void)
 
     // Check for pending interrupts
     if (cpu.interrupt_enable) {
-        u8 pending = dmg.interrupt_enabled & dmg.interrupt_requested & 0x1f;
-        if (pending) {
-            static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
-            int k;
-            for (k = 0; k < 5; k++) {
-                if (pending & (1 << k)) {
+      u8 pending = dmg.interrupt_enabled & dmg.interrupt_requested & 0x1f;
+      if (pending) {
+        static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
+        int k;
+        for (k = 0; k < 5; k++) {
+          if (pending & (1 << k)) {
+            sprintf(buf, "INT %d -> %04x", k, handlers[k]);
+            set_status_bar(buf);
+            lcd_draw(dmg.lcd);
+            // clear IF bit and disable IME
+            dmg.interrupt_requested &= ~(1 << k);
+            cpu.interrupt_enable = 0;
 
-                    sprintf(buf, "INT %d -> %04x", k, handlers[k]);
-                    set_status_bar(buf);
-                    lcd_draw(dmg.lcd);
-                    // Clear IF bit and disable IME
-                    dmg.interrupt_requested &= ~(1 << k);
-                    cpu.interrupt_enable = 0;
+            // push PC to stack
+            u8 *sp_ptr = (u8 *) jit_aregs[REG_68K_A_SP];
+            sp_ptr -= 2;
+            sp_ptr[1] = (next_pc >> 8) & 0xff;
+            sp_ptr[0] = next_pc & 0xff;
+            jit_aregs[REG_68K_A_SP] = (unsigned long) sp_ptr;
 
-                    // Push PC to stack
-                    u16 sp = (u16) jit_aregs[REG_68K_A_SP];
-                    sp -= 2;
-                    dmg_write(&dmg, sp + 1, (next_pc >> 8) & 0xff);
-                    dmg_write(&dmg, sp, next_pc & 0xff);
-                    jit_aregs[REG_68K_A_SP] = sp;
-
-                    // Jump to handler
-                    next_pc = handlers[k];
-                    break;
-                }
-            }
+            // Jump to handler
+            next_pc = handlers[k];
+            break;
+          }
         }
+      }
     }
 
     // Update CPU state

@@ -185,22 +185,21 @@ extern void debug_log_string(const char *str);
 u8 dmg_read(void *_dmg, u16 address)
 {
     // char buf[128];
-    // u8 val;
+    u8 val;
     struct dmg *dmg = (struct dmg *) _dmg;
     u8 *page = dmg->read_page[address >> 8];
     if (page) {
-        return page[address & 0xff];
+        val = page[address & 0xff];
+    } else {
+        val = dmg_read_slow(dmg, address);
     }
     // sprintf(buf, "dmg_read pc=%04x addr=%04x value=%02x\n", dmg->cpu->pc, address, val);
     // debug_log_string(buf);
-    return dmg_read_slow(dmg, address);
+    return val;
 }
 
 static void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
 {
-    // char buf[128];
-    // sprintf(buf, "dmg_write pc=%04x addr=%04x value=%02x\n", dmg->cpu->pc, address, data);
-    // debug_log_string(buf);
     // ROM region writes go to MBC for bank switching
     if (address < 0x8000) {
         mbc_write(dmg->rom->mbc, dmg, address, data);

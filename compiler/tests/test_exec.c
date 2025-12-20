@@ -21,6 +21,7 @@ TEST_EXEC(test_dec_a,               REG_A,  0x1,  0x3e, 0x02, 0x3d, 0x10)
 TEST_EXEC(test_dec_b,               REG_BC, 0x00040000,  0x06, 0x05, 0x05, 0x10)
 TEST_EXEC(test_dec_c,               REG_BC, 0x00000004,  0x0e, 0x05, 0x0d, 0x10)
 TEST_EXEC(test_inc_c,               REG_BC, 0x00000007,  0x0e, 0x06, 0x0c, 0x10)
+TEST_EXEC(test_inc_e,               REG_DE, 0x00000006,  0x1e, 0x05, 0x1c, 0x10)
 TEST_EXEC(test_xor_a,               REG_A,  0x0,  0x3e, 0x20, 0xaf, 0x10)
 
 TEST_EXEC(test_dec_bc,              REG_BC, 0x00110021, 0x01, 0x22, 0x11, 0x0b, 0x10)
@@ -29,6 +30,7 @@ TEST_EXEC(test_ld_a_b,              REG_A,  0x05, 0x06, 0x05, 0x78, 0x10)
 TEST_EXEC(test_ld_b_a,              REG_BC, 0x00110000, 0x3e, 0x11, 0x47, 0x10)
 TEST_EXEC(test_ld_a_c,              REG_A,  0x05, 0x0e, 0x05, 0x79, 0x10)
 TEST_EXEC(test_ld_c_a,              REG_BC, 0x00000011, 0x3e, 0x11, 0x4f, 0x10)
+TEST_EXEC(test_ld_d_a,              REG_DE, 0x00ab0000, 0x3e, 0xab, 0x57, 0x10)
 
 // ld a, $10; ld c, $01; or a, c
 TEST_EXEC(test_or_a_c,              REG_A,  0x11, 0x3e, 0x10, 0x0e, 0x01, 0xb1, 0x10)
@@ -60,8 +62,17 @@ TEST_EXEC(test_and_a_a_zero,        REG_A,  0x00, 0x3e, 0x00, 0xa7, 0x10)
 // ld a, $20; add a, a -> A = 0x40
 TEST_EXEC(test_add_a_a,             REG_A,  0x40, 0x3e, 0x20, 0x87, 0x10)
 
+// ld a, $10; ld d, $05; add a, d -> A = 0x15
+TEST_EXEC(test_add_a_d,             REG_A,  0x15, 0x3e, 0x10, 0x16, 0x05, 0x82, 0x10)
+
 // ld e, $ab; ld a, $cd; ld e, a -> E = 0xcd
 TEST_EXEC(test_ld_e_a,              REG_DE, 0x000000cd, 0x1e, 0xab, 0x3e, 0xcd, 0x5f, 0x10)
+
+// ld hl, $1234; inc l -> HL = 0x1235
+TEST_EXEC(test_inc_l,               REG_HL, 0x1235, 0x21, 0x34, 0x12, 0x2c, 0x10)
+
+// ld hl, $1234; dec l -> HL = 0x1233
+TEST_EXEC(test_dec_l,               REG_HL, 0x1233, 0x21, 0x34, 0x12, 0x2d, 0x10)
 
 // ld hl, $1234; inc hl -> HL = 0x1235
 TEST_EXEC(test_inc_hl,              REG_HL, 0x1235, 0x21, 0x34, 0x12, 0x23, 0x10)
@@ -163,6 +174,50 @@ TEST(test_exec_cp_carry)
     };
     run_program(rom, 0);
     ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x10, 0x10);  // C flag set (bit 4)
+}
+
+TEST(test_exec_cp_hl_equal)
+{
+    // cp a, (hl) when equal - Z flag should be set
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0x42,       // 0x0003: ld (hl), 0x42
+        0x3e, 0x42,       // 0x0005: ld a, 0x42
+        0xbe,             // 0x0007: cp a, (hl)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged by cp
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x80, 0x80);  // Z flag set
+}
+
+TEST(test_exec_cp_hl_not_equal)
+{
+    // cp a, (hl) when not equal - Z flag should be clear
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0x10,       // 0x0003: ld (hl), 0x10
+        0x3e, 0x42,       // 0x0005: ld a, 0x42
+        0xbe,             // 0x0007: cp a, (hl)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x42);  // A unchanged
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x80, 0x00);  // Z flag clear
+}
+
+TEST(test_exec_cp_hl_carry)
+{
+    // cp a, (hl) when A < (hl) - C flag should be set
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0x42,       // 0x0003: ld (hl), 0x42
+        0x3e, 0x10,       // 0x0005: ld a, 0x10
+        0xbe,             // 0x0007: cp a, (hl) (0x10 < 0x42)
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x10, 0x10);  // C flag set
 }
 
 TEST(test_exec_jr_z_taken)
@@ -772,6 +827,32 @@ TEST(test_exec_ld_hl_ind_imm8)
     ASSERT_EQ(get_mem_byte(0x5001), 0x99);
 }
 
+TEST(test_inc_hl_ind)
+{
+    // inc (hl) - increment byte at memory address HL
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0x41,       // 0x0003: ld (hl), 0x41
+        0x34,             // 0x0005: inc (hl)
+        0x10              // 0x0006: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_mem_byte(0x5000), 0x42);
+}
+
+TEST(test_dec_hl_ind)
+{
+    // dec (hl) - decrement byte at memory address HL
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50, // 0x0000: ld hl, 0x5000
+        0x36, 0x43,       // 0x0003: ld (hl), 0x43
+        0x35,             // 0x0005: dec (hl)
+        0x10              // 0x0006: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_mem_byte(0x5000), 0x42);
+}
+
 TEST(test_ei)
 {
     // ei - enable interrupts
@@ -797,7 +878,20 @@ TEST(test_di)
     ASSERT_EQ(get_mem_byte(U16_INTERRUPTS_ENABLED + 1), 0);
 }
 
-TEST(test_push_pop_de_hl)
+TEST(test_push_bc)
+{
+    // push bc, pop hl - transfer BC to HL via stack
+    uint8_t rom[] = {
+        0x01, 0x34, 0x12, // 0x0000: ld bc, 0x1234
+        0xc5,             // 0x0003: push bc
+        0xe1,             // 0x0004: pop hl
+        0x10              // 0x0005: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_areg(REG_68K_A_HL), 0x1234);
+}
+
+TEST(test_push_de)
 {
     // push de, pop hl - transfer DE to HL via stack
     uint8_t rom[] = {
@@ -808,6 +902,34 @@ TEST(test_push_pop_de_hl)
     };
     run_program(rom, 0);
     ASSERT_EQ(get_areg(REG_68K_A_HL), 0x1234);
+}
+
+TEST(test_push_hl)
+{
+    // push hl, pop hl - verify stack round-trip
+    uint8_t rom[] = {
+        0x21, 0x78, 0x56, // 0x0000: ld hl, 0x5678
+        0xe5,             // 0x0003: push hl
+        0x21, 0x00, 0x00, // 0x0004: ld hl, 0x0000 (clear HL)
+        0xe1,             // 0x0007: pop hl
+        0x10              // 0x0008: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_areg(REG_68K_A_HL), 0x5678);
+}
+
+TEST(test_pop_de)
+{
+    // push hl, pop de - transfer HL to DE via stack
+    uint8_t rom[] = {
+        0x21, 0x34, 0x12, // 0x0000: ld hl, 0x1234
+        0xe5,             // 0x0003: push hl
+        0xd1,             // 0x0004: pop de
+        0x10              // 0x0005: stop
+    };
+    run_program(rom, 0);
+    // DE in split format: 0x00120034
+    ASSERT_EQ(get_dreg(REG_68K_D_DE), 0x00120034);
 }
 
 TEST(test_jp_hl)
@@ -824,6 +946,37 @@ TEST(test_jp_hl)
     };
     run_program(rom, 0);
     ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x22);
+}
+
+TEST(test_push_af)
+{
+    // push af, pop hl - transfer AF to HL via stack
+    uint8_t rom[] = {
+        0x3e, 0x42,       // 0x0000: ld a, 0x42
+        0xaf,             // 0x0002: xor a (A=0, F=0x80 Z flag set)
+        0x3e, 0xab,       // 0x0003: ld a, 0xab (F unchanged)
+        0xf5,             // 0x0005: push af
+        0xe1,             // 0x0006: pop hl
+        0x10              // 0x0007: stop
+    };
+    run_program(rom, 0);
+    // H = A = 0xab, L = F = 0x80
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xab);
+    ASSERT_EQ(get_areg(REG_68K_A_HL) & 0xffff, 0xab80);
+}
+
+TEST(test_pop_af)
+{
+    // push hl, pop af - transfer HL to AF via stack
+    uint8_t rom[] = {
+        0x21, 0x90, 0xcd, // 0x0000: ld hl, 0xcd90 (A=0xcd, F=0x90)
+        0xe5,             // 0x0003: push hl
+        0xf1,             // 0x0004: pop af
+        0x10              // 0x0005: stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xcd);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0xff, 0x90);
 }
 
 TEST(test_ld_d_hl_ind)
@@ -930,6 +1083,7 @@ void register_exec_tests(void)
     RUN_TEST(test_dec_b);
     RUN_TEST(test_dec_c);
     RUN_TEST(test_inc_c);
+    RUN_TEST(test_inc_e);
     RUN_TEST(test_xor_a);
 
     printf("\n16-bit inc/dec:\n");
@@ -940,6 +1094,7 @@ void register_exec_tests(void)
     RUN_TEST(test_ld_b_a);
     RUN_TEST(test_ld_a_c);
     RUN_TEST(test_ld_c_a);
+    RUN_TEST(test_ld_d_a);
 
     printf("\nMulti-block tests:\n");
     RUN_TEST(test_exec_jp_skip);
@@ -951,6 +1106,9 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_cp_equal);
     RUN_TEST(test_exec_cp_not_equal);
     RUN_TEST(test_exec_cp_carry);
+    RUN_TEST(test_exec_cp_hl_equal);
+    RUN_TEST(test_exec_cp_hl_not_equal);
+    RUN_TEST(test_exec_cp_hl_carry);
 
     printf("\nConditional jr tests:\n");
     RUN_TEST(test_exec_jr_z_taken);
@@ -996,6 +1154,8 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_ldh_c_a);
     RUN_TEST(test_exec_ldh_a_imm8);
     RUN_TEST(test_exec_ld_hl_ind_imm8);
+    RUN_TEST(test_inc_hl_ind);
+    RUN_TEST(test_dec_hl_ind);
 
     printf("\n8-bit ALU:\n");
     RUN_TEST(test_or_a_c);
@@ -1009,14 +1169,22 @@ void register_exec_tests(void)
     RUN_TEST(test_and_a_a_zero);
     RUN_TEST(test_exec_and_a_a_with_jr);
     RUN_TEST(test_add_a_a);
+    RUN_TEST(test_add_a_d);
     RUN_TEST(test_ld_e_a);
 
     printf("\n16-bit ALU:\n");
+    RUN_TEST(test_inc_l);
+    RUN_TEST(test_dec_l);
     RUN_TEST(test_inc_hl);
     RUN_TEST(test_add_hl_de);
 
     printf("\nStack tests:\n");
-    RUN_TEST(test_push_pop_de_hl);
+    RUN_TEST(test_push_bc);
+    RUN_TEST(test_push_de);
+    RUN_TEST(test_push_hl);
+    RUN_TEST(test_push_af);
+    RUN_TEST(test_pop_de);
+    RUN_TEST(test_pop_af);
     RUN_TEST(test_jp_hl);
 
     printf("\nLoad from (HL):\n");

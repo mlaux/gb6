@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.9)
 
 include_directories(../src ../compiler)
 
-set(CMAKE_C_FLAGS "-O0")
+set(CMAKE_C_FLAGS "-O3")
 
 add_application(Emulator
     ../src/bootstrap.c

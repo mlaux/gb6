@@ -80,7 +80,7 @@ asm(
     ".globl stub_ei_di\n"
     "stub_ei_di:\n"
     "    lea mem, %a0\n"               /* a0 = mem base */
-    "    move.b 8(%sp), 0x4000(%a0)\n" /* write to mem[U8_INTERRUPTS_ENABLED] */
+    "    move.w 8(%sp), 0x4000(%a0)\n" /* write to mem[U8_INTERRUPTS_ENABLED] */
     "    rts\n"
 );
 

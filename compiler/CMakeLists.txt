@@ -8,6 +8,7 @@ add_application(CompilerTests
     emitters.c
     branches.c
     interop.c
+    cb_prefix.c
     flags.c
     tests/test_native.c
     tests/test_unit.c

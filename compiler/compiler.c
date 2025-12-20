@@ -249,6 +249,12 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep Z, clear N, H, C for now
             break;
 
+        case 0x1c: // inc e
+            emit_addq_b_dn(block, REG_68K_D_DE, 1);
+            compile_set_z_flag(block);
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, ~0x40);
+            break;
+
         case 0x1e: // ld e, imm8
             emit_move_b_dn(block, REG_68K_D_DE, READ_BYTE(src_ptr++));
             break;
@@ -263,6 +269,22 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_ror_w_8(block, REG_68K_D_SCRATCH_1);
             // movea.w d5, a0
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
+            break;
+
+        case 0x2c: // inc l
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            emit_addq_b_dn(block, REG_68K_D_SCRATCH_1, 1);
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);  // movea doesn't affect CC
+            compile_set_z_flag(block);
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, ~0x40);
+            break;
+
+        case 0x2d: // dec l
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            emit_subq_b_dn(block, REG_68K_D_SCRATCH_1, 1);
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
             break;
 
         case 0x2e: // ld l, imm8
@@ -298,10 +320,25 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             compile_jr_cond(block, ctx, &src_ptr, src_address, 4, 1);
             break;
 
+        case 0x34: // inc (hl)
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            compile_call_dmg_read_to_d0(block);  // result in D0
+            emit_addq_b_dn(block, 0, 1);
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            compile_call_dmg_write_d0(block);
+            break;
+
+        case 0x3c: // inc a
+            emit_addq_b_dn(block, REG_68K_D_A, 1);
+            compile_set_z_flag(block);
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, ~0x40);
+            break;
+
         case 0x3d: // dec a
             emit_subq_b_dn(block, REG_68K_D_A, 1);
             compile_set_z_flag(block);
-            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // D7 |= 0x40 (N flag)
+            // set N flag
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
             break;
 
         case 0x47: // ld b, a
@@ -319,6 +356,12 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             compile_call_dmg_read_to_d0(block);  // result in D0
             emit_swap(block, REG_68K_D_DE);
             emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_DE);  // D0 -> D
+            emit_swap(block, REG_68K_D_DE);
+            break;
+
+        case 0x57: // ld d, a
+            emit_swap(block, REG_68K_D_DE);
+            emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_DE);
             emit_swap(block, REG_68K_D_DE);
             break;
 
@@ -389,6 +432,14 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             compile_call_dmg_read(block);
             break;
 
+        case 0x82: // add a, d
+            emit_swap(block, REG_68K_D_DE);
+            emit_add_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
+            emit_swap(block, REG_68K_D_DE);
+            compile_set_z_flag(block);
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep Z, clear N, H, C
+            break;
+
         case 0x87: // add a, a
             emit_add_b_dn_dn(block, REG_68K_D_A, REG_68K_D_A);
             compile_set_z_flag(block);
@@ -406,6 +457,13 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_cmp_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
             compile_set_znc_flags(block);
             emit_swap(block, REG_68K_D_BC);
+            break;
+
+        case 0xbe: // cp a, (hl)
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            compile_call_dmg_read_to_d0(block);  // result in D0
+            emit_cmp_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);  // cmp D0, D4
+            compile_set_znc_flags(block);
             break;
 
         case 0xaf: // xor a, a - always results in 0, Z=1
@@ -519,6 +577,19 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             compile_jp_cond(block, ctx, &src_ptr, src_address, 4, 0);
             break;
 
+        case 0xc5: // push bc
+            // SP -= 2
+            emit_subq_w_an(block, REG_68K_A_SP, 2);
+            // Reconstruct BC into D1.w
+            compile_bc_to_addr(block);
+            // [SP] = low byte (C)
+            emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
+            // swap to get high byte
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+            // [SP+1] = high byte (B)
+            emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
+            break;
+
         case 0xd5: // push de
             // SP -= 2
             emit_subq_w_an(block, REG_68K_A_SP, 2);
@@ -532,6 +603,28 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
             break;
 
+        case 0xe5: // push hl
+            // SP -= 2
+            emit_subq_w_an(block, REG_68K_A_SP, 2);
+            // Get HL into scratch
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+            // [SP] = low byte (L)
+            emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
+            // swap to get high byte
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+            // [SP+1] = high byte (H)
+            emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
+            break;
+
+        case 0xf5: // push af
+            // SP -= 2
+            emit_subq_w_an(block, REG_68K_A_SP, 2);
+            // [SP] = F (low byte - flags)
+            emit_move_b_dn_ind_an(block, REG_68K_D_FLAGS, REG_68K_A_SP);
+            // [SP+1] = A (high byte)
+            emit_move_b_dn_disp_an(block, REG_68K_D_A, 1, REG_68K_A_SP);
+            break;
+
         case 0xd6: // sub a, #imm
             emit_subi_b_dn(block, REG_68K_D_A, READ_BYTE(src_ptr++));
             compile_set_znc_flags(block);
@@ -543,6 +636,38 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0xda: // jp c, imm16
             compile_jp_cond(block, ctx, &src_ptr, src_address, 4, 1);
+            break;
+
+        case 0xc1: // pop bc
+            // D1 = [SP+1] (high byte - B)
+            emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+            // D1.b = [SP] (low byte - C)
+            emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
+            // SP += 2
+            emit_addq_w_an(block, REG_68K_A_SP, 2);
+            // Now D1.w = 0xBBCC, convert to 0x00BB00CC in BC
+            emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);  // C = low byte
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // D1.b = B
+            emit_swap(block, REG_68K_D_BC);
+            emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);  // B = high byte
+            emit_swap(block, REG_68K_D_BC);
+            break;
+
+        case 0xd1: // pop de
+            // D1 = [SP+1] (high byte - D)
+            emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+            // D1.b = [SP] (low byte - E)
+            emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
+            // SP += 2
+            emit_addq_w_an(block, REG_68K_A_SP, 2);
+            // Now D1.w = 0xDDEE, convert to 0x00DD00EE in DE
+            emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);  // E = low byte
+            emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // D1.b = D
+            emit_swap(block, REG_68K_D_DE);
+            emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);  // D = high byte
+            emit_swap(block, REG_68K_D_DE);
             break;
 
         case 0xe0: // ld ($ff00 + u8), a
@@ -595,6 +720,18 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
                 compile_call_dmg_read(block);
             }
+            break;
+
+        case 0xf1: // pop af
+            emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_A);  // A = [SP+1]
+            emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_FLAGS);  // F = [SP]
+            emit_addq_w_an(block, REG_68K_A_SP, 2);
+            break;
+
+        case 0xd9: // reti
+            compile_call_ei_di(block, 1);
+            compile_ret(block);
+            done = 1;
             break;
 
         case 0xf3: // di
