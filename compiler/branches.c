@@ -27,10 +27,21 @@ int compile_jr(
 
     // Check if this is a backward jump to a location we've already compiled
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
-        // Backward jump within block - emit bra.w
+        // Backward jump within block
+        // Check VBL interrupt flag first - if set, exit to dispatcher
+        target_gb_pc = src_address + target_gb_offset;
+
+        // tst.b JIT_CTX_INTCHECK(a4)
+        emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
+        // beq.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + rts(2) = 8, plus 2 for PC = 10)
+        emit_beq_w(block, 10);
+        // Exit to dispatcher with target PC
+        emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+        emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
+        emit_rts(block);
+
+        // Native branch (interrupt flag was clear)
         target_m68k = block->m68k_offsets[target_gb_offset];
-        // bra.w displacement is relative to PC after the opcode word (before extension)
-        // current position = block->length, PC after opcode = block->length + 2
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bra_w(block, m68k_disp);
         return 0;
@@ -71,18 +82,51 @@ void compile_jr_cond(
 
     // Check if this is a backward jump within block
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
-        // Backward jump - emit conditional branch
-        target_m68k = block->m68k_offsets[target_gb_offset];
-        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+        // Backward jump - check condition, then interrupt flag
+        target_gb_pc = src_address + target_gb_offset;
+
+        // Structure:
+        //   btst #flag_bit, d7           ; already emitted above
+        //   bne/beq .check_interrupt     ; if condition met, check interrupt
+        //   bra.w .fall_through          ; condition not met, skip all
+        // .check_interrupt:
+        //   tst.b JIT_CTX_INTCHECK(a4)
+        //   beq.w loop_target            ; no interrupt, do native branch
+        //   moveq #0, d0                 ; interrupt pending, exit
+        //   move.w #target, d0
+        //   rts
+        // .fall_through:
+
+        // Sizes: bne/beq(4) + bra.w(4) + tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + rts(2) = 24
+        // .check_interrupt is at +8 from first branch
+        // .fall_through is at +24 from first branch
 
         if (branch_if_set) {
             // Branch if flag is set: btst gives Z=0 when bit=1, so use bne
-            emit_bne_w(block, m68k_disp);
+            emit_bne_w(block, 6);  // skip to .check_interrupt (+8, but PC is at +2)
         } else {
             // Branch if flag is clear: btst gives Z=1 when bit=0, so use beq
-            emit_beq_w(block, m68k_disp);
+            emit_beq_w(block, 6);
         }
-        return; // block continues (fall-through path)
+
+        // bra.w to .fall_through (tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + rts(2) = 16, plus 2 for PC = 18)
+        emit_bra_w(block, 18);
+
+        // .check_interrupt:
+        emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
+
+        // beq.w to native loop target (no interrupt pending)
+        target_m68k = block->m68k_offsets[target_gb_offset];
+        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+        emit_beq_w(block, m68k_disp);
+
+        // Exit to dispatcher (interrupt pending)
+        emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+        emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
+        emit_rts(block);
+
+        // .fall_through: block continues
+        return;
     }
 
     // Forward/external jump - conditionally exit to dispatcher

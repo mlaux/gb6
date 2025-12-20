@@ -562,3 +562,11 @@ void emit_adda_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
     // 1101 aaa 011 000 ddd
     emit_word(block, 0xd0c0 | (areg << 9) | dreg);
 }
+
+// tst.b d(An) - test byte at displacement from address register
+void emit_tst_b_disp_an(struct code_block *block, int16_t disp, uint8_t areg)
+{
+    // 0100 1010 00 101 aaa
+    emit_word(block, 0x4a28 | areg);
+    emit_word(block, disp);
+}

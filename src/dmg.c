@@ -127,11 +127,11 @@ static u8 get_button_state(struct dmg *dmg)
 static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     // Hacky: advance LCD every time LY is read (for JIT mode)
-    if (address == REG_LY) {
-        dmg->cpu->cycle_count += 456;
-        dmg_sync_hw(dmg);
-        return lcd_read(dmg->lcd, REG_LY);
-    }
+    // if (address == REG_LY) {
+    //     dmg->cpu->cycle_count += 456;
+    //     dmg_sync_hw(dmg);
+    //     return lcd_read(dmg->lcd, REG_LY);
+    // }
 
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {

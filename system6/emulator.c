@@ -13,6 +13,7 @@
 #include <Devices.h>
 #include <Memory.h>
 #include <Sound.h>
+#include <Retrace.h>
 
 #include "emulator.h"
 
@@ -117,6 +118,7 @@ typedef struct {
     void *read_func;
     void *write_func;
     void *ei_di_func;
+    volatile char interrupt_check;
 } jit_context;
 
 static jit_context jit_ctx;
@@ -129,6 +131,40 @@ static int use_jit = 1;
 
 // Flag: JIT hit an error
 static int jit_halted = 0;
+
+// Flag: VBL fired, main loop should break (separate from interrupt_check)
+static volatile char vbl_frame_break = 0;
+
+// VBL task for async interrupt checking
+typedef struct {
+    long appA5;
+    VBLTask task;
+} JITVBLTask;
+
+static JITVBLTask jit_vbl_task;
+
+static pascal void jit_vbl_proc(void)
+{
+    // char *screen;
+
+    asm volatile(
+        "move.l %%a5, -(%%sp)\n\t"
+        "move.l -4(%%a0), %%a5\n\t"
+        ::: "memory"
+    );
+
+    jit_ctx.interrupt_check = 1;
+    vbl_frame_break = 1;
+    jit_vbl_task.task.vblCount = 1;
+
+    // screen = *(char **) 0x824;  // ScrnBase low-memory global
+    // *screen ^= 0x80;
+
+    asm volatile(
+        "move.l (%%sp)+, %%a5\n\t"
+        ::: "memory"
+    );
+}
 
 WindowPtr g_wp;
 DialogPtr stateDialog;
@@ -204,6 +240,7 @@ void set_status_bar(const char *str)
     status_bar[k] = str[k];
   }
   status_bar[k] = '\0';
+  lcd_draw(dmg.lcd);
 }
 
 BitMap offscreenBmp;
@@ -318,6 +355,7 @@ static void jit_init(void)
     jit_ctx.read_func = dmg_read;
     jit_ctx.write_func = dmg_write;
     jit_ctx.ei_di_func = dmg_ei_di;
+    jit_ctx.interrupt_check = 0;
 
     jit_halted = 0;
 }
@@ -334,19 +372,15 @@ static int jit_step(void)
     }
 
     // Look up or compile block
-    // if (cpu.pc < MAX_CACHED_BLOCKS) {
-        block = block_cache[cpu.pc];
-    // } else {
-    //     block = NULL;
-    // }
+    block = block_cache[cpu.pc];
 
     if (!block) {
+        sprintf(buf, "Compiling $%04x", cpu.pc);
+        set_status_bar(buf);
         block = compile_block(cpu.pc, &compile_ctx);
         if (!block) {
             sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
             set_status_bar(buf);
-
-            lcd_draw(dmg.lcd);
             jit_halted = 1;
             return 0;
         }
@@ -355,23 +389,15 @@ static int jit_step(void)
         if (block->error) {
             sprintf(buf, "pc=%04x op=%02x", block->failed_address, block->failed_opcode);
             set_status_bar(buf);
-
-            lcd_draw(dmg.lcd);
             jit_halted = 1;
             block_free(block);
             return 0;
         }
 
-
-        // Cache the block
-        // if (cpu.pc < MAX_CACHED_BLOCKS) {
-            block_cache[cpu.pc] = block;
-        // }
+        block_cache[cpu.pc] = block;
     }
 
-    // Log the compiled block
-    debug_log_block(block);
-    // Execute the block
+    // debug_log_block(block);
     execute_block(block->code);
 
     // Get next PC from D0
@@ -383,22 +409,8 @@ static int jit_step(void)
         return 0;
     }
 
-    // Debug: show interrupt state every ~1000 blocks
-    {
-        static int dbg_cnt = 0;
-        static u16 min_pc = 0xffff, max_pc = 0;
-        if (cpu.pc < min_pc) min_pc = cpu.pc;
-        if (cpu.pc > max_pc) max_pc = cpu.pc;
-        if (++dbg_cnt >= 1000) {
-            dbg_cnt = 0;
-            sprintf(buf, "PC=%04x-%04x IE=%02x", min_pc, max_pc,
-                    dmg.interrupt_enabled);
-            set_status_bar(buf);
-            lcd_draw(dmg.lcd);
-            min_pc = 0xffff;
-            max_pc = 0;
-        }
-    }
+    // Clear VBL interrupt check flag now that we're in the dispatcher
+    jit_ctx.interrupt_check = 0;
 
     // Check for pending interrupts
     if (cpu.interrupt_enable) {
@@ -408,9 +420,6 @@ static int jit_step(void)
         int k;
         for (k = 0; k < 5; k++) {
           if (pending & (1 << k)) {
-            sprintf(buf, "INT %d -> %04x", k, handlers[k]);
-            set_status_bar(buf);
-            lcd_draw(dmg.lcd);
             // clear IF bit and disable IME
             dmg.interrupt_requested &= ~(1 << k);
             cpu.interrupt_enable = 0;
@@ -432,10 +441,7 @@ static int jit_step(void)
 
     // Update CPU state
     cpu.pc = (u16) next_pc;
-
-    // this is never actually set by the compiler lol so it'll always be 16
-    // for now
-    cpu.cycle_count += block->gb_cycles ? block->gb_cycles : 16;
+    cpu.cycle_count += block->gb_cycles;
 
     // Sync LCD/timer state
     dmg_sync_hw(&dmg);
@@ -770,6 +776,15 @@ int main(int argc, char *argv[])
 
   InitEverything();
   init_dither_lut();
+
+  // Install VBL task for async interrupt checking
+  jit_vbl_task.appA5 = (long) SetCurrentA5();
+  jit_vbl_task.task.qType = vType;
+  jit_vbl_task.task.vblAddr = jit_vbl_proc;
+  jit_vbl_task.task.vblCount = 1;
+  jit_vbl_task.task.vblPhase = 0;
+  VInstall((QElemPtr) &jit_vbl_task.task);
+
   if(ShowOpenBox()) {
     StartEmulation();
   }
@@ -781,26 +796,28 @@ int main(int argc, char *argv[])
       break;
     }
 
-    if (emulationOn && (now = TickCount()) != last_ticks) {
-      last_ticks = now;
-      // run one frame (70224 cycles = 154 scanlines * 456 cycles each
-      unsigned long frame_end = cpu.cycle_count + 70224;
-
+    if (emulationOn) {
       if (use_jit) {
-        // JIT mode: compile and execute blocks
-        while ((long) (frame_end - cpu.cycle_count) > 0 && !jit_halted) {
+        // JIT mode: run until VBL fires
+        while (!vbl_frame_break && !jit_halted) {
           jit_step();
         }
+        vbl_frame_break = 0;
       } else {
-        // Interpreter mode
-        while ((long) (frame_end - cpu.cycle_count) > 0) {
-          dmg_step(&dmg);
+        // Interpreter mode: use cycle counting
+        if ((now = TickCount()) != last_ticks) {
+          last_ticks = now;
+          unsigned long frame_end = cpu.cycle_count + 70224;
+          while ((long) (frame_end - cpu.cycle_count) > 0) {
+            dmg_step(&dmg);
+          }
         }
       }
       frame_count++;
     }
   }
   mbc_save_ram(dmg.rom->mbc, "save.sav");
+  VRemove((QElemPtr) &jit_vbl_task.task);
 
   return 0;
 }

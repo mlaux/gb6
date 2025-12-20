@@ -38,15 +38,16 @@
 #define REG_68K_A_CTX 4
 
 // Runtime context offsets
-#define JIT_CTX_DMG   0
-#define JIT_CTX_READ  4
-#define JIT_CTX_WRITE 8
-#define JIT_CTX_EI_DI 12
+#define JIT_CTX_DMG      0
+#define JIT_CTX_READ     4
+#define JIT_CTX_WRITE    8
+#define JIT_CTX_EI_DI    12
+#define JIT_CTX_INTCHECK 16
 
 
 struct code_block {
-    uint8_t code[2048];
-    uint16_t m68k_offsets[2048];
+    uint8_t code[1024];
+    uint16_t m68k_offsets[1024];
     size_t length;
     uint16_t gb_cycles; // for timing
     uint16_t src_address;

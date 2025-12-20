@@ -7,6 +7,7 @@
 #include "flags.h"
 #include "interop.h"
 #include "cb_prefix.h"
+#include "instructions.h"
 
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
@@ -107,6 +108,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
     block->length = 0;
     block->src_address = src_address;
+    block->gb_cycles = 0;
     block->error = 0;
     block->failed_opcode = 0;
     block->failed_address = 0;
@@ -522,6 +524,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                     emit_rts(block);
                     done = 1;
                 }
+                block->gb_cycles += instructions[0x100 + cb_op].cycles;
             }
             break;
 
@@ -784,6 +787,9 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             done = 1;
             break;
         }
+
+        // Add cycles for this instruction
+        block->gb_cycles += instructions[op].cycles;
     }
 
     block->end_address = src_address + src_ptr;

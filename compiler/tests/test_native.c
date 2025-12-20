@@ -31,7 +31,8 @@ typedef struct {
     void *dmg;           /* offset 0 */
     void *read_func;     /* offset 4 */
     void *write_func;    /* offset 8 */
-    void *ei_di_func;
+    void *ei_di_func;    /* offset 12 */
+    volatile char interrupt_check;  /* offset 16 */
 } jit_context;
 
 static jit_context ctx;
