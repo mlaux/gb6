@@ -635,10 +635,6 @@ void ShowAboutBox(void)
   
   ModalDialog(NULL, &hitItem);
 
-  // DrawDialog(dp);
-  // while(!GetNextEvent(mDownMask, &e));
-  // while(WaitMouseUp());
-
   DisposeDialog(dp);
 }
 
