@@ -8,6 +8,7 @@
 #include "mbc.h"
 #include "types.h"
 #include "bootstrap.h"
+#include "platform.h"
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {
@@ -126,13 +127,6 @@ static u8 get_button_state(struct dmg *dmg)
 
 static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
-    // Hacky: advance LCD every time LY is read (for JIT mode)
-    // if (address == REG_LY) {
-    //     dmg->cpu->cycle_count += 456;
-    //     dmg_sync_hw(dmg);
-    //     return lcd_read(dmg->lcd, REG_LY);
-    // }
-
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {
         return lcd_read(dmg->lcd, address);
@@ -313,14 +307,18 @@ static void timer_step(struct dmg *dmg)
 // Sync hardware state without running CPU - for JIT mode
 void dmg_sync_hw(struct dmg *dmg)
 {
-    timer_step(dmg);
-
+    // char buf[128];
     // each line takes 456 cycles
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
+    int need_draw = 0;
+    timer_step(dmg);
 
-    if (cycle_diff >= 456) {
-        dmg->last_lcd_update = dmg->cpu->cycle_count;
+    while (cycle_diff >= 456) {
         int next_scanline = lcd_step(dmg->lcd);
+        // sprintf(buf, "%d", next_scanline);
+        // set_status_bar(buf);
+        dmg->last_lcd_update += 456;
+        cycle_diff -= 456;
 
         // update LYC
         if (next_scanline == lcd_read(dmg->lcd, REG_LYC)) {
@@ -338,6 +336,14 @@ void dmg_sync_hw(struct dmg *dmg)
 
         // TODO: do all of this per-scanline instead of everything in vblank
         if (next_scanline == 144) {
+            // static int vbl_count = 0;
+            // vbl_count++;
+            // // Log every 60 VBlanks (~1 second)
+            // if ((vbl_count % 60) == 0) {
+            //     char buf[32];
+            //     sprintf(buf, "vbl=%d", vbl_count);
+            //     set_status_bar(buf);
+            // }
             // vblank has started, draw all the stuff from ram into the lcd
             dmg_request_interrupt(dmg, INT_VBLANK);
             if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
@@ -353,23 +359,26 @@ void dmg_sync_hw(struct dmg *dmg)
             if (lcdc & LCDC_ENABLE_OBJ) {
                 lcd_render_objs(dmg);
             }
+            need_draw = 1;
+        }
+    }
 
-            lcd_draw(dmg->lcd);
+    int scan = lcd_read(dmg->lcd, REG_LY);
+    if (scan < 144) {
+        if (cycle_diff < 80) {
+            lcd_set_mode(dmg->lcd, 2);
+        } else if (cycle_diff < 230) {
+            // just midpoint between 168 to 291, todo improve
+            lcd_set_mode(dmg->lcd, 3);
+        } else {
+            lcd_set_mode(dmg->lcd, 0);
         }
     } else {
-        int scan = lcd_read(dmg->lcd, REG_LY);
-        if (scan < 144) {
-            if (cycle_diff < 80) {
-                lcd_set_mode(dmg->lcd, 2);
-            } else if (cycle_diff < 230) {
-                // just midpoint between 168 to 291, todo improve
-                lcd_set_mode(dmg->lcd, 3);
-            } else {
-                lcd_set_mode(dmg->lcd, 0);
-            }
-        } else {
-            // in vblank. mode should stay as 1
-        }
+        // in vblank. mode should stay as 1
+    }
+
+    if (need_draw) {
+        lcd_draw(dmg->lcd);
     }
 }
 

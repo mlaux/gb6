@@ -13,7 +13,7 @@
 #include <Devices.h>
 #include <Memory.h>
 #include <Sound.h>
-#include <Retrace.h>
+#include <Timer.h>
 
 #include "emulator.h"
 
@@ -132,33 +132,29 @@ static int use_jit = 1;
 // Flag: JIT hit an error
 static int jit_halted = 0;
 
-// Flag: VBL fired, main loop should break (separate from interrupt_check)
-static volatile char vbl_frame_break = 0;
-
-// VBL task for async interrupt checking
+// Time Manager task for timing and loop interruption
 typedef struct {
     long appA5;
-    VBLTask task;
-} JITVBLTask;
+    TMTask task;
+} TMInfo;
 
-static JITVBLTask jit_vbl_task;
+static TMInfo interrupt_tm;
+static volatile long elapsed_cycles = 0;
 
-static pascal void jit_vbl_proc(void)
+#define INTERRUPT_PERIOD (-5000L)
+#define CYCLES_PER_INTERRUPT 20970L
+
+static pascal void interrupt_tm_proc(void)
 {
-    // char *screen;
-
     asm volatile(
         "move.l %%a5, -(%%sp)\n\t"
-        "move.l -4(%%a0), %%a5\n\t"
+        "move.l -4(%%a1), %%a5\n\t"
         ::: "memory"
     );
 
     jit_ctx.interrupt_check = 1;
-    vbl_frame_break = 1;
-    jit_vbl_task.task.vblCount = 1;
-
-    // screen = *(char **) 0x824;  // ScrnBase low-memory global
-    // *screen ^= 0x80;
+    elapsed_cycles += CYCLES_PER_INTERRUPT;
+    PrimeTime((QElemPtr)&interrupt_tm.task, INTERRUPT_PERIOD);
 
     asm volatile(
         "move.l (%%sp)+, %%a5\n\t"
@@ -360,7 +356,6 @@ static void jit_init(void)
     jit_halted = 0;
 }
 
-// Execute one JIT block, returns cycles consumed (0 if halted/error)
 static int jit_step(void)
 {
     struct code_block *block;
@@ -409,7 +404,6 @@ static int jit_step(void)
         return 0;
     }
 
-    // Clear VBL interrupt check flag now that we're in the dispatcher
     jit_ctx.interrupt_check = 0;
 
     // Check for pending interrupts
@@ -439,11 +433,10 @@ static int jit_step(void)
       }
     }
 
-    // Update CPU state
     cpu.pc = (u16) next_pc;
-    cpu.cycle_count += block->gb_cycles;
+    cpu.cycle_count += elapsed_cycles;
+    elapsed_cycles = 0;
 
-    // Sync LCD/timer state
     dmg_sync_hw(&dmg);
 
     return 1;
@@ -773,13 +766,11 @@ int main(int argc, char *argv[])
   InitEverything();
   init_dither_lut();
 
-  // Install VBL task for async interrupt checking
-  jit_vbl_task.appA5 = (long) SetCurrentA5();
-  jit_vbl_task.task.qType = vType;
-  jit_vbl_task.task.vblAddr = jit_vbl_proc;
-  jit_vbl_task.task.vblCount = 1;
-  jit_vbl_task.task.vblPhase = 0;
-  VInstall((QElemPtr) &jit_vbl_task.task);
+  // Install Time Manager task for timing and loop interruption
+  interrupt_tm.appA5 = (long) SetCurrentA5();
+  interrupt_tm.task.tmAddr = (TimerProcPtr) interrupt_tm_proc;
+  InsTime((QElemPtr) &interrupt_tm.task);
+  PrimeTime((QElemPtr) &interrupt_tm.task, INTERRUPT_PERIOD);
 
   if(ShowOpenBox()) {
     StartEmulation();
@@ -794,11 +785,9 @@ int main(int argc, char *argv[])
 
     if (emulationOn) {
       if (use_jit) {
-        // JIT mode: run until VBL fires
-        while (!vbl_frame_break && !jit_halted) {
-          jit_step();
-        }
-        vbl_frame_break = 0;
+        // JIT mode: run several blocks, then check events
+        int k;
+        jit_step();
       } else {
         // Interpreter mode: use cycle counting
         if ((now = TickCount()) != last_ticks) {
@@ -813,7 +802,7 @@ int main(int argc, char *argv[])
     }
   }
   mbc_save_ram(dmg.rom->mbc, "save.sav");
-  VRemove((QElemPtr) &jit_vbl_task.task);
+  RmvTime((QElemPtr) &interrupt_tm.task);
 
   return 0;
 }
