@@ -127,6 +127,10 @@ static u8 get_button_state(struct dmg *dmg)
 
 static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
+    if (address == REG_LY) {
+        return lcd_step(dmg->lcd);
+    }
+
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {
         return lcd_read(dmg->lcd, address);

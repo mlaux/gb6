@@ -15,6 +15,33 @@
 // D6 = DE in split format: 0x00DD00EE (D in bits 16-23, E in bits 0-7)
 // A2 = HL (contiguous 16-bit value)
 
+// Set GB flags for shift/rotate: Z from result, N=0, H=0, C from 68k C flag
+// Call this after a shift/rotate operation while 68k CCR still has the result
+// Uses D3 for Z capture to avoid clobbering D1 which may hold the result
+static void compile_shift_flags(struct code_block *block)
+{
+    // After shift/rotate, 68k Z flag is set if result is 0, C has bit shifted out
+    // GB needs: Z (bit 7), N=0 (bit 6), H=0 (bit 5), C (bit 4)
+
+    // Capture both flags with scc (doesn't affect CCR)
+    // Use D3 for Z to avoid clobbering D1 which holds result for non-A registers
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq: D3 = 0xff if Z=1
+    emit_scc(block, 0x05, REG_68K_D_FLAGS);      // scs: D7 = 0xff if C=1
+
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);  // D3 = 0x80 if Z was set
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);      // D7 = 0x10 if C was set
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);  // D7 = Z | C
+}
+
+// Set GB flags for SWAP: Z from result, N=0, H=0, C=0
+// Uses D3 for Z capture to avoid clobbering D1 which may hold the result
+static void compile_swap_flags(struct code_block *block)
+{
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq: D3 = 0xff if Z=1
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);  // mask to Z position
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);
+}
+
 // Set GB flags for BIT instruction: Z from 68k Z flag, N=0, H=1, C unchanged
 static void compile_bit_flags(struct code_block *block)
 {
@@ -35,6 +62,211 @@ static void compile_bit_flags(struct code_block *block)
 
     // OR in the Z flag
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
+}
+
+// Get a GB register's value into D1 for modification
+// Returns the register to use for the actual operation
+static int get_reg_for_op(struct code_block *block, int gb_reg)
+{
+    switch (gb_reg) {
+    case 0: // B - high byte of D5, need to extract
+        emit_move_l_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);
+        emit_swap(block, REG_68K_D_SCRATCH_1);  // B now in low byte
+        return REG_68K_D_SCRATCH_1;
+    case 1: // C - low byte of D5
+        emit_move_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);
+        return REG_68K_D_SCRATCH_1;
+    case 2: // D - high byte of D6
+        emit_move_l_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);
+        emit_swap(block, REG_68K_D_SCRATCH_1);
+        return REG_68K_D_SCRATCH_1;
+    case 3: // E - low byte of D6
+        emit_move_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);
+        return REG_68K_D_SCRATCH_1;
+    case 4: // H - high byte of HL (A2)
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+        emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // H now in low byte
+        return REG_68K_D_SCRATCH_1;
+    case 5: // L - low byte of HL (A2)
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+        return REG_68K_D_SCRATCH_1;
+    case 6: // (HL) - memory indirect
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+        compile_call_dmg_read_to_d0(block);  // result in D0
+        emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_1);
+        return REG_68K_D_SCRATCH_1;
+    case 7: // A - directly accessible
+        return REG_68K_D_A;
+    }
+    return REG_68K_D_SCRATCH_1;
+}
+
+// Write the result from D1 (or A for reg 7) back to the GB register
+static void put_reg_result(struct code_block *block, int gb_reg)
+{
+    switch (gb_reg) {
+    case 0: // B - write back to high byte of D5
+        emit_swap(block, REG_68K_D_SCRATCH_1);  // put B back in high byte
+        emit_andi_l_dn(block, REG_68K_D_BC, 0x0000ffff);  // clear B
+        emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0x00ff0000);  // keep only B position
+        emit_or_l_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);  // combine
+        break;
+    case 1: // C - write back to low byte of D5
+        emit_andi_b_dn(block, REG_68K_D_BC, 0x00);  // clear C
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);
+        break;
+    case 2: // D - write back to high byte of D6
+        emit_swap(block, REG_68K_D_SCRATCH_1);
+        emit_andi_l_dn(block, REG_68K_D_DE, 0x0000ffff);  // clear D
+        emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0x00ff0000);  // keep only D position
+        emit_or_l_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);
+        break;
+    case 3: // E - write back to low byte of D6
+        emit_andi_b_dn(block, REG_68K_D_DE, 0x00);
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);
+        break;
+    case 4: // H - write back to high byte of A2
+        emit_ror_w_8(block, REG_68K_D_SCRATCH_1);  // H back to high byte
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_2);
+        emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0xff);  // keep only L
+        emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0xff00);  // keep only H
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);
+        emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
+        break;
+    case 5: // L - write back to low byte of A2
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_2);
+        emit_andi_l_dn(block, REG_68K_D_SCRATCH_2, 0xff00);  // keep only H
+        emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0xff);  // keep only L
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);
+        emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_2, REG_68K_A_HL);
+        break;
+    case 6: // (HL) - write back to memory
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+        compile_call_dmg_write_d0(block);
+        break;
+    case 7: // A - already in place
+        break;
+    }
+}
+
+// RLC - rotate left circular, bit 7 -> C and bit 0
+static void compile_rlc_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+    emit_rol_b_imm(block, 1, op_reg);  // rotate left, C gets old bit 7
+    if (gb_reg != 7) {
+        emit_tst_b_dn(block, op_reg);  // set Z flag based on result
+    }
+    compile_shift_flags(block);
+    put_reg_result(block, gb_reg);
+}
+
+// RRC - rotate right circular, bit 0 -> C and bit 7
+static void compile_rrc_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+    emit_ror_b_imm(block, 1, op_reg);  // rotate right, C gets old bit 0
+    if (gb_reg != 7) {
+        emit_tst_b_dn(block, op_reg);
+    }
+    compile_shift_flags(block);
+    put_reg_result(block, gb_reg);
+}
+
+// RL - rotate left through carry, old C -> bit 0, bit 7 -> new C
+static void compile_rl_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+
+    // Save old carry (bit 4 of D7) to D2
+    emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_2);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0x10);  // isolate C flag
+
+    // Shift left - bit 7 goes to 68k C flag, 0 goes to bit 0
+    emit_lsl_b_imm_dn(block, 1, op_reg);
+
+    // Capture the new C flag before modifying
+    emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
+
+    // If old carry was set (D2 != 0), OR in bit 0
+    emit_lsr_b_imm_dn(block, 4, REG_68K_D_SCRATCH_2);  // 0x10 -> 0x01
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, op_reg);
+
+    // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
+    emit_tst_b_dn(block, op_reg);
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq for Z
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);
+
+    put_reg_result(block, gb_reg);
+}
+
+// RR - rotate right through carry, old C -> bit 7, bit 0 -> new C
+static void compile_rr_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+
+    // Save old carry (bit 4 of D7) to D2
+    emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_2);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0x10);  // isolate C flag
+
+    // Shift right - bit 0 goes to 68k C flag, 0 goes to bit 7
+    emit_lsr_b_imm_dn(block, 1, op_reg);
+
+    // Capture the new C flag before modifying
+    emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
+
+    // If old carry was set (D2 != 0), OR in bit 7
+    emit_lsl_b_imm_dn(block, 3, REG_68K_D_SCRATCH_2);  // 0x10 -> 0x80
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, op_reg);
+
+    // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
+    emit_tst_b_dn(block, op_reg);
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq for Z
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);
+
+    put_reg_result(block, gb_reg);
+}
+
+// SLA - shift left arithmetic, 0 -> bit 0, bit 7 -> C
+static void compile_sla_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+    emit_lsl_b_imm_dn(block, 1, op_reg);
+    compile_shift_flags(block);
+    put_reg_result(block, gb_reg);
+}
+
+// SRA - shift right arithmetic, bit 7 preserved, bit 0 -> C
+static void compile_sra_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+    emit_asr_b_imm_dn(block, 1, op_reg);
+    compile_shift_flags(block);
+    put_reg_result(block, gb_reg);
+}
+
+// SWAP - swap nibbles
+static void compile_swap_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+    emit_ror_b_imm(block, 4, op_reg);  // rotate by 4 swaps nibbles
+    emit_tst_b_dn(block, op_reg);
+    compile_swap_flags(block);
+    put_reg_result(block, gb_reg);
+}
+
+// SRL - shift right logical, 0 -> bit 7, bit 0 -> C
+static void compile_srl_reg(struct code_block *block, int gb_reg)
+{
+    int op_reg = get_reg_for_op(block, gb_reg);
+    emit_lsr_b_imm_dn(block, 1, op_reg);
+    compile_shift_flags(block);
+    put_reg_result(block, gb_reg);
 }
 
 // BIT n, reg - test bit n of register
@@ -154,31 +386,33 @@ static void compile_set_reg(struct code_block *block, int bit, int gb_reg)
 int compile_cb_insn(struct code_block *block, uint8_t cb_op)
 {
     int op = cb_op >> 6;
-    int bit = (cb_op >> 3) & 0x7;
+    int bit_or_type = (cb_op >> 3) & 0x7;
     int reg = cb_op & 0x7;
 
     switch (op) {
-    case 0: // rotates/shifts - only swap is implemented for now
-        if (cb_op == 0x37) {
-            // swap a
-            emit_ror_b_imm(block, 4, REG_68K_D_A);
-            emit_cmp_b_imm_dn(block, REG_68K_D_A, 0);
-            compile_set_z_flag(block);
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
-            return 1;
+    case 0: // rotates/shifts
+        switch (bit_or_type) {
+        case 0: compile_rlc_reg(block, reg); return 1;
+        case 1: compile_rrc_reg(block, reg); return 1;
+        case 2: compile_rl_reg(block, reg); return 1;
+        case 3: compile_rr_reg(block, reg); return 1;
+        case 4: compile_sla_reg(block, reg); return 1;
+        case 5: compile_sra_reg(block, reg); return 1;
+        case 6: compile_swap_reg(block, reg); return 1;
+        case 7: compile_srl_reg(block, reg); return 1;
         }
-        return 0;  // other rotates/shifts not yet implemented
+        return 0;
 
     case 1: // BIT
-        compile_bit_reg(block, bit, reg);
+        compile_bit_reg(block, bit_or_type, reg);
         return 1;
 
     case 2: // RES
-        compile_res_reg(block, bit, reg);
+        compile_res_reg(block, bit_or_type, reg);
         return 1;
 
     case 3: // SET
-        compile_set_reg(block, bit, reg);
+        compile_set_reg(block, bit_or_type, reg);
         return 1;
     }
 

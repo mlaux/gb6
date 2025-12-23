@@ -43,6 +43,12 @@
 #define JIT_CTX_WRITE    8
 #define JIT_CTX_EI_DI    12
 #define JIT_CTX_INTCHECK 16
+// 3 bytes padding after interrupt_check to align to 4 bytes
+#define JIT_CTX_CACHE    20   // struct code_block **block_cache
+#define JIT_CTX_DISPATCH 24   // void *dispatcher_return
+
+// Offset of 'code' field in struct code_block (it's at the start)
+#define BLOCK_CODE_OFFSET 0
 
 
 struct code_block {

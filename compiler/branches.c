@@ -33,12 +33,12 @@ int compile_jr(
 
         // tst.b JIT_CTX_INTCHECK(a4)
         emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
-        // beq.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + rts(2) = 8, plus 2 for PC = 10)
-        emit_beq_w(block, 10);
+        // beq.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14)
+        emit_beq_w(block, 14);
         // Exit to dispatcher with target PC
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-        emit_rts(block);
+        emit_dispatch_jump(block);
 
         // Native branch (interrupt flag was clear)
         target_m68k = block->m68k_offsets[target_gb_offset];
@@ -51,7 +51,7 @@ int compile_jr(
     target_gb_pc = src_address + target_gb_offset;
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_rts(block);
+    emit_dispatch_jump(block);
     return 1;
 }
 
@@ -94,12 +94,12 @@ void compile_jr_cond(
         //   beq.w loop_target            ; no interrupt, do native branch
         //   moveq #0, d0                 ; interrupt pending, exit
         //   move.w #target, d0
-        //   rts
+        //   dispatch_jump
         // .fall_through:
 
-        // Sizes: bne/beq(4) + bra.w(4) + tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + rts(2) = 24
+        // Sizes: bne/beq(4) + bra.w(4) + tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 28
         // .check_interrupt is at +8 from first branch
-        // .fall_through is at +24 from first branch
+        // .fall_through is at +28 from first branch
 
         if (branch_if_set) {
             // Branch if flag is set: btst gives Z=0 when bit=1, so use bne
@@ -109,8 +109,8 @@ void compile_jr_cond(
             emit_beq_w(block, 6);
         }
 
-        // bra.w to .fall_through (tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + rts(2) = 16, plus 2 for PC = 18)
-        emit_bra_w(block, 18);
+        // bra.w to .fall_through (tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 20, plus 2 for PC = 22)
+        emit_bra_w(block, 22);
 
         // .check_interrupt:
         emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
@@ -123,7 +123,7 @@ void compile_jr_cond(
         // Exit to dispatcher (interrupt pending)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-        emit_rts(block);
+        emit_dispatch_jump(block);
 
         // .fall_through: block continues
         return;
@@ -135,15 +135,15 @@ void compile_jr_cond(
 
     if (branch_if_set) {
         // Skip exit if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 10);  // skip: moveq(2) + move.w(4) + rts(2) + ext(2) = 10
+        emit_beq_w(block, 14);  // skip: moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14
     } else {
         // Skip exit if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 10);
+        emit_bne_w(block, 14);
     }
 
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_rts(block);
+    emit_dispatch_jump(block);
 }
 
 // Compile conditional absolute jump (jp nz, jp z, jp nc, jp c)
@@ -166,15 +166,15 @@ void compile_jp_cond(
     // If condition NOT met, skip the exit sequence
     if (branch_if_set) {
         // Skip exit if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 10);  // skip: moveq(2) + move.w(4) + rts(2) + ext(2) = 10
+        emit_beq_w(block, 14);  // skip: moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14
     } else {
         // Skip exit if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 10);
+        emit_bne_w(block, 14);
     }
 
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_rts(block);
+    emit_dispatch_jump(block);
 }
 
 void compile_call_imm16(
@@ -205,7 +205,7 @@ void compile_call_imm16(
     // jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_rts(block);
+    emit_dispatch_jump(block);
 }
 
 void compile_ret(struct code_block *block)
@@ -221,7 +221,7 @@ void compile_ret(struct code_block *block)
     emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
     // SP += 2
     emit_addq_w_an(block, REG_68K_A_SP, 2);
-    emit_rts(block);
+    emit_dispatch_jump(block);
 }
 
 // Compile conditional return (ret nz, ret z, ret nc, ret c)
@@ -233,15 +233,15 @@ void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_
     emit_btst_imm_dn(block, flag_bit, 7);
 
     // If condition NOT met, skip the return sequence
-    // Return sequence is 14 bytes: moveq(2) + move.b d(An),Dn(4) + rol.w(2) +
-    //                              move.b (An),Dn(2) + addq.w(2) + rts(2)
+    // Return sequence is 18 bytes: moveq(2) + move.b d(An),Dn(4) + rol.w(2) +
+    //                              move.b (An),Dn(2) + addq.w(2) + dispatch_jump(6)
     // bxx.w displacement is relative to PC after opcode word, so add 2
     if (branch_if_set) {
         // Skip return if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 16);
+        emit_beq_w(block, 20);
     } else {
         // Skip return if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 16);
+        emit_bne_w(block, 20);
     }
 
     // Pop return address and return (same as compile_ret)
@@ -250,7 +250,7 @@ void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_
     emit_rol_w_8(block, REG_68K_D_NEXT_PC);
     emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
     emit_addq_w_an(block, REG_68K_A_SP, 2);
-    emit_rts(block);
+    emit_dispatch_jump(block);
 }
 
 void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
@@ -262,7 +262,7 @@ void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
     emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
     emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
-    // jump to 0x0028
-    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0x28);
-    emit_rts(block);
+    // jump to target (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, target);
+    emit_dispatch_jump(block);
 }

@@ -119,9 +119,45 @@ typedef struct {
     void *write_func;
     void *ei_di_func;
     volatile char interrupt_check;
+    char _pad[3];  // align to 4 bytes
+    struct code_block **block_cache;
+    void *dispatcher_return;
 } jit_context;
 
 static jit_context jit_ctx;
+
+// Dispatcher return routine - 68k machine code
+// Compiled blocks JMP here instead of RTS. This routine:
+// 1. Checks interrupt_check, if set -> RTS to C
+// 2. Looks up block_cache[D0], if found -> JMP to it
+// 3. Otherwise -> RTS to C (to compile the block)
+//
+// Assembly:
+//   tst.b   16(a4)              ; check interrupt_check
+//   bne.s   .exit
+//   movea.l 20(a4), a0          ; block_cache pointer
+//   moveq   #0, d1
+//   move.w  d0, d1              ; zero-extend PC
+//   lsl.l   #2, d1              ; *4 for pointer size
+//   movea.l (a0,d1.l), a0       ; block_cache[pc]
+//   tst.l   a0
+//   beq.s   .exit
+//   jmp     (a0)                ; code is at offset 0 in block
+// .exit:
+//   rts
+static const unsigned char dispatcher_code[] = {
+    0x4a, 0x2c, 0x00, 0x10,  // tst.b 16(a4)
+    0x66, 0x14,              // bne.s +20 (to rts)
+    0x20, 0x6c, 0x00, 0x14,  // movea.l 20(a4), a0
+    0x72, 0x00,              // moveq #0, d1
+    0x32, 0x00,              // move.w d0, d1
+    0xe5, 0x89,              // lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,  // movea.l (a0,d1.l), a0
+    0x4a, 0x88,              // tst.l a0
+    0x67, 0x02,              // beq.s +2 (to rts)
+    0x4e, 0xd0,              // jmp (a0)
+    0x4e, 0x75               // rts
+};
 
 // Compile-time context for address calculation
 static struct compile_ctx compile_ctx;
@@ -140,27 +176,10 @@ typedef struct {
 
 static TMInfo interrupt_tm;
 static volatile long elapsed_cycles = 0;
+volatile char draw;
 
-#define INTERRUPT_PERIOD (-5000L)
-#define CYCLES_PER_INTERRUPT 20970L
-
-static pascal void interrupt_tm_proc(void)
-{
-    asm volatile(
-        "move.l %%a5, -(%%sp)\n\t"
-        "move.l -4(%%a1), %%a5\n\t"
-        ::: "memory"
-    );
-
-    jit_ctx.interrupt_check = 1;
-    elapsed_cycles += CYCLES_PER_INTERRUPT;
-    PrimeTime((QElemPtr)&interrupt_tm.task, INTERRUPT_PERIOD);
-
-    asm volatile(
-        "move.l (%%sp)+, %%a5\n\t"
-        ::: "memory"
-    );
-}
+#define INTERRUPT_PERIOD (-16667L)
+#define CYCLES_PER_INTERRUPT 70224
 
 WindowPtr g_wp;
 DialogPtr stateDialog;
@@ -194,6 +213,25 @@ struct cpu cpu;
 struct rom rom;
 struct lcd lcd;
 struct dmg dmg;
+
+static pascal void interrupt_tm_proc(void)
+{
+    asm volatile(
+        "move.l %%a5, -(%%sp)\n\t"
+        "move.l -4(%%a1), %%a5\n\t"
+        ::: "memory"
+    );
+
+    jit_ctx.interrupt_check = 1;
+    elapsed_cycles += CYCLES_PER_INTERRUPT;
+    draw++;
+    PrimeTime((QElemPtr)&interrupt_tm.task, INTERRUPT_PERIOD);
+
+    asm volatile(
+        "move.l (%%sp)+, %%a5\n\t"
+        ::: "memory"
+    );
+}
 
 void InitEverything(void)
 {
@@ -352,6 +390,8 @@ static void jit_init(void)
     jit_ctx.write_func = dmg_write;
     jit_ctx.ei_di_func = dmg_ei_di;
     jit_ctx.interrupt_check = 0;
+    jit_ctx.block_cache = block_cache;
+    jit_ctx.dispatcher_return = (void *) dispatcher_code;
 
     jit_halted = 0;
 }
@@ -393,6 +433,8 @@ static int jit_step(void)
     }
 
     // debug_log_block(block);
+    // sprintf(buf, "Executing $%04x", cpu.pc);
+    // set_status_bar(buf);
     execute_block(block->code);
 
     // Get next PC from D0
@@ -786,7 +828,6 @@ int main(int argc, char *argv[])
     if (emulationOn) {
       if (use_jit) {
         // JIT mode: run several blocks, then check events
-        int k;
         jit_step();
       } else {
         // Interpreter mode: use cycle counting

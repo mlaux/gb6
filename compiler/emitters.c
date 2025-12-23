@@ -297,10 +297,29 @@ void emit_or_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     emit_word(block, 0x8000 | (dest << 9) | src);
 }
 
+// or.l Ds, Dd (result to Dd)
+void emit_or_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1000 ddd 0 10 000 sss (direction bit 0 = result to Dn, size=10 for long)
+    emit_word(block, 0x8080 | (dest << 9) | src);
+}
+
 // Emit: rts
 void emit_rts(struct code_block *block)
 {
     emit_word(block, 0x4e75);
+}
+
+// Emit: movea.l JIT_CTX_DISPATCH(a4), a0; jmp (a0)
+// Jump to dispatcher_return routine for block chaining
+// 6 bytes total
+void emit_dispatch_jump(struct code_block *block)
+{
+    // movea.l 24(a4), a0 = 206c 0018
+    emit_word(block, 0x206c);
+    emit_word(block, JIT_CTX_DISPATCH);
+    // jmp (a0) = 4ed0
+    emit_word(block, 0x4ed0);
 }
 
 // bra.w - branch always with 16-bit displacement
@@ -569,4 +588,53 @@ void emit_tst_b_disp_an(struct code_block *block, int16_t disp, uint8_t areg)
     // 0100 1010 00 101 aaa
     emit_word(block, 0x4a28 | areg);
     emit_word(block, disp);
+}
+
+// lsl.b #count, Dn - logical shift left byte by immediate (1-8)
+void emit_lsl_b_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 1 00 i 01 rrr (d=1 for left, size=00 for byte, i=0 for imm, type=01 for lsl)
+    if (count == 0 || count > 8) {
+        printf("can only lsl by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe108 | (ccc << 9) | dreg);
+}
+
+// lsr.b #count, Dn - logical shift right byte by immediate (1-8)
+void emit_lsr_b_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 0 00 i 01 rrr (d=0 for right, size=00 for byte, i=0 for imm, type=01 for lsr)
+    if (count == 0 || count > 8) {
+        printf("can only lsr by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe008 | (ccc << 9) | dreg);
+}
+
+// asr.b #count, Dn - arithmetic shift right byte by immediate (1-8)
+void emit_asr_b_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 0 00 i 00 rrr (d=0 for right, size=00 for byte, i=0 for imm, type=00 for asr)
+    if (count == 0 || count > 8) {
+        printf("can only asr by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe000 | (ccc << 9) | dreg);
+}
+
+// tst.b Dn - test byte in data register (sets Z and N flags)
+void emit_tst_b_dn(struct code_block *block, uint8_t dreg)
+{
+    // 0100 1010 00 000 rrr
+    emit_word(block, 0x4a00 | dreg);
 }
