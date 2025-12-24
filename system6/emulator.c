@@ -24,10 +24,35 @@
 #include "lcd.h"
 #include "mbc.h"
 
+struct cpu cpu;
+struct rom rom;
+struct lcd lcd;
+struct dmg dmg;
+
 WindowPtr g_wp;
-DialogPtr stateDialog;
-unsigned char g_running;
-unsigned char emulationOn;
+unsigned char app_running;
+unsigned char emulation_on;
+
+static Rect window_bounds = { WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT, WINDOW_X + WINDOW_WIDTH };
+
+static char save_filename[32];
+// for GetFInfo/SetFInfo
+static Str63 save_filename_p;
+
+// 2x scaled: 320x288 @ 1bpp = 40 bytes per row
+char offscreen_buf[40 * 288];
+Rect offscreen_rect = { 0, 0, 288, 320 };
+BitMap offscreen_bmp;
+
+// FPS tracking
+static unsigned long fps_frame_count = 0;
+static unsigned long fps_last_tick = 0;
+static unsigned long fps_display = 0;
+
+// lookup tables for 2x dithered rendering
+// index = 4 packed GB pixels (2 bits each), output = 8 screen pixels (1bpp)
+static unsigned char dither_row0[256];
+static unsigned char dither_row1[256];
 
 // key input mapping for game controls
 // using ASCII character codes (case-insensitive handled in code)
@@ -48,19 +73,6 @@ static struct key_input key_inputs[] = {
     { 'm', BUTTON_START, FIELD_ACTION },
     { 0, 0, 0 }
 };
-
-static Point windowPt = { WINDOW_Y, WINDOW_X };
-
-static Rect windowBounds = { WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT, WINDOW_X + WINDOW_WIDTH };
-
-struct cpu cpu;
-struct rom rom;
-struct lcd lcd;
-struct dmg dmg;
-
-static char save_filename[32];
-// for GetFInfo/SetFInfo
-static Str63 save_filename_p;
 
 static void build_save_filename(void)
 {
@@ -93,24 +105,8 @@ void InitEverything(void)
   SetMenuBar(mbar);
   DrawMenuBar();
 
-  g_running = 1;
+  app_running = 1;
 }
-
-// 2x scaled: 320x288 @ 1bpp = 40 bytes per row
-char offscreen[40 * 288];
-Rect offscreenRect = { 0, 0, 288, 320 };
-
-// FPS tracking
-static unsigned long fps_frame_count = 0;
-static unsigned long fps_last_tick = 0;
-static unsigned long fps_display = 0;
-
-BitMap offscreenBmp;
-
-// lookup tables for 2x dithered rendering
-// index = 4 packed GB pixels (2 bits each), output = 8 screen pixels (1bpp)
-static unsigned char dither_row0[256];
-static unsigned char dither_row1[256];
 
 void init_dither_lut(void)
 {
@@ -142,7 +138,7 @@ void lcd_draw(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
-  unsigned char *dst = (unsigned char *) offscreen;
+  unsigned char *dst = (unsigned char *) offscreen_buf;
 
   for (gy = 0; gy < 144; gy++) {
     unsigned char *row0 = dst;
@@ -162,7 +158,7 @@ void lcd_draw(struct lcd *lcd_ptr)
   }
 
   SetPort(g_wp);
-  CopyBits(&offscreenBmp, &g_wp->portBits, &offscreenRect, &offscreenRect, srcCopy, NULL);
+  CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
 
   // FPS display
   {
@@ -193,7 +189,7 @@ void StartEmulation(void)
     DisposeWindow(g_wp);
     g_wp = NULL;
   }
-  g_wp = NewWindow(0, &windowBounds, WINDOW_TITLE, true,
+  g_wp = NewWindow(0, &window_bounds, WINDOW_TITLE, true,
         noGrowDocProc, (WindowPtr) -1, true, 0);
   SetPort(g_wp);
 
@@ -213,10 +209,10 @@ void StartEmulation(void)
   cpu.dmg = &dmg;
   cpu.pc = 0x100;
 
-  offscreenBmp.baseAddr = offscreen;
-  offscreenBmp.bounds = offscreenRect;
-  offscreenBmp.rowBytes = 40;
-  emulationOn = 1;
+  offscreen_bmp.baseAddr = offscreen_buf;
+  offscreen_bmp.bounds = offscreen_rect;
+  offscreen_bmp.rowBytes = 40;
+  emulation_on = 1;
 }
 
 int LoadRom(Str63 fileName, short vRefNum)
@@ -310,18 +306,6 @@ int ShowOpenBox(void)
   return false;
 }
 
-void ShowStateDialog(void)
-{
-  DialogPtr dp;
-
-  if (!stateDialog) {
-    stateDialog = GetNewDialog(DLOG_STATE, 0L, (WindowPtr) -1L);
-  }
-
-  ShowWindow(stateDialog);
-  SelectWindow(stateDialog);
-}
-
 void ShowAboutBox(void)
 {
   DialogPtr dp;
@@ -331,10 +315,6 @@ void ShowAboutBox(void)
   dp = GetNewDialog(DLOG_ABOUT, 0L, (WindowPtr) -1L);
   
   ModalDialog(NULL, &hitItem);
-
-  // DrawDialog(dp);
-  // while(!GetNextEvent(mDownMask, &e));
-  // while(WaitMouseUp());
 
   DisposeDialog(dp);
 }
@@ -365,14 +345,12 @@ void OnMenuAction(long action)
         StartEmulation();
     }
     else if(item == FILE_QUIT) {
-      g_running = 0;
+      app_running = 0;
     }
   }
 
-  else if (menu == MENU_EMULATION) {
-    if (item == EMULATION_STATE) {
-      ShowStateDialog();
-    }
+  else if (menu == MENU_EDIT) {
+    // TODO
   }
 }
 
@@ -390,7 +368,7 @@ void OnMouseDown(EventRecord *pEvt)
       break;
     case inGoAway:
       if(TrackGoAway(clicked, pEvt->where)) {
-        emulationOn = 0;
+        emulation_on = 0;
         DisposeWindow(clicked);
         g_wp = NULL;
       }
@@ -425,13 +403,7 @@ static int ProcessEvents(void)
   EventRecord evt;
 
   while (GetNextEvent(everyEvent, &evt)) {
-    if (IsDialogEvent(&evt)) {
-      DialogRef hitBox;
-      DialogItemIndex hitItem;
-      if (DialogSelect(&evt, &hitBox, &hitItem)) {
-        stateDialog = NULL;
-      }
-    } else switch (evt.what) {
+    switch (evt.what) {
       case mouseDown:
         OnMouseDown(&evt);
         break;
@@ -443,18 +415,18 @@ static int ProcessEvents(void)
       case autoKey:
         if (evt.modifiers & cmdKey) {
           OnMenuAction(MenuKey(evt.message & charCodeMask));
-        } else if (emulationOn) {
+        } else if (emulation_on) {
           HandleKeyEvent(evt.message & charCodeMask, 1);
         }
         break;
       case keyUp:
-        if (emulationOn) {
+        if (emulation_on) {
           HandleKeyEvent(evt.message & charCodeMask, 0);
         }
         break;
     }
 
-    if (!g_running) {
+    if (!app_running) {
       return 0;
     }
   }
@@ -514,14 +486,14 @@ int main(int argc, char *argv[])
     StartEmulation();
   }
 
-  while (g_running) {
+  while (app_running) {
     unsigned int now;
 
     if (!ProcessEvents()) {
       break;
     }
 
-    if (emulationOn && (now = TickCount()) != last_ticks) {
+    if (emulation_on && (now = TickCount()) != last_ticks) {
       last_ticks = now;
       // run one frame (70224 cycles = 154 scanlines * 456 cycles each
       unsigned long frame_end = cpu.cycle_count + 70224;
