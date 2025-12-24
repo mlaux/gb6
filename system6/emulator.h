@@ -7,7 +7,7 @@
 #include "types.h"
 #include "dmg.h"
 
-#define WINDOW_TITLE "\pOutput"
+#define WINDOW_TITLE "\pgb6"
 
 #define WINDOW_X 3
 #define WINDOW_Y 40

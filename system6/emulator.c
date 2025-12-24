@@ -103,6 +103,7 @@ void InitEverything(void)
 
   mbar = GetNewMBar(MBAR_DEFAULT);
   SetMenuBar(mbar);
+  AppendResMenu(GetMenuHandle(MENU_APPLE), 'DRVR');
   DrawMenuBar();
 
   app_running = 1;
@@ -189,7 +190,7 @@ void StartEmulation(void)
     DisposeWindow(g_wp);
     g_wp = NULL;
   }
-  g_wp = NewWindow(0, &window_bounds, WINDOW_TITLE, true,
+  g_wp = NewWindow(0, &window_bounds, save_filename_p, true,
         noGrowDocProc, (WindowPtr) -1, true, 0);
   SetPort(g_wp);
 
@@ -203,7 +204,6 @@ void StartEmulation(void)
   lcd_new(&lcd);
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
-  build_save_filename();
   mbc_load_ram(dmg.rom->mbc, save_filename);
 
   cpu.dmg = &dmg;
@@ -257,6 +257,8 @@ int LoadRom(Str63 fileName, short vRefNum)
     fndrInfo.fdCreator = 'MGBE';
     SetFInfo(fileName, vRefNum, &fndrInfo);
   }
+
+  build_save_filename();
 
   return true;
 }
@@ -336,7 +338,11 @@ void OnMenuAction(long action)
   if(menu == MENU_APPLE) {
     if(item == APPLE_ABOUT) {
       ShowAboutBox();
-    }	
+    } else {
+      Str255 daName;
+      GetMenuItemText(GetMenuHandle(MENU_APPLE), item, daName);
+      OpenDeskAcc(daName);
+    }
   }
   
   else if(menu == MENU_FILE) {
@@ -350,7 +356,10 @@ void OnMenuAction(long action)
   }
 
   else if (menu == MENU_EDIT) {
-    // TODO
+    if (item == EDIT_PREFERENCES || item == EDIT_KEY_MAPPINGS) {
+      ParamText("\pThis feature is not yet implemented.", "\p", "\p", "\p");
+      Alert(ALRT_4_LINE, NULL);
+    }
   }
 }
 
