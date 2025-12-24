@@ -131,6 +131,13 @@ static u8 dmg_read_slow(struct dmg *dmg, u16 address)
         return lcd_step(dmg->lcd);
     }
 
+    if (address == REG_STAT) {
+        u8 stat = lcd_read(dmg->lcd, REG_STAT);
+        u8 new_stat = (stat & 0xfc) | (((stat & 3) + 1) & 3);
+        lcd_write(dmg->lcd, REG_STAT, new_stat);
+        return new_stat;
+    }
+
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {
         return lcd_read(dmg->lcd, address);
@@ -311,16 +318,22 @@ static void timer_step(struct dmg *dmg)
 // Sync hardware state without running CPU - for JIT mode
 void dmg_sync_hw(struct dmg *dmg)
 {
-    // char buf[128];
     // each line takes 456 cycles
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
     int need_draw = 0;
+
+    // Cap cycle_diff to prevent runaway catch-up when emulation is slow.
+    // If we're more than ~2 frames behind, skip ahead instead of grinding.
+    #define MAX_CATCHUP_CYCLES (70224)
+    if (cycle_diff > MAX_CATCHUP_CYCLES) {
+        dmg->last_lcd_update = dmg->cpu->cycle_count - MAX_CATCHUP_CYCLES;
+        cycle_diff = MAX_CATCHUP_CYCLES;
+    }
+
     timer_step(dmg);
 
     while (cycle_diff >= 456) {
         int next_scanline = lcd_step(dmg->lcd);
-        // sprintf(buf, "%d", next_scanline);
-        // set_status_bar(buf);
         dmg->last_lcd_update += 456;
         cycle_diff -= 456;
 
@@ -340,16 +353,11 @@ void dmg_sync_hw(struct dmg *dmg)
 
         // TODO: do all of this per-scanline instead of everything in vblank
         if (next_scanline == 144) {
-            // static int vbl_count = 0;
-            // vbl_count++;
-            // // Log every 60 VBlanks (~1 second)
-            // if ((vbl_count % 60) == 0) {
-            //     char buf[32];
-            //     sprintf(buf, "vbl=%d", vbl_count);
-            //     set_status_bar(buf);
-            // }
             // vblank has started, draw all the stuff from ram into the lcd
-            dmg_request_interrupt(dmg, INT_VBLANK);
+            // Only request if not already pending to avoid reentrancy
+            if (!(dmg->interrupt_requested & (1 << INT_VBLANK))) {
+                dmg_request_interrupt(dmg, INT_VBLANK);
+            }
             if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
                 dmg_request_interrupt(dmg, INT_LCDSTAT);
             }
@@ -382,7 +390,7 @@ void dmg_sync_hw(struct dmg *dmg)
     }
 
     if (need_draw) {
-        lcd_draw(dmg->lcd);
+        //lcd_draw(dmg->lcd);
     }
 }
 

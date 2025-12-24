@@ -224,7 +224,6 @@ static pascal void interrupt_tm_proc(void)
 
     jit_ctx.interrupt_check = 1;
     elapsed_cycles += CYCLES_PER_INTERRUPT;
-    draw++;
     PrimeTime((QElemPtr)&interrupt_tm.task, INTERRUPT_PERIOD);
 
     asm volatile(
@@ -406,6 +405,10 @@ static int jit_step(void)
         return 0;
     }
 
+    // Clear interrupt check BEFORE executing so we can make progress
+    // even if the timer fired during ProcessEvents
+    jit_ctx.interrupt_check = 0;
+
     // Look up or compile block
     block = block_cache[cpu.pc];
 
@@ -433,7 +436,8 @@ static int jit_step(void)
     }
 
     // debug_log_block(block);
-    // sprintf(buf, "Executing $%04x", cpu.pc);
+    //sprintf(buf, "Executing $%04x\n", cpu.pc);
+    //debug_log_string(buf);
     // set_status_bar(buf);
     execute_block(block->code);
 
@@ -445,8 +449,6 @@ static int jit_step(void)
         jit_halted = 1;
         return 0;
     }
-
-    jit_ctx.interrupt_check = 0;
 
     // Check for pending interrupts
     if (cpu.interrupt_enable) {

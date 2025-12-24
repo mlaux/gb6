@@ -289,6 +289,152 @@ TEST_EXEC(test_inc_hl,              REG_HL, 0x1235, 0x21, 0x34, 0x12, 0x23, 0x10
 // ld hl, $1000; ld de, $0234; add hl, de -> HL = 0x1234
 TEST_EXEC(test_add_hl_de,           REG_HL, 0x1234, 0x21, 0x00, 0x10, 0x11, 0x34, 0x02, 0x19, 0x10)
 
+// ADC tests
+TEST(test_adc_a_c_no_carry)
+{
+    // xor a (clear carry), ld a, $10, ld c, $05, adc a, c -> A = 0x15
+    uint8_t rom[] = {
+        0xaf,             // xor a (A=0, C=0)
+        0x3e, 0x10,       // ld a, $10
+        0x0e, 0x05,       // ld c, $05
+        0x89,             // adc a, c
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x15);
+}
+
+TEST(test_adc_a_c_with_carry)
+{
+    // Set carry via cp, then adc
+    uint8_t rom[] = {
+        0x3e, 0x00,       // ld a, $00
+        0xfe, 0x01,       // cp a, $01 -> C=1 (0 < 1)
+        0x3e, 0x10,       // ld a, $10
+        0x0e, 0x05,       // ld c, $05
+        0x89,             // adc a, c -> A = $10 + $05 + 1 = $16
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x16);
+}
+
+TEST(test_adc_a_imm_with_carry)
+{
+    // Set carry, then adc a, #imm
+    uint8_t rom[] = {
+        0x3e, 0x00,       // ld a, $00
+        0xfe, 0x01,       // cp a, $01 -> C=1
+        0x3e, 0x20,       // ld a, $20
+        0xce, 0x10,       // adc a, $10 -> A = $20 + $10 + 1 = $31
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x31);
+}
+
+TEST(test_adc_overflow_sets_carry)
+{
+    // adc that overflows should set carry
+    uint8_t rom[] = {
+        0xaf,             // xor a (C=0)
+        0x3e, 0xff,       // ld a, $ff
+        0x0e, 0x01,       // ld c, $01
+        0x89,             // adc a, c -> $ff + $01 = $100, A = $00, C = 1
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x00);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x10, 0x10);  // C flag set
+}
+
+TEST(test_adc_zero_flag)
+{
+    // adc resulting in zero should set Z
+    uint8_t rom[] = {
+        0xaf,             // xor a (C=0)
+        0x3e, 0xff,       // ld a, $ff
+        0x0e, 0x01,       // ld c, $01
+        0x89,             // adc a, c -> A = $00, Z = 1
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x80, 0x80);  // Z flag set
+}
+
+// SBC tests
+TEST(test_sbc_a_c_no_carry)
+{
+    // xor a (clear carry), ld a, $10, ld c, $05, sbc a, c -> A = 0x0b
+    uint8_t rom[] = {
+        0xaf,             // xor a (A=0, C=0)
+        0x3e, 0x10,       // ld a, $10
+        0x0e, 0x05,       // ld c, $05
+        0x99,             // sbc a, c
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x0b);
+}
+
+TEST(test_sbc_a_c_with_carry)
+{
+    // Set carry via cp, then sbc
+    uint8_t rom[] = {
+        0x3e, 0x00,       // ld a, $00
+        0xfe, 0x01,       // cp a, $01 -> C=1 (borrow)
+        0x3e, 0x10,       // ld a, $10
+        0x0e, 0x05,       // ld c, $05
+        0x99,             // sbc a, c -> A = $10 - $05 - 1 = $0a
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x0a);
+}
+
+TEST(test_sbc_a_imm_with_carry)
+{
+    // Set carry, then sbc a, #imm
+    uint8_t rom[] = {
+        0x3e, 0x00,       // ld a, $00
+        0xfe, 0x01,       // cp a, $01 -> C=1
+        0x3e, 0x20,       // ld a, $20
+        0xde, 0x10,       // sbc a, $10 -> A = $20 - $10 - 1 = $0f
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x0f);
+}
+
+TEST(test_sbc_underflow_sets_carry)
+{
+    // sbc that underflows should set carry
+    uint8_t rom[] = {
+        0xaf,             // xor a (C=0)
+        0x3e, 0x00,       // ld a, $00
+        0x0e, 0x01,       // ld c, $01
+        0x99,             // sbc a, c -> $00 - $01 = $ff, C = 1
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xff);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x10, 0x10);  // C flag set
+}
+
+TEST(test_sbc_n_flag)
+{
+    // sbc should always set N flag
+    uint8_t rom[] = {
+        0xaf,             // xor a (C=0)
+        0x3e, 0x10,       // ld a, $10
+        0x0e, 0x05,       // ld c, $05
+        0x99,             // sbc a, c
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x40, 0x40);  // N flag set
+}
+
 TEST(test_exec_jp_skip)
 {
     uint8_t rom[] = {
@@ -1415,6 +1561,18 @@ void register_exec_tests(void)
     RUN_TEST(test_add_a_a);
     RUN_TEST(test_add_a_d);
     RUN_TEST(test_ld_e_a);
+
+    printf("\nADC/SBC tests:\n");
+    RUN_TEST(test_adc_a_c_no_carry);
+    RUN_TEST(test_adc_a_c_with_carry);
+    RUN_TEST(test_adc_a_imm_with_carry);
+    RUN_TEST(test_adc_overflow_sets_carry);
+    RUN_TEST(test_adc_zero_flag);
+    RUN_TEST(test_sbc_a_c_no_carry);
+    RUN_TEST(test_sbc_a_c_with_carry);
+    RUN_TEST(test_sbc_a_imm_with_carry);
+    RUN_TEST(test_sbc_underflow_sets_carry);
+    RUN_TEST(test_sbc_n_flag);
 
     printf("\n16-bit ALU:\n");
     RUN_TEST(test_inc_l);

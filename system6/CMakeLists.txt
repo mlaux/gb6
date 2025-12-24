@@ -21,6 +21,8 @@ add_application(Emulator
     ../compiler/interop.c
     ../compiler/flags.c
     ../compiler/cb_prefix.c
+    ../compiler/reg_loads.c
+    ../compiler/alu.c
     emulator.c
     resources.r
 )

@@ -143,6 +143,20 @@ void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
     emit_word(block, 0x5148 | ddd << 9 | areg);
 }
 
+// subq.w #val, Dn
+void emit_subq_w_dn(struct code_block *block, uint8_t dreg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 1 01 000 rrr
+    if (val == 0 || val > 8) {
+        printf("can only subq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5140 | ddd << 9 | dreg);
+}
+
 void emit_addq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val)
 {
     uint16_t ddd;
@@ -154,6 +168,19 @@ void emit_addq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val)
     }
     ddd = val == 8 ? 0 : val;
     emit_word(block, 0x5000 | ddd << 9 | dreg);
+}
+
+void emit_addq_w_dn(struct code_block *block, uint8_t dreg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 0 01 000 rrr
+    if (val == 0 || val > 8) {
+        printf("can only addq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5040 | ddd << 9 | dreg);
 }
 
 void emit_addq_l_dn(struct code_block *block, uint8_t dreg, uint8_t val)
@@ -225,6 +252,14 @@ void emit_move_b_disp_an_dn(struct code_block *block, int16_t disp, uint8_t areg
     // 00 01 ddd 000 101 aaa
     emit_word(block, 0x1028 | (dreg << 9) | areg);
     emit_word(block, disp);
+}
+
+// andi.w #imm, Dn
+void emit_andi_w_dn(struct code_block *block, uint8_t dreg, uint16_t imm)
+{
+    // 0000 0010 01 000 rrr
+    emit_word(block, 0x0240 | dreg);
+    emit_word(block, imm);
 }
 
 // andi.l #imm, Dn
@@ -327,6 +362,13 @@ void emit_bra_w(struct code_block *block, int16_t disp)
 {
     emit_word(block, 0x6000);
     emit_word(block, disp);
+}
+
+// beq.b - branch if Z=1 with 8-bit displacement
+void emit_beq_b(struct code_block *block, int8_t disp)
+{
+    // 0110 0111 dddd dddd
+    emit_word(block, 0x6700 | (disp & 0xff));
 }
 
 // beq.w - branch if Z=1 with 16-bit displacement
@@ -573,6 +615,20 @@ void emit_add_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
 {
     // 1101 ddd 0 01 000 sss
     emit_word(block, 0xd040 | (dest << 9) | src);
+}
+
+// sub.b Ds, Dd - SUB data registers (result to Dd)
+void emit_sub_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1001 ddd 0 00 000 sss
+    emit_word(block, 0x9000 | (dest << 9) | src);
+}
+
+// sub.w Ds, Dd - SUB data registers (result to Dd)
+void emit_sub_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1001 ddd 0 01 000 sss
+    emit_word(block, 0x9040 | (dest << 9) | src);
 }
 
 // adda.w Dn, An - ADD data register to address register
