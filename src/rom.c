@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "rom.h"
 #include "types.h"
 
@@ -33,4 +34,21 @@ int rom_load(struct rom *rom, const char *filename)
 void rom_free(struct rom *rom)
 {
     free(rom->data);
+}
+
+char *rom_get_title(struct rom *rom, char *buf)
+{
+    int k, len;
+
+    // title is at 0x134-0x143 (16 bytes)
+    memcpy(buf, &rom->data[0x134], 16);
+    buf[16] = '\0';
+
+    // trim trailing spaces and nulls
+    len = strlen(buf);
+    for (k = len - 1; k >= 0 && (buf[k] == ' ' || buf[k] == '\0'); k--) {
+        buf[k] = '\0';
+    }
+
+    return buf;
 }

@@ -29,6 +29,7 @@ static const char *INSN_FORMAT = "Next instruction: %s";
 
 unsigned char visible_pixels[160 * 144 * 4];
 unsigned char vram_tiles[256 * 96 * 4];
+static char save_filename[32];
 extern "C" void convert_vram(struct dmg *);
 
 struct key_input {
@@ -97,7 +98,8 @@ int main(int argc, char *argv[])
 
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu.dmg = &dmg;
-    mbc_load_ram(dmg.rom->mbc, "save.sav");
+    rom_get_title(&rom, save_filename);
+    mbc_load_ram(dmg.rom->mbc, save_filename);
 
     cpu.pc = 0x100;
 
@@ -318,7 +320,7 @@ int main(int argc, char *argv[])
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    mbc_save_ram(dmg.rom->mbc, "save.sav");
+    mbc_save_ram(dmg.rom->mbc, save_filename);
     rom_free(&rom);
 
     return 0;

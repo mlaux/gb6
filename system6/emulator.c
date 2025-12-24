@@ -13,6 +13,8 @@
 #include <Devices.h>
 #include <Memory.h>
 #include <Sound.h>
+#include <Files.h>
+#include <SegLoad.h>
 
 #include "emulator.h"
 
@@ -55,6 +57,22 @@ struct cpu cpu;
 struct rom rom;
 struct lcd lcd;
 struct dmg dmg;
+
+static char save_filename[32];
+// for GetFInfo/SetFInfo
+static Str63 save_filename_p;
+
+static void build_save_filename(void)
+{
+  int len;
+
+  rom_get_title(&rom, save_filename);
+  len = strlen(save_filename);
+
+  // build Pascal string
+  save_filename_p[0] = len;
+  memcpy(&save_filename_p[1], save_filename, len);
+}
 
 void InitEverything(void)
 {
@@ -189,7 +207,8 @@ void StartEmulation(void)
   lcd_new(&lcd);
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
-  mbc_load_ram(dmg.rom->mbc, "save.sav");
+  build_save_filename();
+  mbc_load_ram(dmg.rom->mbc, save_filename);
 
   cpu.dmg = &dmg;
   cpu.pc = 0x100;
@@ -205,6 +224,7 @@ int LoadRom(Str63 fileName, short vRefNum)
   int err;
   short fileNo;
   long amtRead;
+  FInfo fndrInfo;
   
   if(rom.data != NULL) {
     // unload existing ROM
@@ -236,21 +256,52 @@ int LoadRom(Str63 fileName, short vRefNum)
     return false;
   }
 
+  if (GetFInfo(fileName, vRefNum, &fndrInfo) == noErr) {
+    fndrInfo.fdType = 'GBRM';
+    fndrInfo.fdCreator = 'MGBE';
+    SetFInfo(fileName, vRefNum, &fndrInfo);
+  }
+
   return true;
 }
 
 // -- DIALOG BOX FUNCTIONS --
+
+// return true to hide, false to show
+static pascal Boolean RomFileFilter(CInfoPBRec *pb)
+{
+  StringPtr name;
+  unsigned char len;
+
+  // always show 'GBRM' files
+  if (pb->hFileInfo.ioFlFndrInfo.fdType == 'GBRM') {
+    return false;
+  }
+
+  // show files ending in .gb or .GB (for imports)
+  name = pb->hFileInfo.ioNamePtr;
+  len = name[0];
+  if (len >= 3) {
+    char c1 = name[len - 2];
+    char c2 = name[len - 1];
+    char c3 = name[len];
+    if (c1 == '.' && (c2 == 'g' || c2 == 'G') && (c3 == 'b' || c3 == 'B')) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 int ShowOpenBox(void)
 {
   SFReply reply;
   Point pt = { 0, 0 };
   const int stdWidth = 348;
-  Rect rect;
-  
+
   pt.h = qd.screenBits.bounds.right / 2 - stdWidth / 2;
-  
-  SFGetFile(pt, NULL, NULL, -1, NULL, NULL, &reply);
+
+  SFGetFile(pt, NULL, RomFileFilter, -1, NULL, NULL, &reply);
   
   if(reply.good) {
     return LoadRom(reply.fName, reply.vRefNum);
@@ -411,15 +462,55 @@ static int ProcessEvents(void)
   return 1;
 }
 
+// check for files passed from Finder on launch
+// returns 1 if ROM loaded, 0 if should show open dialog
+static int CheckFinderFiles(void)
+{
+  short action, count;
+  AppFile theFile;
+
+  CountAppFiles(&action, &count);
+  if (count == 0) {
+    return 0;
+  }
+
+  GetAppFiles(1, &theFile);
+
+  if (theFile.fType == 'GBRM') {
+    if (LoadRom(theFile.fName, theFile.vRefNum)) {
+      ClrAppFiles(1);
+      return 1;
+    }
+  } else if (theFile.fType == 'SRAM') {
+    ParamText(
+      "\pSave files cannot be opened directly.",
+      "\pOpen the ROM instead, and the save",
+      "\pwill be loaded automatically.", 
+      "\p"
+    );
+    CautionAlert(ALRT_4_LINE, NULL);
+    ClrAppFiles(1);
+    return 0;
+  }
+
+  ClrAppFiles(1);
+  return 0;
+}
+
 // -- ENTRY POINT --
 int main(int argc, char *argv[])
 {
   unsigned int frame_count = 0;
   unsigned int last_ticks = 0;
+  int finderResult;
 
   InitEverything();
   init_dither_lut();
-  if(ShowOpenBox()) {
+
+  finderResult = CheckFinderFiles();
+  if (finderResult == 1) {
+    StartEmulation();
+  } else if (ShowOpenBox()) {
     StartEmulation();
   }
 
@@ -440,7 +531,14 @@ int main(int argc, char *argv[])
       frame_count++;
     }
   }
-  mbc_save_ram(dmg.rom->mbc, "save.sav");
+  if (mbc_save_ram(dmg.rom->mbc, save_filename)) {
+    FInfo fndrInfo;
+    if (GetFInfo(save_filename_p, 0, &fndrInfo) == noErr) {
+      fndrInfo.fdType = 'SRAM';
+      fndrInfo.fdCreator = 'MGBE';
+      SetFInfo(save_filename_p, 0, &fndrInfo);
+    }
+  }
 
   return 0;
 }
