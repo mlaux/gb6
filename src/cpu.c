@@ -42,29 +42,15 @@ static inline void clear_flag(struct cpu *cpu, int flag)
     cpu->f &= ~flag;
 }
 
-// Update zero flag based on value, preserving other flags
-#define UPDATE_ZERO(cpu, val) ((cpu)->f = ((cpu)->f & ~FLAG_ZERO) | ((val) ? 0 : FLAG_ZERO))
+#define read_af(cpu) ((cpu)->af)
+#define read_bc(cpu) ((cpu)->bc)
+#define read_de(cpu) ((cpu)->de)
+#define read_hl(cpu) ((cpu)->hl)
 
-static inline u16 read_double_reg(struct cpu *cpu, u8 *rh, u8 *rl)
-{
-    return *rh << 8 | *rl;
-}
-
-#define read_af(cpu) read_double_reg((cpu), &(cpu)->a, &(cpu)->f)
-#define read_bc(cpu) read_double_reg((cpu), &(cpu)->b, &(cpu)->c)
-#define read_de(cpu) read_double_reg((cpu), &(cpu)->d, &(cpu)->e)
-#define read_hl(cpu) read_double_reg((cpu), &(cpu)->h, &(cpu)->l)
-
-static inline void write_double_reg(struct cpu *cpu, u8 *rh, u8 *rl, int value)
-{
-    *rh = value >> 8;
-    *rl = value & 0xff;
-}
-
-#define write_af(cpu, value) write_double_reg((cpu), &(cpu)->a, &(cpu)->f, value)
-#define write_bc(cpu, value) write_double_reg((cpu), &(cpu)->b, &(cpu)->c, value)
-#define write_de(cpu, value) write_double_reg((cpu), &(cpu)->d, &(cpu)->e, value)
-#define write_hl(cpu, value) write_double_reg((cpu), &(cpu)->h, &(cpu)->l, value)
+#define write_af(cpu, value) ((cpu)->af = (value))
+#define write_bc(cpu, value) ((cpu)->bc = (value))
+#define write_de(cpu, value) ((cpu)->de = (value))
+#define write_hl(cpu, value) ((cpu)->hl = (value))
 
 void cpu_panic(struct cpu *cpu)
 {
@@ -261,23 +247,16 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
     }
 }
 
-static void push(struct cpu *cpu, u16 value)
+static inline void push(struct cpu *cpu, u16 value)
 {
-    // todo #if DEBUG or something
-    //printf("sp=%04x\n", cpu->sp);
-    //printf("memory[sp-2] = %02x\n", value & 0xff);
-    //printf("memory[sp-1] = %02x\n", value >> 8);
     write8(cpu, cpu->sp - 2, value & 0xff);
     write8(cpu, cpu->sp - 1, value >> 8);
     cpu->sp -= 2;
 }
 
-static u16 pop(struct cpu *cpu)
+static inline u16 pop(struct cpu *cpu)
 {
     cpu->sp += 2;
-    //printf("sp=%04x\n", cpu->sp);
-    //printf("read memory[sp-2] = %02x\n", read8(cpu, cpu->sp - 2));
-    //printf("read memory[sp-1] = %02x\n", read8(cpu, cpu->sp - 1));
     return read8(cpu, cpu->sp - 1) << 8 | read8(cpu, cpu->sp - 2);
 }
 
