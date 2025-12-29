@@ -296,6 +296,9 @@ static void timer_step(struct dmg *dmg)
     dmg->last_timer_update = dmg->cpu->cycle_count;
 }
 
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#endif
 void dmg_step(void *_dmg)
 {
     struct dmg *dmg = (struct dmg *) _dmg;

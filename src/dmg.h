@@ -65,7 +65,9 @@ void dmg_set_button(struct dmg *dmg, int field, int button, int pressed);
 u8 dmg_read(void *dmg, u16 address);
 void dmg_write(void *dmg, u16 address, u8 data);
 
+#ifndef UNITY_BUILD
 void dmg_step(void *dmg);
+#endif
 void dmg_request_interrupt(struct dmg *dmg, int nr);
 
 // page table management

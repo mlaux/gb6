@@ -17,13 +17,19 @@
 #include <SegLoad.h>
 #include <Resources.h>
 
+#define UNITY_BUILD
+
 #include "emulator.h"
 
-#include "dmg.h"
-#include "cpu.h"
-#include "rom.h"
-#include "lcd.h"
-#include "mbc.h"
+// to inline dmg_step and cpu_step, actually seems to help a bit if the entire
+// main loop is inlined into main()
+#include "../src/bootstrap.c"
+#include "../src/cpu.c"
+#include "../src/dmg.c"
+#include "../src/instructions.c"
+#include "../src/lcd.c"
+#include "../src/rom.c"
+#include "../src/mbc.c"
 
 struct cpu cpu;
 struct rom rom;

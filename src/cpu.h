@@ -57,7 +57,9 @@ struct cpu
     struct dmg *dmg;
 };
 
+#ifndef UNITY_BUILD
 void cpu_step(struct cpu *cpu);
+#endif
 int flag_isset(struct cpu *cpu, int flag);
 
 #define FLAG_ZERO       0x80

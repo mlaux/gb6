@@ -472,6 +472,9 @@ static u16 check_interrupts(struct cpu *cpu)
     return 0;
 }
 
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#endif
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
