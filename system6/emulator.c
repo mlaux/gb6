@@ -205,6 +205,7 @@ void StartEmulation(void)
   lcd_new(&lcd);
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
+  dmg.frame_skip = 1;
   mbc_load_ram(dmg.rom->mbc, save_filename);
 
   cpu.dmg = &dmg;

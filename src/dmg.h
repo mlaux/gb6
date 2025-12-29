@@ -40,6 +40,8 @@ struct dmg {
     u8 zero_page[0x80];
     u32 last_lcd_update;
     u32 last_timer_update;
+    u32 frames_rendered;
+    u32 frame_skip;
     int joypad_selected;
     int action_selected;
     u8 interrupt_enabled;

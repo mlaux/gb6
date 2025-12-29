@@ -300,10 +300,10 @@ void dmg_step(void *_dmg)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
 
-    // order of dependencies? i think cpu needs to step first then update
-    // all other hw
     cpu_step(dmg->cpu);
-    timer_step(dmg);
+    //timer_step(dmg);
+
+    dmg->timer_div += 4;
 
     // each line takes 456 cycles
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
@@ -322,29 +322,32 @@ void dmg_step(void *_dmg)
             lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
         }
 
-        if (next_scanline >= 144 && next_scanline < 154) {
-            lcd_set_mode(dmg->lcd, 1);
-        }
-
         // TODO: do all of this per-scanline instead of everything in vblank
         if (next_scanline == 144) {
+            lcd_set_mode(dmg->lcd, 1);
+
             // vblank has started, draw all the stuff from ram into the lcd
             dmg_request_interrupt(dmg, INT_VBLANK);
             if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
                 dmg_request_interrupt(dmg, INT_LCDSTAT);
             }
 
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                lcd_render_background(dmg, lcdc, window_enabled);
+            if (dmg->frames_rendered % dmg->frame_skip == 0) {
+                int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+                if (lcdc & LCDC_ENABLE_BG) {
+                    int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+                    lcd_render_background(dmg, lcdc, window_enabled);
+                }
+
+                if (lcdc & LCDC_ENABLE_OBJ) {
+                    lcd_render_objs(dmg);
+                }
+
+                lcd_draw(dmg->lcd);
             }
 
-            if (lcdc & LCDC_ENABLE_OBJ) {
-                lcd_render_objs(dmg);
-            }
 
-            lcd_draw(dmg->lcd);
+            dmg->frames_rendered++;
         }
     } else {
         int scan = lcd_read(dmg->lcd, REG_LY);

@@ -27,6 +27,7 @@
         else dmg_write((dmg), (addr), (val)); \
     } while (0)
 
+// non-static for debug output in imgui version
 inline int flag_isset(struct cpu *cpu, int flag)
 {
     return (cpu->f & flag) != 0;
