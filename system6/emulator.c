@@ -15,6 +15,7 @@
 #include <Sound.h>
 #include <Files.h>
 #include <SegLoad.h>
+#include <Resources.h>
 
 #include "emulator.h"
 
@@ -215,6 +216,49 @@ void StartEmulation(void)
   emulation_on = 1;
 }
 
+typedef short (*AlertProc)(short alertID);
+
+static short AlertWrapper(short alertID) { return Alert(alertID, NULL); }
+static short CautionAlertWrapper(short alertID) { return CautionAlert(alertID, NULL); }
+static short NoteAlertWrapper(short alertID) { return NoteAlert(alertID, NULL); }
+static short StopAlertWrapper(short alertID) { return StopAlert(alertID, NULL); }
+
+static short ShowCenteredAlert(
+    short alertID,
+    const char *s0,
+    const char *s1,
+    const char *s2,
+    const char *s3,
+    AlertProc alertProc
+) {
+  Handle alrt;
+  Rect *bounds;
+  Rect screen;
+  short width, height, dh, dv;
+
+  ParamText(s0, s1, s2, s3);
+
+  alrt = GetResource('ALRT', alertID);
+  if (alrt == nil) {
+    return alertProc(alertID);
+  }
+
+  bounds = (Rect *) *alrt;
+  screen = qd.screenBits.bounds;
+  screen.top += GetMBarHeight();
+
+  width = bounds->right - bounds->left;
+  height = bounds->bottom - bounds->top;
+
+  /* center horizontally, position 1/4 down vertically */
+  dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
+  dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
+
+  OffsetRect(bounds, dh, dv);
+
+  return alertProc(alertID);
+}
+
 int LoadRom(Str63 fileName, short vRefNum)
 {
   int err;
@@ -237,7 +281,7 @@ int LoadRom(Str63 fileName, short vRefNum)
   GetEOF(fileNo, (long *) &rom.length);
   rom.data = (unsigned char *) malloc(rom.length);
   if(rom.data == NULL) {
-    Alert(ALRT_NOT_ENOUGH_RAM, NULL);
+    ShowCenteredAlert(ALRT_NOT_ENOUGH_RAM, "\p", "\p", "\p", "\p", AlertWrapper);
     return false;
   }
   
@@ -247,8 +291,11 @@ int LoadRom(Str63 fileName, short vRefNum)
 
   rom.mbc = mbc_new(rom.data[0x147]);
   if (!rom.mbc) {
-    ParamText("\pThis cartridge type is unsupported.", "\p", "\p", "\p");
-    Alert(ALRT_4_LINE, NULL);
+    ShowCenteredAlert(
+        ALRT_4_LINE,
+        "\pThis cartridge type is unsupported.", "\p", "\p", "\p",
+        AlertWrapper
+    );
     return false;
   }
 
@@ -357,8 +404,11 @@ void OnMenuAction(long action)
 
   else if (menu == MENU_EDIT) {
     if (item == EDIT_PREFERENCES || item == EDIT_KEY_MAPPINGS) {
-      ParamText("\pThis feature is not yet implemented.", "\p", "\p", "\p");
-      Alert(ALRT_4_LINE, NULL);
+      ShowCenteredAlert(
+          ALRT_4_LINE,
+          "\pThis feature is not yet implemented.", "\p", "\p", "\p",
+          AlertWrapper
+      );
     }
   }
 }
@@ -463,13 +513,14 @@ static int CheckFinderFiles(void)
       return 1;
     }
   } else if (theFile.fType == 'SRAM') {
-    ParamText(
-      "\pSave files cannot be opened directly.",
-      "\pOpen the ROM instead, and the save",
-      "\pwill be loaded automatically.", 
-      "\p"
+    ShowCenteredAlert(
+        ALRT_4_LINE,
+        "\pSave files cannot be opened directly.",
+        "\pOpen the ROM instead, and the save",
+        "\pwill be loaded automatically.",
+        "\p",
+        CautionAlertWrapper
     );
-    CautionAlert(ALRT_4_LINE, NULL);
     ClrAppFiles(1);
     return 0;
   }
