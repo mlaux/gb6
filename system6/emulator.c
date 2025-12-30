@@ -47,6 +47,8 @@ static struct code_block *block_cache[MAX_CACHED_BLOCKS];
 // Debug logging - open/close each time to avoid losing data on crash
 static int debug_enabled = 1;
 
+static long last_wall_ticks;
+
 void debug_log_string(const char *str)
 {
   short fref;
@@ -266,11 +268,25 @@ void InitEverything(void)
 void set_status_bar(const char *str)
 {
   int k;
+  Str255 pstr;
+  Rect statusRect = { 288, 0, 299, 320 };
+
+  if (!strcmp(str, status_bar)) {
+    return;
+  }
+
   for (k = 0; k < 63 && str[k]; k++) {
     status_bar[k] = str[k];
   }
   status_bar[k] = '\0';
-  lcd_draw(dmg.lcd);
+
+  EraseRect(&statusRect);
+  MoveTo(4, 298);
+  for (k = 0; k < 255 && status_bar[k]; k++) {
+    pstr[k + 1] = status_bar[k];
+  }
+  pstr[0] = k;
+  DrawString(pstr);
 }
 
 // -- JIT EXECUTION --
@@ -358,6 +374,7 @@ static void jit_init(void)
     jit_ctx.dispatcher_return = (void *) dispatcher_code;
 
     jit_halted = 0;
+    last_wall_ticks = TickCount();
 }
 
 static int jit_step(void)
@@ -365,6 +382,9 @@ static int jit_step(void)
     struct code_block *block;
     unsigned long next_pc;
     char buf[64];
+    int took_interrupt;
+    u32 finished_ticks;
+    u32 wall_ticks;
 
     if (jit_halted) {
         return 0;
@@ -378,7 +398,8 @@ static int jit_step(void)
     block = block_cache[cpu.pc];
 
     if (!block) {
-        sprintf(buf, "Compiling $%04x", cpu.pc);
+        u32 free_heap = (u32) FreeMem();
+        sprintf(buf, "Compiling $%04x, free=%uk", cpu.pc, free_heap);
         set_status_bar(buf);
         block = compile_block(cpu.pc, &compile_ctx);
         if (!block) {
@@ -388,9 +409,8 @@ static int jit_step(void)
             return 0;
         }
 
-        // Check for compilation error
         if (block->error) {
-            sprintf(buf, "pc=%04x op=%02x", block->failed_address, block->failed_opcode);
+            sprintf(buf, "Error pc=%04x op=%02x", block->failed_address, block->failed_opcode);
             set_status_bar(buf);
             jit_halted = 1;
             block_free(block);
@@ -398,6 +418,8 @@ static int jit_step(void)
         }
 
         block_cache[cpu.pc] = block;
+    } else {
+      set_status_bar("Running");
     }
 
     execute_block(block->code);
@@ -411,8 +433,7 @@ static int jit_step(void)
         return 0;
     }
 
-    // Check for pending interrupts
-    int took_interrupt = 0;
+    took_interrupt = 0;
     if (cpu.interrupt_enable) {
       u8 pending = dmg.interrupt_enabled & dmg.interrupt_requested & 0x1f;
       if (pending) {
@@ -442,11 +463,14 @@ static int jit_step(void)
 
     cpu.pc = (u16) next_pc;
 
-    // Sync hardware, but NOT if we just took an interrupt.
-    // This prevents vblank spam: after vblank fires and we jump to the
-    // handler, we don't want to immediately trigger another vblank.
+    finished_ticks = TickCount();
+    wall_ticks = finished_ticks - last_wall_ticks;
+    last_wall_ticks = finished_ticks;
+
+    // don't sync lcd if interrupt just happened to prevent vblank spam
+    // where the "main thread" can't make progress
     if (!took_interrupt) {
-        dmg_sync_hw(&dmg, CYCLES_PER_INTERRUPT);
+        dmg_sync_hw(&dmg, wall_ticks * CYCLES_PER_INTERRUPT);
     }
 
     return 1;

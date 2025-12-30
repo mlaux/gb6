@@ -17,12 +17,6 @@ extern BitMap offscreen_bmp;
 static unsigned char dither_row0[256];
 static unsigned char dither_row1[256];
 
-// FPS tracking
-static unsigned long fps_frame_count = 0;
-static unsigned long fps_last_tick = 0;
-static unsigned long fps_display = 0;
-extern char status_bar[64];
-
 void init_dither_lut(void)
 {
   // 2x2 dither patterns for each GB color (0-3)
@@ -74,38 +68,4 @@ void lcd_draw(struct lcd *lcd_ptr)
 
   SetPort(g_wp);
   CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
-
-  // FPS display
-  {
-    unsigned long now = TickCount();
-    Str255 fpsStr;
-
-    fps_frame_count++;
-    if (now - fps_last_tick >= 60) {
-      fps_display = fps_frame_count;
-      fps_frame_count = 0;
-      fps_last_tick = now;
-    }
-
-    {
-      Rect statusRect = { 288, 0, 299, 320 };
-      EraseRect(&statusRect);
-    }
-    MoveTo(4, 298);
-
-    if (status_bar[0]) {
-      // Convert C string to Pascal string and draw
-      Str255 pstr;
-      int k;
-      for (k = 0; k < 255 && status_bar[k]; k++) {
-        pstr[k + 1] = status_bar[k];
-      }
-      pstr[0] = k;
-      DrawString(pstr);
-    } else {
-      NumToString(fps_display, fpsStr);
-      DrawString("\pFPS: ");
-      DrawString(fpsStr);
-    }
-  }
 }

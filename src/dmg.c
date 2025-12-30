@@ -128,10 +128,12 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
+        // hack
         return lcd_step(dmg->lcd);
     }
 
     if (address == REG_STAT) {
+        // also a hack
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
         u8 new_stat = (stat & 0xfc) | (((stat & 3) + 1) & 3);
         lcd_write(dmg->lcd, REG_STAT, new_stat);
@@ -292,7 +294,10 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
     dmg->interrupt_requested |= nr;
 }
 
-// Sync hardware state - advance by given number of cycles
+// sync hardware state - advance by given number of cycles
+// this is per-scanline to allow for varying cycles, but in practice,
+// cycles is always 70224, because the mac is too slow to check this
+// after every scanline
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
     // Timer DIV increments every cycle (wraps at 16 bits)
@@ -305,7 +310,8 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     // LYC match if lyc is in range [current_ly, current_ly + scanlines) mod 154
     int crosses_lyc = 0;
     if (scanlines >= 154) {
-        crosses_lyc = 1;  // full frame always hits every scanline
+        // full frame always hits every scanline
+        crosses_lyc = 1;
     } else {
         int end_ly = current_ly + scanlines;
         if (end_ly > 154) {
@@ -365,7 +371,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         dmg->frames_rendered++;
     }
 
-    // Advance LY
+    // this also advances every time it's read as a hack to get things unstuck...
     int new_ly = (current_ly + scanlines) % 154;
     lcd_write(dmg->lcd, REG_LY, new_ly);
 }
