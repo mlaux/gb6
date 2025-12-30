@@ -274,6 +274,23 @@ TEST_EXEC(test_add_a_a,             REG_A,  0x40, 0x3e, 0x20, 0x87, 0x10)
 // ld a, $10; ld d, $05; add a, d -> A = 0x15
 TEST_EXEC(test_add_a_d,             REG_A,  0x15, 0x3e, 0x10, 0x16, 0x05, 0x82, 0x10)
 
+// Test ADD sets carry and ADC uses it (bug fix verification)
+TEST(test_add_adc_carry_propagation)
+{
+    // add a, b overflows: $f0 + $20 = $110, A = $10, C = 1
+    // adc a, c uses carry: $10 + $00 + 1 = $11
+    uint8_t rom[] = {
+        0x3e, 0xf0,       // ld a, $f0
+        0x06, 0x20,       // ld b, $20
+        0x80,             // add a, b -> A = $10, C = 1
+        0x0e, 0x00,       // ld c, $00
+        0x89,             // adc a, c -> A = $10 + $00 + 1 = $11
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x11);
+}
+
 // ld e, $ab; ld a, $cd; ld e, a -> E = 0xcd
 TEST_EXEC(test_ld_e_a,              REG_DE, 0x000000cd, 0x1e, 0xab, 0x3e, 0xcd, 0x5f, 0x10)
 
@@ -1560,6 +1577,7 @@ void register_exec_tests(void)
     RUN_TEST(test_exec_and_a_a_with_jr);
     RUN_TEST(test_add_a_a);
     RUN_TEST(test_add_a_d);
+    RUN_TEST(test_add_adc_carry_propagation);
     RUN_TEST(test_ld_e_a);
 
     printf("\nADC/SBC tests:\n");

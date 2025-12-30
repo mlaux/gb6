@@ -5,6 +5,19 @@
 // have them in the same order as the 68k flags register, then `move ccr, d7`
 // then don't need seq, scs, and when testing a condition, can just move d7 back into ccr
 
+// Set Z and C flags in D7 based on current 68k CCR, N=0 (for add)
+void compile_set_zc_flags(struct code_block *block)
+{
+    // extract both flags using scc (doesn't affect CCR)
+    emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);  // seq D1 (Z)
+    emit_scc(block, 0x5, REG_68K_D_FLAGS);      // scs D7 (C)
+
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);  // D1 = 0x80 if Z
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);      // D7 = 0x10 if C
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // D7 = Z | C
+    // N=0, H=0 (TODO: H flag)
+}
+
 // Set Z flag in D7 based on current 68k CCR, preserving other flags
 void compile_set_z_flag(struct code_block *block)
 {

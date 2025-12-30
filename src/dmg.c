@@ -302,7 +302,6 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     int current_ly = lcd_read(dmg->lcd, REG_LY);
     int lyc = lcd_read(dmg->lcd, REG_LYC);
 
-    // Check if we cross LYC during this advance
     // LYC match if lyc is in range [current_ly, current_ly + scanlines) mod 154
     int crosses_lyc = 0;
     if (scanlines >= 154) {

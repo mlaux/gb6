@@ -233,58 +233,50 @@ int compile_alu_op(
     case 0x80: // add a, b
         emit_swap(block, REG_68K_D_BC);
         emit_add_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
+        compile_set_zc_flags(block);  // capture before swap clobbers CCR
         emit_swap(block, REG_68K_D_BC);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
 
     case 0x81: // add a, c
         emit_add_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0x82: // add a, d
         emit_swap(block, REG_68K_D_DE);
         emit_add_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
+        compile_set_zc_flags(block);  // capture before swap clobbers CCR
         emit_swap(block, REG_68K_D_DE);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
 
     case 0x83: // add a, e
         emit_add_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0x84: // add a, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_add_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0x85: // add a, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_add_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0x86: // add a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
         emit_add_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0x87: // add a, a
         emit_add_b_dn_dn(block, REG_68K_D_A, REG_68K_D_A);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     // adc a, r (0x88-0x8f)
@@ -338,8 +330,8 @@ int compile_alu_op(
     case 0x90: // sub a, b
         emit_swap(block, REG_68K_D_BC);
         emit_sub_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
+        compile_set_znc_flags(block);  // capture before swap clobbers CCR
         emit_swap(block, REG_68K_D_BC);
-        compile_set_znc_flags(block);
         return 1;
 
     case 0x91: // sub a, c
@@ -350,8 +342,8 @@ int compile_alu_op(
     case 0x92: // sub a, d
         emit_swap(block, REG_68K_D_DE);
         emit_sub_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
+        compile_set_znc_flags(block);  // capture before swap clobbers CCR
         emit_swap(block, REG_68K_D_DE);
-        compile_set_znc_flags(block);
         return 1;
 
     case 0x93: // sub a, e
@@ -662,8 +654,7 @@ int compile_alu_op(
     case 0xc6: // add a, #imm
         emit_addi_b_dn(block, REG_68K_D_A, READ_BYTE(*src_ptr));
         (*src_ptr)++;
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xce: // adc a, #imm
