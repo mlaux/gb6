@@ -13,28 +13,6 @@ struct oam_entry {
     u8 attrs;
 };
 
-void lcd_set_bit(struct lcd *lcd, u16 addr, u8 bit)
-{
-    lcd_write(lcd, addr, lcd_read(lcd, addr) | bit);
-}
-
-void lcd_clear_bit(struct lcd *lcd, u16 addr, u8 bit)
-{
-    lcd_write(lcd, addr, lcd_read(lcd, addr) & ~bit);
-}
-
-int lcd_isset(struct lcd *lcd, u16 addr, u8 bit)
-{
-    u8 val = lcd_read(lcd, addr);
-    return val & bit;
-}
-
-void lcd_set_mode(struct lcd *lcd, int mode)
-{
-    u8 val = lcd_read(lcd, REG_STAT);
-    lcd_write(lcd, REG_STAT, (val & 0xfc) | mode);
-}
-
 void lcd_new(struct lcd *lcd)
 {
     const size_t size = 256 * 256;
@@ -45,23 +23,6 @@ void lcd_new(struct lcd *lcd)
 u8 lcd_is_valid_addr(u16 addr)
 {
     return (addr >= 0xfe00 && addr < 0xfea0) || (addr >= REG_LCD_BASE && addr <= REG_LCD_LAST);
-}
-
-u8 lcd_read(struct lcd *lcd, u16 addr)
-{
-    if (addr >= 0xfe00 && addr < 0xfea0) {
-        return lcd->oam[addr - 0xfe00];
-    }
-    return lcd->regs[addr - REG_LCD_BASE];
-}
-
-void lcd_write(struct lcd *lcd, u16 addr, u8 value)
-{
-    if (addr >= 0xfe00 && addr < 0xfea0) {
-        lcd->oam[addr - 0xfe00] = value;
-    } else {
-        lcd->regs[addr - REG_LCD_BASE] = value;
-    }
 }
 
 void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value)

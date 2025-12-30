@@ -125,7 +125,7 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
-static u8 dmg_read_slow(struct dmg *dmg, u16 address)
+u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
         return lcd_step(dmg->lcd);
@@ -187,6 +187,7 @@ static u8 dmg_read_slow(struct dmg *dmg, u16 address)
 }
 extern void debug_log_string(const char *str);
 
+// TODO remove, now handled by macros in cpu.c
 u8 dmg_read(void *_dmg, u16 address)
 {
     // char buf[128];
@@ -203,7 +204,7 @@ u8 dmg_read(void *_dmg, u16 address)
     return val;
 }
 
-static void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
+void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
 {
     // ROM region writes go to MBC for bank switching
     if (address < 0x8000) {
@@ -320,7 +321,6 @@ void dmg_sync_hw(struct dmg *dmg)
 {
     // each line takes 456 cycles
     int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
-    int need_draw = 0;
 
     // Cap cycle_diff to prevent runaway catch-up when emulation is slow.
     // If we're more than ~2 frames behind, skip ahead instead of grinding.
@@ -347,12 +347,10 @@ void dmg_sync_hw(struct dmg *dmg)
             lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
         }
 
-        if (next_scanline >= 144 && next_scanline < 154) {
-            lcd_set_mode(dmg->lcd, 1);
-        }
-
         // TODO: do all of this per-scanline instead of everything in vblank
         if (next_scanline == 144) {
+            lcd_set_mode(dmg->lcd, 1);
+
             // vblank has started, draw all the stuff from ram into the lcd
             // Only request if not already pending to avoid reentrancy
             if (!(dmg->interrupt_requested & (1 << INT_VBLANK))) {
@@ -362,16 +360,22 @@ void dmg_sync_hw(struct dmg *dmg)
                 dmg_request_interrupt(dmg, INT_LCDSTAT);
             }
 
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                lcd_render_background(dmg, lcdc, window_enabled);
+            if (dmg->frames_rendered % dmg->frame_skip == 0) {
+                int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+                if (lcdc & LCDC_ENABLE_BG) {
+                    int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+                    lcd_render_background(dmg, lcdc, window_enabled);
+                }
+
+                if (lcdc & LCDC_ENABLE_OBJ) {
+                    lcd_render_objs(dmg);
+                }
+
+                lcd_draw(dmg->lcd);
             }
 
-            if (lcdc & LCDC_ENABLE_OBJ) {
-                lcd_render_objs(dmg);
-            }
-            need_draw = 1;
+
+            dmg->frames_rendered++;
         }
     }
 
@@ -385,12 +389,6 @@ void dmg_sync_hw(struct dmg *dmg)
         } else {
             lcd_set_mode(dmg->lcd, 0);
         }
-    } else {
-        // in vblank. mode should stay as 1
-    }
-
-    if (need_draw) {
-        //lcd_draw(dmg->lcd);
     }
 }
 

@@ -7,7 +7,7 @@
 #include "types.h"
 #include "dmg.h"
 
-#define WINDOW_TITLE "\pOutput"
+#define WINDOW_TITLE "\pgb6"
 
 #define WINDOW_X 3
 #define WINDOW_Y 40
@@ -18,13 +18,12 @@
 #define ALRT_4_LINE 129
 
 #define DLOG_ABOUT 128
-#define DLOG_STATE 129
 
 #define MBAR_DEFAULT 128
 
 #define MENU_APPLE 128
 #define MENU_FILE 129
-#define MENU_EMULATION 130
+#define MENU_EDIT 130
 
 #define APPLE_ABOUT 1
 
@@ -32,10 +31,10 @@
 #define FILE_SCREENSHOT 2
 #define FILE_QUIT 4
 
-#define EMULATION_PAUSE 1
-#define EMULATION_STATE 2
-#define EMULATION_PREFERENCES 4
-#define EMULATION_KEY_MAPPINGS 5
+#define EDIT_PREFERENCES 1
+#define EDIT_KEY_MAPPINGS 2
+
+static int LoadRom(Str63, short);
 
 #include "platform.h"
 

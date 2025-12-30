@@ -40,6 +40,8 @@ struct dmg {
     u8 zero_page[0x80];
     u32 last_lcd_update;
     u32 last_timer_update;
+    u32 frames_rendered;
+    u32 frame_skip;
     int joypad_selected;
     int action_selected;
     u8 interrupt_enabled;
@@ -59,11 +61,16 @@ struct dmg {
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);
 void dmg_set_button(struct dmg *dmg, int field, int button, int pressed);
 
-// why did i make these void *
+// TODO remove and leave only the _slow. page table access is handled by macros
 u8 dmg_read(void *dmg, u16 address);
 void dmg_write(void *dmg, u16 address, u8 data);
 
+u8 dmg_read_slow(struct dmg *dmg, u16 address);
+void dmg_write_slow(struct dmg *dmg, u16 address, u8 data);
+
+#ifndef UNITY_BUILD
 void dmg_step(void *dmg);
+#endif
 void dmg_sync_hw(struct dmg *dmg);
 void dmg_request_interrupt(struct dmg *dmg, int nr);
 

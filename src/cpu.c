@@ -6,6 +6,28 @@
 #include "types.h"
 #include "instructions.h"
 
+// fast opcode/operand fetch: direct page table access for ROM (0x0000-0x7fff),
+// fall back to dmg_read_slow for code executed from HRAM
+#define FAST_ROM_READ(dmg, addr) \
+    (((addr) < 0x8000) \
+        ? (dmg)->read_page[(addr) >> 8][(addr) & 0xff] \
+        : dmg_read_slow((dmg), (addr)))
+
+// fast memory access using page table, with fallback to dmg_read/write
+// for addresses without page table entries (I/O, HRAM, unmapped external RAM)
+#define FAST_READ(dmg, addr) \
+    ((dmg)->read_page[(addr) >> 8] \
+        ? (dmg)->read_page[(addr) >> 8][(addr) & 0xff] \
+        : dmg_read_slow((dmg), (addr)))
+
+#define FAST_WRITE(dmg, addr, val) \
+    do { \
+        u8 *_page = (dmg)->write_page[(addr) >> 8]; \
+        if (_page) _page[(addr) & 0xff] = (val); \
+        else dmg_write_slow((dmg), (addr), (val)); \
+    } while (0)
+
+// non-static for debug output in imgui version
 inline int flag_isset(struct cpu *cpu, int flag)
 {
     return (cpu->f & flag) != 0;
@@ -21,29 +43,15 @@ static inline void clear_flag(struct cpu *cpu, int flag)
     cpu->f &= ~flag;
 }
 
-// Update zero flag based on value, preserving other flags
-#define UPDATE_ZERO(cpu, val) ((cpu)->f = ((cpu)->f & ~FLAG_ZERO) | ((val) ? 0 : FLAG_ZERO))
+#define read_af(cpu) ((cpu)->af)
+#define read_bc(cpu) ((cpu)->bc)
+#define read_de(cpu) ((cpu)->de)
+#define read_hl(cpu) ((cpu)->hl)
 
-static inline u16 read_double_reg(struct cpu *cpu, u8 *rh, u8 *rl)
-{
-    return *rh << 8 | *rl;
-}
-
-#define read_af(cpu) read_double_reg((cpu), &(cpu)->a, &(cpu)->f)
-#define read_bc(cpu) read_double_reg((cpu), &(cpu)->b, &(cpu)->c)
-#define read_de(cpu) read_double_reg((cpu), &(cpu)->d, &(cpu)->e)
-#define read_hl(cpu) read_double_reg((cpu), &(cpu)->h, &(cpu)->l)
-
-static inline void write_double_reg(struct cpu *cpu, u8 *rh, u8 *rl, int value)
-{
-    *rh = value >> 8;
-    *rl = value & 0xff;
-}
-
-#define write_af(cpu, value) write_double_reg((cpu), &(cpu)->a, &(cpu)->f, value)
-#define write_bc(cpu, value) write_double_reg((cpu), &(cpu)->b, &(cpu)->c, value)
-#define write_de(cpu, value) write_double_reg((cpu), &(cpu)->d, &(cpu)->e, value)
-#define write_hl(cpu, value) write_double_reg((cpu), &(cpu)->h, &(cpu)->l, value)
+#define write_af(cpu, value) ((cpu)->af = (value))
+#define write_bc(cpu, value) ((cpu)->bc = (value))
+#define write_de(cpu, value) ((cpu)->de = (value))
+#define write_hl(cpu, value) ((cpu)->hl = (value))
 
 void cpu_panic(struct cpu *cpu)
 {
@@ -57,27 +65,74 @@ void cpu_panic(struct cpu *cpu)
     exit(0);
 }
 
-static inline u8 read8(struct cpu *cpu, u16 address)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u8 read8(struct cpu *cpu, u16 address)
 {
-    return dmg_read(cpu->dmg, address);
+    return FAST_READ(cpu->dmg, address);
 }
 
-static inline u16 read16(struct cpu *cpu, u16 address)
+// optimized read for PC-based operand fetches (always in ROM when PC is in ROM)
+
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u8 read8_pc(struct cpu *cpu)
+{
+    u16 addr = cpu->pc++;
+    return FAST_ROM_READ(cpu->dmg, addr);
+}
+
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u16 read16_pc(struct cpu *cpu)
+{
+    u16 addr = cpu->pc;
+    cpu->pc += 2;
+    u8 low = FAST_ROM_READ(cpu->dmg, addr);
+    u8 high = FAST_ROM_READ(cpu->dmg, addr + 1);
+    return high << 8 | low;
+}
+
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u16 read16(struct cpu *cpu, u16 address)
 {
     u8 low = read8(cpu, address);
     u8 high = read8(cpu, address + 1);
     return high << 8 | low;
 }
 
-static inline void write8(struct cpu *cpu, u16 address, u8 data)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+void write8(struct cpu *cpu, u16 address, u8 data)
 {
-    dmg_write(cpu->dmg, address, data);
+    FAST_WRITE(cpu->dmg, address, data);
 }
 
-static inline void write16(struct cpu *cpu, u16 address, u16 data)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+void write16(struct cpu *cpu, u16 address, u16 data)
 {
-    dmg_write(cpu->dmg, address, data & 0xff);
-    dmg_write(cpu->dmg, address + 1, data >> 8);
+    FAST_WRITE(cpu->dmg, address, data & 0xff);
+    FAST_WRITE(cpu->dmg, address + 1, data >> 8);
 }
 
 static void inc_with_carry(struct cpu *cpu, u8 *reg)
@@ -223,23 +278,16 @@ static void subtract(struct cpu *cpu, u8 value, int with_carry, int just_compare
     }
 }
 
-static void push(struct cpu *cpu, u16 value)
+static inline void push(struct cpu *cpu, u16 value)
 {
-    // todo #if DEBUG or something
-    //printf("sp=%04x\n", cpu->sp);
-    //printf("memory[sp-2] = %02x\n", value & 0xff);
-    //printf("memory[sp-1] = %02x\n", value >> 8);
     write8(cpu, cpu->sp - 2, value & 0xff);
     write8(cpu, cpu->sp - 1, value >> 8);
     cpu->sp -= 2;
 }
 
-static u16 pop(struct cpu *cpu)
+static inline u16 pop(struct cpu *cpu)
 {
     cpu->sp += 2;
-    //printf("sp=%04x\n", cpu->sp);
-    //printf("read memory[sp-2] = %02x\n", read8(cpu, cpu->sp - 2));
-    //printf("read memory[sp-1] = %02x\n", read8(cpu, cpu->sp - 1));
     return read8(cpu, cpu->sp - 1) << 8 | read8(cpu, cpu->sp - 2);
 }
 
@@ -374,12 +422,10 @@ static void extended_insn(struct cpu *cpu, u8 insn)
 }
 
 static void conditional_jump(struct cpu *cpu, u8 opc, u8 neg_op, int flag) {
-    s8 target = (s8) read8(cpu, cpu->pc);
+    s8 target = (s8) read8_pc(cpu);
     if ((opc == neg_op) ^ flag_isset(cpu, flag)) {
-        cpu->pc += target + 1;
+        cpu->pc += target;
         cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
-    } else {
-        cpu->pc++;
     }
 }
 
@@ -439,8 +485,8 @@ static u16 check_interrupts(struct cpu *cpu)
         return 0;
     }
 
-    u16 enabled = dmg_read(cpu->dmg, 0xffff);
-    u16 requested = dmg_read(cpu->dmg, 0xff0f);
+    u16 enabled = cpu->dmg->interrupt_enabled;
+    u16 requested = cpu->dmg->interrupt_requested;
 
     for (k = 0; k < NUM_INTERRUPTS; k++) {
         int check = 1 << k;
@@ -456,6 +502,9 @@ static u16 check_interrupts(struct cpu *cpu)
     return 0;
 }
 
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#endif
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;
@@ -473,7 +522,7 @@ void cpu_step(struct cpu *cpu)
         return;
     }
 
-    u8 opc = dmg_read(cpu->dmg, cpu->pc);
+    u8 opc = FAST_ROM_READ(cpu->dmg, cpu->pc);
 #ifdef GB6_DEBUG
     printf("0x%04x %s\n", cpu->pc, instructions[opc].format);
 #endif
@@ -484,8 +533,7 @@ void cpu_step(struct cpu *cpu)
         case 0: // NOP
             break;
         case 0x01: // LD BC, 0xNNNN
-            write_bc(cpu, read16(cpu, cpu->pc));
-            cpu->pc += 2;
+            write_bc(cpu, read16_pc(cpu));
             break;
         case 0x02: // LD (BC), A
             write8(cpu, read_bc(cpu), cpu->a);
@@ -498,16 +546,14 @@ void cpu_step(struct cpu *cpu)
             cpu->pc++;
             break;
         case 0x11: // LD DE,d16
-            write_de(cpu, read16(cpu, cpu->pc));
-            cpu->pc += 2;
+            write_de(cpu, read16_pc(cpu));
             break;
         case 0x07: // RLCA
             cpu->a = rlc(cpu, cpu->a);
             clear_flag(cpu, FLAG_ZERO);
             break;
         case 0x08: // LD (a16),SP
-            write16(cpu, read16(cpu, cpu->pc), cpu->sp);
-            cpu->pc += 2;
+            write16(cpu, read16_pc(cpu), cpu->sp);
             break;
         case 0x09: // ADD HL,BC
             add16(cpu, read_bc(cpu));
@@ -565,14 +611,14 @@ void cpu_step(struct cpu *cpu)
         case 0x3d: dec_with_carry(cpu, &cpu->a); break;
 
         // 8-bit immediate loads
-        case 0x06: cpu->b = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x0e: cpu->c = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x16: cpu->d = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x1e: cpu->e = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x26: cpu->h = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x2e: cpu->l = read8(cpu, cpu->pc); cpu->pc++; break;
-        case 0x36: write8(cpu, read_hl(cpu), read8(cpu, cpu->pc)); cpu->pc++; break;
-        case 0x3e: cpu->a = read8(cpu, cpu->pc); cpu->pc++; break;
+        case 0x06: cpu->b = read8_pc(cpu); break;
+        case 0x0e: cpu->c = read8_pc(cpu); break;
+        case 0x16: cpu->d = read8_pc(cpu); break;
+        case 0x1e: cpu->e = read8_pc(cpu); break;
+        case 0x26: cpu->h = read8_pc(cpu); break;
+        case 0x2e: cpu->l = read8_pc(cpu); break;
+        case 0x36: write8(cpu, read_hl(cpu), read8_pc(cpu)); break;
+        case 0x3e: cpu->a = read8_pc(cpu); break;
 
         // 8-bit register -> register copies
         // dest = B
@@ -665,8 +711,7 @@ void cpu_step(struct cpu *cpu)
             write8(cpu, read_de(cpu), cpu->a);
             break;
         case 0x18: // JR r8
-            temp = read8(cpu, cpu->pc);
-            cpu->pc += (s8) temp + 1;
+            cpu->pc += (s8) read8_pc(cpu);
             break;
         case 0x20: // JR NZ,r8
         case 0x28: // JR Z,r8
@@ -677,8 +722,7 @@ void cpu_step(struct cpu *cpu)
             conditional_jump(cpu, opc, 0x30, FLAG_CARRY);
             break;
         case 0x21: // LD HL, d16
-            write_hl(cpu, read16(cpu, cpu->pc));
-            cpu->pc += 2;
+            write_hl(cpu, read16_pc(cpu));
             break;
         case 0x29: // ADD HL,HL
             add16(cpu, read_hl(cpu));
@@ -689,8 +733,7 @@ void cpu_step(struct cpu *cpu)
             set_flag(cpu, FLAG_HALF_CARRY);
             break;
         case 0x31: // LD SP,d16
-            cpu->sp = read16(cpu, cpu->pc);
-            cpu->pc += 2;
+            cpu->sp = read16_pc(cpu);
             break;
         case 0x22: // LD (HL+), A
             temp16 = read_hl(cpu);
@@ -712,8 +755,7 @@ void cpu_step(struct cpu *cpu)
             }
             break;
         case 0xc2: // JP NZ, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
+            temp16 = read16_pc(cpu);
             if (!flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
@@ -723,45 +765,40 @@ void cpu_step(struct cpu *cpu)
             cpu->pc = pop(cpu);
             break;
         case 0xcd: // CALL a16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
+            temp16 = read16_pc(cpu);
             push(cpu, cpu->pc);
             cpu->pc = temp16;
             break;
         case 0xc3: // JP a16
-            cpu->pc = read16(cpu, cpu->pc);
+            cpu->pc = read16_pc(cpu);
             break;
         case 0xc4: // CALL NZ, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
-            if (!flag_isset(cpu, FLAG_ZERO)) {        
+            temp16 = read16_pc(cpu);
+            if (!flag_isset(cpu, FLAG_ZERO)) {
                 push(cpu, cpu->pc);
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
         case 0xcc: // CALL Z, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
-            if (flag_isset(cpu, FLAG_ZERO)) {        
+            temp16 = read16_pc(cpu);
+            if (flag_isset(cpu, FLAG_ZERO)) {
                 push(cpu, cpu->pc);
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
         case 0xd4: // CALL NC, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
-            if (!flag_isset(cpu, FLAG_CARRY)) {        
+            temp16 = read16_pc(cpu);
+            if (!flag_isset(cpu, FLAG_CARRY)) {
                 push(cpu, cpu->pc);
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
         case 0xdc: // CALL C, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
-            if (flag_isset(cpu, FLAG_CARRY)) {        
+            temp16 = read16_pc(cpu);
+            if (flag_isset(cpu, FLAG_CARRY)) {
                 push(cpu, cpu->pc);
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
@@ -774,8 +811,7 @@ void cpu_step(struct cpu *cpu)
             }
             break;
         case 0xd2: // JP NC,a16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
+            temp16 = read16_pc(cpu);
             if (!flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
@@ -788,8 +824,7 @@ void cpu_step(struct cpu *cpu)
             }
             break;
         case 0xda: // JP C, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
+            temp16 = read16_pc(cpu);
             if (flag_isset(cpu, FLAG_CARRY)) {
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
@@ -814,12 +849,10 @@ void cpu_step(struct cpu *cpu)
         case 0x8f: add(cpu, cpu->a, 1); break;
 
         case 0xc6: // ADD A, u8
-            add(cpu, read8(cpu, cpu->pc), 0);
-            cpu->pc++;
+            add(cpu, read8_pc(cpu), 0);
             break;
         case 0xce: // ADC A, u8
-            add(cpu, read8(cpu, cpu->pc), 1);
-            cpu->pc++;
+            add(cpu, read8_pc(cpu), 1);
             break;
 
         case 0x90: subtract(cpu, cpu->b, 0, 0); break;
@@ -840,13 +873,11 @@ void cpu_step(struct cpu *cpu)
         case 0x9f: subtract(cpu, cpu->a, 1, 0); break;
 
         case 0xd6: // SUB A, u8
-            subtract(cpu, read8(cpu, cpu->pc), 0, 0);
-            cpu->pc++;
+            subtract(cpu, read8_pc(cpu), 0, 0);
             break;
 
         case 0xde: // SBC A, u8
-            subtract(cpu, read8(cpu, cpu->pc), 1, 0);
-            cpu->pc++;
+            subtract(cpu, read8_pc(cpu), 1, 0);
             break;
 
         // AND
@@ -858,7 +889,7 @@ void cpu_step(struct cpu *cpu)
         case 0xa5: and(cpu, cpu->l); break;
         case 0xa6: and(cpu, read8(cpu, read_hl(cpu))); break;
         case 0xa7: and(cpu, cpu->a); break;
-        case 0xe6: and(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
+        case 0xe6: and(cpu, read8_pc(cpu)); break;
 
         // XOR
         case 0xa8: xor(cpu, cpu->b); break;
@@ -869,7 +900,7 @@ void cpu_step(struct cpu *cpu)
         case 0xad: xor(cpu, cpu->l); break;
         case 0xae: xor(cpu, read8(cpu, read_hl(cpu))); break;
         case 0xaf: xor(cpu, cpu->a); break;
-        case 0xee: xor(cpu, read8(cpu, cpu->pc)); cpu->pc++; break;
+        case 0xee: xor(cpu, read8_pc(cpu)); break;
 
         // OR
         case 0xb0: or(cpu, cpu->b); break;
@@ -881,8 +912,7 @@ void cpu_step(struct cpu *cpu)
         case 0xb6: or(cpu, read8(cpu, read_hl(cpu))); break;
         case 0xb7: or(cpu, cpu->a); break;
         case 0xf6:
-            or(cpu, read8(cpu, cpu->pc));
-            cpu->pc++;
+            or(cpu, read8_pc(cpu));
             break;
 
         // CP
@@ -894,7 +924,7 @@ void cpu_step(struct cpu *cpu)
         case 0xbd: subtract(cpu, cpu->l, 0, 1); break;
         case 0xbe: subtract(cpu, read8(cpu, read_hl(cpu)), 0, 1); break;
         case 0xbf: subtract(cpu, cpu->a, 0, 1); break;
-        case 0xfe: subtract(cpu, read8(cpu, cpu->pc), 0, 1); cpu->pc++; break;
+        case 0xfe: subtract(cpu, read8_pc(cpu), 0, 1); break;
 
         // RST
         case 0xc7: push(cpu, cpu->pc); cpu->pc = 0x00; break;
@@ -927,16 +957,14 @@ void cpu_step(struct cpu *cpu)
             }
             break;
         case 0xca: // JP Z, u16
-            temp16 = read16(cpu, cpu->pc);
-            cpu->pc += 2;
+            temp16 = read16_pc(cpu);
             if (flag_isset(cpu, FLAG_ZERO)) {
                 cpu->pc = temp16;
                 cpu->cycle_count += instructions[opc].cycles_branch - instructions[opc].cycles;
             }
             break;
         case 0xcb:
-            extended_insn(cpu, read8(cpu, cpu->pc));
-            cpu->pc++;
+            extended_insn(cpu, read8_pc(cpu));
             break;
         case 0xd1: // POP DE
             write_de(cpu, pop(cpu));
@@ -949,8 +977,7 @@ void cpu_step(struct cpu *cpu)
             cpu->interrupt_enable = 1;
             break;
         case 0xe0: // LD (a8),A
-            write8(cpu, 0xff00 + read8(cpu, cpu->pc), cpu->a);
-            cpu->pc++;
+            write8(cpu, 0xff00 + read8_pc(cpu), cpu->a);
             break;
         case 0xe1: // POP HL
             write_hl(cpu, pop(cpu));
@@ -962,19 +989,16 @@ void cpu_step(struct cpu *cpu)
             push(cpu, read_hl(cpu));
             break;
         case 0xe8:
-            add_sp(cpu, read8(cpu, cpu->pc));
-            cpu->pc++;
+            add_sp(cpu, read8_pc(cpu));
             break;
         case 0xe9: // JP HL
             cpu->pc = read_hl(cpu);
             break;
         case 0xea: // LD (a16),A
-            write8(cpu, read16(cpu, cpu->pc), cpu->a);
-            cpu->pc += 2;
+            write8(cpu, read16_pc(cpu), cpu->a);
             break;
         case 0xf0: // LD A,(a8)
-            cpu->a = read8(cpu, 0xff00 + read8(cpu, cpu->pc));
-            cpu->pc++;
+            cpu->a = read8(cpu, 0xff00 + read8_pc(cpu));
             break;
         case 0xf1: // POP AF
             write_af(cpu, pop(cpu));
@@ -990,15 +1014,13 @@ void cpu_step(struct cpu *cpu)
             push(cpu, read_af(cpu));
             break;
         case 0xf8: // LD HL, SP+i8
-            ld_hl_sp(cpu, read8(cpu, cpu->pc));
-            cpu->pc++;
+            ld_hl_sp(cpu, read8_pc(cpu));
             break;
         case 0xf9: // LD SP, HL
             cpu->sp = read_hl(cpu);
             break;
         case 0xfa: // LD A,(u16)
-            cpu->a = read8(cpu, read16(cpu, cpu->pc));
-            cpu->pc += 2;
+            cpu->a = read8(cpu, read16_pc(cpu));
             break;
         case 0xfb: // EI
             cpu->interrupt_enable = 1;

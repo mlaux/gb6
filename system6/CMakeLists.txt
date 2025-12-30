@@ -8,13 +8,6 @@ set(CMAKE_C_FLAGS "-O3")
 add_application(Emulator
     TYPE APPL
     CREATOR MGBE
-    ../src/bootstrap.c
-    ../src/cpu.c
-    ../src/dmg.c
-    ../src/instructions.c
-    ../src/lcd.c
-    ../src/rom.c
-    ../src/mbc.c
     ../compiler/compiler.c
     ../compiler/emitters.c
     ../compiler/branches.c
