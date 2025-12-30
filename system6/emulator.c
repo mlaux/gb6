@@ -184,7 +184,6 @@ typedef struct {
 } TMInfo;
 
 static TMInfo interrupt_tm;
-static unsigned long last_sync_ticks = 0;
 
 #define INTERRUPT_PERIOD (-16667L)
 #define CYCLES_PER_INTERRUPT 70224
@@ -443,12 +442,11 @@ static int jit_step(void)
 
     cpu.pc = (u16) next_pc;
 
-    // Add cycles and sync hardware, but NOT if we just took an interrupt.
+    // Sync hardware, but NOT if we just took an interrupt.
     // This prevents vblank spam: after vblank fires and we jump to the
     // handler, we don't want to immediately trigger another vblank.
     if (!took_interrupt) {
-        cpu.cycle_count += CYCLES_PER_INTERRUPT;
-        dmg_sync_hw(&dmg);
+        dmg_sync_hw(&dmg, CYCLES_PER_INTERRUPT);
     }
 
     return 1;
@@ -487,7 +485,6 @@ void StartEmulation(void)
   // Initialize JIT
   jit_init();
   jit_ctx.dmg = &dmg;
-  last_sync_ticks = TickCount();
   jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
 
   // Initialize compile-time context

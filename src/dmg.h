@@ -38,8 +38,6 @@ struct dmg {
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
     u8 zero_page[0x80];
-    u32 last_lcd_update;
-    u32 last_timer_update;
     u32 frames_rendered;
     u32 frame_skip;
     int joypad_selected;
@@ -68,10 +66,7 @@ void dmg_write(void *dmg, u16 address, u8 data);
 u8 dmg_read_slow(struct dmg *dmg, u16 address);
 void dmg_write_slow(struct dmg *dmg, u16 address, u8 data);
 
-#ifndef UNITY_BUILD
-void dmg_step(void *dmg);
-#endif
-void dmg_sync_hw(struct dmg *dmg);
+void dmg_sync_hw(struct dmg *dmg, int cycles);
 void dmg_request_interrupt(struct dmg *dmg, int nr);
 
 // page table management

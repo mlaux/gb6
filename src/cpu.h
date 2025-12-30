@@ -49,7 +49,7 @@ struct cpu
     };
     u16 sp;
     u16 pc;
-    u32 cycle_count;
+    u32 cycle_count;  // used by interpreter, not JIT
     u8 interrupt_enable;
 
     u8 halted;

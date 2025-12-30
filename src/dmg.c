@@ -292,113 +292,83 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
     dmg->interrupt_requested |= nr;
 }
 
-static void timer_step(struct dmg *dmg)
+// Sync hardware state - advance by given number of cycles
+void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
-    dmg->timer_div += 4;
+    // Timer DIV increments every cycle (wraps at 16 bits)
+    dmg->timer_div += cycles;
 
-    // dmg->timer_div += dmg->cpu->cycle_count - dmg->last_timer_update;
-    // dmg->last_timer_update = dmg->cpu->cycle_count;
-    // return;
-    // if (!(dmg_read(dmg, REG_TIMER_CONTROL) & TIMER_CONTROL_ENABLED)) {
-    //     return;
-    // }
+    int scanlines = cycles / 456;
+    int current_ly = lcd_read(dmg->lcd, REG_LY);
+    int lyc = lcd_read(dmg->lcd, REG_LYC);
 
-    // int passed = dmg->cpu->cycle_count - dmg->last_timer_update;
-
-    // u8 counter = dmg_read(dmg, REG_TIMER_COUNT);
-    // u8 modulo = dmg_read(dmg, REG_TIMER_MOD);
-
-    // counter++;
-    // if (!counter) {
-    //     counter = modulo;
-    //     dmg_request_interrupt(dmg, INT_TIMER);
-    // }
-
-    // dmg_write(dmg, REG_TIMER_COUNT, counter);
-    // dmg->last_timer_update = dmg->cpu->cycle_count;
-}
-
-// Sync hardware state without running CPU - for JIT mode
-void dmg_sync_hw(struct dmg *dmg)
-{
-    // each line takes 456 cycles
-    int cycle_diff = dmg->cpu->cycle_count - dmg->last_lcd_update;
-
-    // Cap cycle_diff to prevent runaway catch-up when emulation is slow.
-    // If we're more than ~2 frames behind, skip ahead instead of grinding.
-    #define MAX_CATCHUP_CYCLES (70224)
-    if (cycle_diff > MAX_CATCHUP_CYCLES) {
-        dmg->last_lcd_update = dmg->cpu->cycle_count - MAX_CATCHUP_CYCLES;
-        cycle_diff = MAX_CATCHUP_CYCLES;
-    }
-
-    timer_step(dmg);
-
-    while (cycle_diff >= 456) {
-        int next_scanline = lcd_step(dmg->lcd);
-        dmg->last_lcd_update += 456;
-        cycle_diff -= 456;
-
-        // update LYC
-        if (next_scanline == lcd_read(dmg->lcd, REG_LYC)) {
-            lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-            if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
-                dmg_request_interrupt(dmg, INT_LCDSTAT);
-            }
+    // Check if we cross LYC during this advance
+    // LYC match if lyc is in range [current_ly, current_ly + scanlines) mod 154
+    int crosses_lyc = 0;
+    if (scanlines >= 154) {
+        crosses_lyc = 1;  // full frame always hits every scanline
+    } else {
+        int end_ly = current_ly + scanlines;
+        if (end_ly > 154) {
+            // wraps around: check [current_ly, 154) and [0, end_ly % 154)
+            crosses_lyc = (lyc >= current_ly) || (lyc < (end_ly % 154));
         } else {
-            lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-        }
-
-        // TODO: do all of this per-scanline instead of everything in vblank
-        if (next_scanline == 144) {
-            lcd_set_mode(dmg->lcd, 1);
-
-            // vblank has started, draw all the stuff from ram into the lcd
-            // Only request if not already pending to avoid reentrancy
-            if (!(dmg->interrupt_requested & (1 << INT_VBLANK))) {
-                dmg_request_interrupt(dmg, INT_VBLANK);
-            }
-            if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
-                dmg_request_interrupt(dmg, INT_LCDSTAT);
-            }
-
-            if (dmg->frames_rendered % dmg->frame_skip == 0) {
-                int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-                if (lcdc & LCDC_ENABLE_BG) {
-                    int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                    lcd_render_background(dmg, lcdc, window_enabled);
-                }
-
-                if (lcdc & LCDC_ENABLE_OBJ) {
-                    lcd_render_objs(dmg);
-                }
-
-                lcd_draw(dmg->lcd);
-            }
-
-
-            dmg->frames_rendered++;
+            crosses_lyc = (lyc >= current_ly) && (lyc < end_ly);
         }
     }
 
-    int scan = lcd_read(dmg->lcd, REG_LY);
-    if (scan < 144) {
-        if (cycle_diff < 80) {
-            lcd_set_mode(dmg->lcd, 2);
-        } else if (cycle_diff < 230) {
-            // just midpoint between 168 to 291, todo improve
-            lcd_set_mode(dmg->lcd, 3);
+    if (crosses_lyc) {
+        lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
+            dmg_request_interrupt(dmg, INT_LCDSTAT);
+        }
+    } else {
+        lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+    }
+
+    // Check if we cross scanline 144 (vblank)
+    int crosses_vblank = 0;
+    if (scanlines >= 154) {
+        crosses_vblank = 1;
+    } else {
+        int end_ly = current_ly + scanlines;
+        if (end_ly > 154) {
+            crosses_vblank = (current_ly < 144) || ((end_ly % 154) >= 144);
         } else {
-            lcd_set_mode(dmg->lcd, 0);
+            crosses_vblank = (current_ly < 144) && (end_ly >= 144);
         }
     }
-}
 
-void dmg_step(void *_dmg)
-{
-    struct dmg *dmg = (struct dmg *) _dmg;
-    cpu_step(dmg->cpu);
-    dmg_sync_hw(dmg);
+    if (crosses_vblank) {
+        lcd_set_mode(dmg->lcd, 1);
+
+        if (!(dmg->interrupt_requested & (1 << INT_VBLANK))) {
+            dmg_request_interrupt(dmg, INT_VBLANK);
+        }
+        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
+            dmg_request_interrupt(dmg, INT_LCDSTAT);
+        }
+
+        if (dmg->frames_rendered % dmg->frame_skip == 0) {
+            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+            if (lcdc & LCDC_ENABLE_BG) {
+                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
+                lcd_render_background(dmg, lcdc, window_enabled);
+            }
+
+            if (lcdc & LCDC_ENABLE_OBJ) {
+                lcd_render_objs(dmg);
+            }
+
+            lcd_draw(dmg->lcd);
+        }
+
+        dmg->frames_rendered++;
+    }
+
+    // Advance LY
+    int new_ly = (current_ly + scanlines) % 154;
+    lcd_write(dmg->lcd, REG_LY, new_ly);
 }
 
 void dmg_ei_di(void *_dmg, u16 enabled)
