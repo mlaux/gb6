@@ -295,25 +295,27 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 static void timer_step(struct dmg *dmg)
 {
     dmg->timer_div += 4;
-    return;
 
-    if (!(dmg_read(dmg, REG_TIMER_CONTROL) & TIMER_CONTROL_ENABLED)) {
-        return;
-    }
+    // dmg->timer_div += dmg->cpu->cycle_count - dmg->last_timer_update;
+    // dmg->last_timer_update = dmg->cpu->cycle_count;
+    // return;
+    // if (!(dmg_read(dmg, REG_TIMER_CONTROL) & TIMER_CONTROL_ENABLED)) {
+    //     return;
+    // }
 
-    int passed = dmg->cpu->cycle_count - dmg->last_timer_update;
+    // int passed = dmg->cpu->cycle_count - dmg->last_timer_update;
 
-    u8 counter = dmg_read(dmg, REG_TIMER_COUNT);
-    u8 modulo = dmg_read(dmg, REG_TIMER_MOD);
+    // u8 counter = dmg_read(dmg, REG_TIMER_COUNT);
+    // u8 modulo = dmg_read(dmg, REG_TIMER_MOD);
 
-    counter++;
-    if (!counter) {
-        counter = modulo;
-        dmg_request_interrupt(dmg, INT_TIMER);
-    }
+    // counter++;
+    // if (!counter) {
+    //     counter = modulo;
+    //     dmg_request_interrupt(dmg, INT_TIMER);
+    // }
 
-    dmg_write(dmg, REG_TIMER_COUNT, counter);
-    dmg->last_timer_update = dmg->cpu->cycle_count;
+    // dmg_write(dmg, REG_TIMER_COUNT, counter);
+    // dmg->last_timer_update = dmg->cpu->cycle_count;
 }
 
 // Sync hardware state without running CPU - for JIT mode

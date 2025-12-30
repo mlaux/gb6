@@ -184,7 +184,7 @@ typedef struct {
 } TMInfo;
 
 static TMInfo interrupt_tm;
-static volatile long elapsed_cycles = 0;
+static unsigned long last_sync_ticks = 0;
 
 #define INTERRUPT_PERIOD (-16667L)
 #define CYCLES_PER_INTERRUPT 70224
@@ -233,7 +233,6 @@ static pascal void interrupt_tm_proc(void)
     );
 
     jit_ctx.interrupt_check = 1;
-    elapsed_cycles += CYCLES_PER_INTERRUPT;
     PrimeTime((QElemPtr)&interrupt_tm.task, INTERRUPT_PERIOD);
 
     asm volatile(
@@ -402,10 +401,6 @@ static int jit_step(void)
         block_cache[cpu.pc] = block;
     }
 
-    // debug_log_block(block);
-    //sprintf(buf, "Executing $%04x\n", cpu.pc);
-    //debug_log_string(buf);
-    // set_status_bar(buf);
     execute_block(block->code);
 
     // Get next PC from D0
@@ -418,6 +413,7 @@ static int jit_step(void)
     }
 
     // Check for pending interrupts
+    int took_interrupt = 0;
     if (cpu.interrupt_enable) {
       u8 pending = dmg.interrupt_enabled & dmg.interrupt_requested & 0x1f;
       if (pending) {
@@ -438,6 +434,7 @@ static int jit_step(void)
 
             // Jump to handler
             next_pc = handlers[k];
+            took_interrupt = 1;
             break;
           }
         }
@@ -445,10 +442,14 @@ static int jit_step(void)
     }
 
     cpu.pc = (u16) next_pc;
-    cpu.cycle_count += elapsed_cycles;
-    elapsed_cycles = 0;
 
-    dmg_sync_hw(&dmg);
+    // Add cycles and sync hardware, but NOT if we just took an interrupt.
+    // This prevents vblank spam: after vblank fires and we jump to the
+    // handler, we don't want to immediately trigger another vblank.
+    if (!took_interrupt) {
+        cpu.cycle_count += CYCLES_PER_INTERRUPT;
+        dmg_sync_hw(&dmg);
+    }
 
     return 1;
 }
@@ -486,6 +487,7 @@ void StartEmulation(void)
   // Initialize JIT
   jit_init();
   jit_ctx.dmg = &dmg;
+  last_sync_ticks = TickCount();
   jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
 
   // Initialize compile-time context

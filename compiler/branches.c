@@ -28,9 +28,19 @@ int compile_jr(
     // Check if this is a backward jump to a location we've already compiled
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
         // Backward jump within block
-        // Check VBL interrupt flag first - if set, exit to dispatcher
         target_gb_pc = src_address + target_gb_offset;
+        target_m68k = block->m68k_offsets[target_gb_offset];
+        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
 
+        // Tiny loops (disp >= -3, e.g. "dec a; jr nz") are pure computation
+        // (no room for memory access + flag-setting instruction).
+        // Skip interrupt check to avoid overhead killing performance.
+        if (disp >= -3) {
+            emit_bra_w(block, m68k_disp);
+            return 0;
+        }
+
+        // Larger loop - check interrupt flag, exit to dispatcher if set
         // tst.b JIT_CTX_INTCHECK(a4)
         emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
         // beq.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14)
@@ -41,7 +51,7 @@ int compile_jr(
         emit_dispatch_jump(block);
 
         // Native branch (interrupt flag was clear)
-        target_m68k = block->m68k_offsets[target_gb_offset];
+        // Must recompute displacement since block->length changed
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bra_w(block, m68k_disp);
         return 0;
@@ -82,9 +92,24 @@ void compile_jr_cond(
 
     // Check if this is a backward jump within block
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
-        // Backward jump - check condition, then interrupt flag
+        // Backward jump - check condition, then maybe interrupt flag
         target_gb_pc = src_address + target_gb_offset;
+        target_m68k = block->m68k_offsets[target_gb_offset];
+        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
 
+        // Tiny loops (disp >= -3): skip interrupt check, just branch
+        if (disp >= -3) {
+            // bxx.w displacement needs adjustment for where we emit it
+            int16_t cond_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+            if (branch_if_set) {
+                emit_bne_w(block, cond_disp);
+            } else {
+                emit_beq_w(block, cond_disp);
+            }
+            return;
+        }
+
+        // Larger loop - check condition, then interrupt flag
         // Structure:
         //   btst #flag_bit, d7           ; already emitted above
         //   bne/beq .check_interrupt     ; if condition met, check interrupt
@@ -116,7 +141,6 @@ void compile_jr_cond(
         emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
 
         // beq.w to native loop target (no interrupt pending)
-        target_m68k = block->m68k_offsets[target_gb_offset];
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_beq_w(block, m68k_disp);
 
