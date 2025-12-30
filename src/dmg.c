@@ -124,7 +124,7 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
-static u8 dmg_read_slow(struct dmg *dmg, u16 address)
+u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {
@@ -174,6 +174,7 @@ static u8 dmg_read_slow(struct dmg *dmg, u16 address)
     return 0xff;
 }
 
+// TODO remove, now handled by macros in cpu.c
 u8 dmg_read(void *_dmg, u16 address)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
@@ -184,7 +185,7 @@ u8 dmg_read(void *_dmg, u16 address)
     return dmg_read_slow(dmg, address);
 }
 
-static void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
+void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
 {
     // ROM region writes go to MBC for bank switching
     if (address < 0x8000) {

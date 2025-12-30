@@ -7,24 +7,24 @@
 #include "instructions.h"
 
 // fast opcode/operand fetch: direct page table access for ROM (0x0000-0x7fff),
-// fall back to dmg_read for HRAM code (DMA routines, etc)
+// fall back to dmg_read_slow for code executed from HRAM
 #define FAST_ROM_READ(dmg, addr) \
     (((addr) < 0x8000) \
         ? (dmg)->read_page[(addr) >> 8][(addr) & 0xff] \
-        : dmg_read((dmg), (addr)))
+        : dmg_read_slow((dmg), (addr)))
 
 // fast memory access using page table, with fallback to dmg_read/write
 // for addresses without page table entries (I/O, HRAM, unmapped external RAM)
 #define FAST_READ(dmg, addr) \
     ((dmg)->read_page[(addr) >> 8] \
         ? (dmg)->read_page[(addr) >> 8][(addr) & 0xff] \
-        : dmg_read((dmg), (addr)))
+        : dmg_read_slow((dmg), (addr)))
 
 #define FAST_WRITE(dmg, addr, val) \
     do { \
         u8 *_page = (dmg)->write_page[(addr) >> 8]; \
         if (_page) _page[(addr) & 0xff] = (val); \
-        else dmg_write((dmg), (addr), (val)); \
+        else dmg_write_slow((dmg), (addr), (val)); \
     } while (0)
 
 // non-static for debug output in imgui version
@@ -65,20 +65,35 @@ void cpu_panic(struct cpu *cpu)
     exit(0);
 }
 
-static inline u8 read8(struct cpu *cpu, u16 address)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u8 read8(struct cpu *cpu, u16 address)
 {
     return FAST_READ(cpu->dmg, address);
 }
 
 // optimized read for PC-based operand fetches (always in ROM when PC is in ROM)
-// note: can't use cpu->pc++ directly in macro since it evaluates addr multiple times
-static inline u8 read8_pc(struct cpu *cpu)
+
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u8 read8_pc(struct cpu *cpu)
 {
     u16 addr = cpu->pc++;
     return FAST_ROM_READ(cpu->dmg, addr);
 }
 
-static inline u16 read16_pc(struct cpu *cpu)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u16 read16_pc(struct cpu *cpu)
 {
     u16 addr = cpu->pc;
     cpu->pc += 2;
@@ -87,19 +102,34 @@ static inline u16 read16_pc(struct cpu *cpu)
     return high << 8 | low;
 }
 
-static inline u16 read16(struct cpu *cpu, u16 address)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+u16 read16(struct cpu *cpu, u16 address)
 {
     u8 low = read8(cpu, address);
     u8 high = read8(cpu, address + 1);
     return high << 8 | low;
 }
 
-static inline void write8(struct cpu *cpu, u16 address, u8 data)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+void write8(struct cpu *cpu, u16 address, u8 data)
 {
     FAST_WRITE(cpu->dmg, address, data);
 }
 
-static inline void write16(struct cpu *cpu, u16 address, u16 data)
+#ifdef UNITY_BUILD
+static inline __attribute__((always_inline))
+#else
+static inline
+#endif
+void write16(struct cpu *cpu, u16 address, u16 data)
 {
     FAST_WRITE(cpu->dmg, address, data & 0xff);
     FAST_WRITE(cpu->dmg, address + 1, data >> 8);
