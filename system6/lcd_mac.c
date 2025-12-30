@@ -21,6 +21,7 @@ static unsigned char dither_row1[256];
 static unsigned long fps_frame_count = 0;
 static unsigned long fps_last_tick = 0;
 static unsigned long fps_display = 0;
+extern char status_bar[64];
 
 void init_dither_lut(void)
 {
@@ -86,13 +87,25 @@ void lcd_draw(struct lcd *lcd_ptr)
       fps_last_tick = now;
     }
 
-    NumToString(fps_display, fpsStr);
     {
-      Rect fpsRect = { 288, 0, 299, 60 };
-      EraseRect(&fpsRect);
+      Rect statusRect = { 288, 0, 299, 320 };
+      EraseRect(&statusRect);
     }
     MoveTo(4, 298);
-    DrawString("\pFPS: ");
-    DrawString(fpsStr);
+
+    if (status_bar[0]) {
+      // Convert C string to Pascal string and draw
+      Str255 pstr;
+      int k;
+      for (k = 0; k < 255 && status_bar[k]; k++) {
+        pstr[k + 1] = status_bar[k];
+      }
+      pstr[0] = k;
+      DrawString(pstr);
+    } else {
+      NumToString(fps_display, fpsStr);
+      DrawString("\pFPS: ");
+      DrawString(fpsStr);
+    }
   }
 }
