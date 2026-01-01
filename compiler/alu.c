@@ -185,14 +185,18 @@ int compile_alu_op(
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);  // result in D0
         emit_addq_b_dn(block, 0, 1);
+        compile_set_z_flag(block);  // capture Z immediately, preserves C
+        emit_andi_b_dn(block, REG_68K_D_FLAGS, ~0x40);  // clear N
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_write_d0(block);
         return 1;
 
     case 0x35: // dec (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
-        compile_call_dmg_read_to_d0(block);
+        compile_call_dmg_read_to_d0(block);  // result in D0
         emit_subq_b_dn(block, 0, 1);
+        compile_set_z_flag(block);  // capture Z immediately, preserves C
+        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // set N
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_write_d0(block);
         return 1;

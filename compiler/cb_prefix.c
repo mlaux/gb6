@@ -49,8 +49,7 @@ static void compile_bit_flags(struct code_block *block)
     // GB Z flag is bit 7, H flag is bit 5
     // We need: Z set if tested bit was 0, N=0, H=1, C unchanged (bit 4)
 
-    // Capture 68k Z flag FIRST before other instructions clobber it
-    // scc stores 0xff if condition true, 0x00 if false
+    // Capture 68k Z flag before other instructions clobber it
     emit_scc(block, 0x07, REG_68K_D_SCRATCH_1);  // seq: set if Z=1
     emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);  // mask to just Z position
 
@@ -154,10 +153,7 @@ static void put_reg_result(struct code_block *block, int gb_reg)
 static void compile_rlc_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
-    emit_rol_b_imm(block, 1, op_reg);  // rotate left, C gets old bit 7
-    if (gb_reg != 7) {
-        emit_tst_b_dn(block, op_reg);  // set Z flag based on result
-    }
+    emit_rol_b_imm(block, 1, op_reg);  // rotate left, C gets old bit 7, Z set from result
     compile_shift_flags(block);
     put_reg_result(block, gb_reg);
 }
@@ -166,10 +162,7 @@ static void compile_rlc_reg(struct code_block *block, int gb_reg)
 static void compile_rrc_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
-    emit_ror_b_imm(block, 1, op_reg);  // rotate right, C gets old bit 0
-    if (gb_reg != 7) {
-        emit_tst_b_dn(block, op_reg);
-    }
+    emit_ror_b_imm(block, 1, op_reg);  // rotate right, C gets old bit 0, Z set from result
     compile_shift_flags(block);
     put_reg_result(block, gb_reg);
 }
@@ -255,7 +248,6 @@ static void compile_swap_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
     emit_ror_b_imm(block, 4, op_reg);  // rotate by 4 swaps nibbles
-    emit_tst_b_dn(block, op_reg);
     compile_swap_flags(block);
     put_reg_result(block, gb_reg);
 }

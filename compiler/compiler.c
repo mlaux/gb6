@@ -246,19 +246,21 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0x09: // add hl, bc
-            // Reconstruct BC into D1.w, add to HL
-            compile_bc_to_addr(block);  // D1.w = 0xBBCC
-            emit_adda_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
-            // TODO: flags - clears N, sets H and C appropriately
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep Z, clear N, H, C for now
-            break;
-
         case 0x19: // add hl, de
-            // Reconstruct DE into D1.w, add to HL
-            compile_de_to_addr(block);  // D1.w = 0xDDEE
-            emit_adda_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
-            // TODO: flags - clears N, sets H and C appropriately
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep Z, clear N, H, C for now
+            // use add.w so flags are set
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_3);
+            if (op == 0x09) {
+                compile_bc_to_addr(block);  // D1.w = BC
+            } else {
+                compile_de_to_addr(block);  // D1.w = DE
+            }
+            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_3);  // D3 += D1, sets C
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_3, REG_68K_A_HL);  // HL = D3
+            // capture C, keep Z, clear N
+            emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: D1 = 0xff if C
+            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // D1 = 0x10 if C
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep only Z
+            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // D7 = Z | C
             break;
 
 
