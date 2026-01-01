@@ -55,7 +55,6 @@ struct code_block {
     uint8_t code[1024];
     uint16_t m68k_offsets[1024];
     size_t length;
-    uint16_t gb_cycles; // for timing
     uint16_t src_address;
     uint16_t end_address; // address after last instruction
 
@@ -74,6 +73,7 @@ struct compile_ctx {
     dmg_read_fn read;       // read function
     void *wram_base;        // for SP address calculation
     void *hram_base;
+    int single_instruction; // if set, compile only one instruction then dispatch
 };
 
 void compiler_init(void);

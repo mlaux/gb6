@@ -143,11 +143,13 @@ static void setup_runtime_stubs(void)
     // offset 8: write function pointer
     // offset 12: enable/disable interrupts pointer
     // offset 16: interrupt_check flag (byte)
+    // offset 24: dispatcher_return address
     m68k_write_memory_32(JIT_CTX_ADDR + 0, 0x00004000);  // dmg = some address
     m68k_write_memory_32(JIT_CTX_ADDR + 4, STUB_BASE);
     m68k_write_memory_32(JIT_CTX_ADDR + 8, STUB_BASE + 0x20);
     m68k_write_memory_32(JIT_CTX_ADDR + 12, STUB_BASE + 0x40);
     m68k_write_memory_8(JIT_CTX_ADDR + 16, 0);  // interrupt_check = 0
+    m68k_write_memory_32(JIT_CTX_ADDR + 24, 0); // dispatcher_return = 0 (infinite loop)
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run

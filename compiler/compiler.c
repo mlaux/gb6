@@ -110,7 +110,6 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
     block->length = 0;
     block->src_address = src_address;
-    block->gb_cycles = 0;
     block->error = 0;
     block->failed_opcode = 0;
     block->failed_address = 0;
@@ -334,7 +333,6 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                     emit_dispatch_jump(block);
                     done = 1;
                 }
-                block->gb_cycles += instructions[0x100 + cb_op].cycles;
             }
             break;
 
@@ -587,8 +585,13 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
         }
 
-        // Add cycles for this instruction
-        block->gb_cycles += instructions[op].cycles;
+        // Single instruction mode: emit dispatch and stop after one instruction
+        if (ctx->single_instruction && !done) {
+            emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+            emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
+            emit_dispatch_jump(block);
+            break;
+        }
     }
 
     block->end_address = src_address + src_ptr;
