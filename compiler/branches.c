@@ -6,6 +6,39 @@
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
 
+// Map GB conditional branch opcode to 68k condition code
+// Returns COND_NONE if not a conditional branch
+int get_branch_condition(uint8_t opcode)
+{
+    switch (opcode) {
+    case 0x20: return COND_NE;  // jr nz
+    case 0x28: return COND_EQ;  // jr z
+    case 0x30: return COND_CC;  // jr nc
+    case 0x38: return COND_CS;  // jr c
+    case 0xc0: return COND_NE;  // ret nz
+    case 0xc2: return COND_NE;  // jp nz
+    case 0xc8: return COND_EQ;  // ret z
+    case 0xca: return COND_EQ;  // jp z
+    case 0xd0: return COND_CC;  // ret nc
+    case 0xd2: return COND_CC;  // jp nc
+    case 0xd8: return COND_CS;  // ret c
+    case 0xda: return COND_CS;  // jp c
+    default:   return COND_NONE;
+    }
+}
+
+// Invert condition for "skip if NOT taken" branches
+static int invert_cond(int cond)
+{
+    switch (cond) {
+    case COND_EQ: return COND_NE;
+    case COND_NE: return COND_EQ;
+    case COND_CS: return COND_CC;
+    case COND_CC: return COND_CS;
+    default:      return cond;
+    }
+}
+
 // returns 1 if jr ended the block, 0 if it's a backward jump within block
 int compile_jr(
     struct code_block *block,
@@ -288,5 +321,114 @@ void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
     // jump to target (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, target);
+    emit_dispatch_jump(block);
+}
+
+// Fused jr cond - uses live CCR flags from preceding ALU op
+// cond is 68k condition code (COND_EQ, COND_NE, COND_CS, COND_CC)
+int compile_jr_cond_fused(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    int cond
+) {
+    int8_t disp;
+    int16_t target_gb_offset;
+    uint16_t target_m68k, target_gb_pc;
+    int16_t m68k_disp;
+
+    disp = (int8_t) READ_BYTE(*src_ptr);
+    (*src_ptr)++;
+
+    target_gb_offset = (int16_t) *src_ptr + disp;
+
+    // Check if this is a backward jump within block
+    if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
+        target_gb_pc = src_address + target_gb_offset;
+        target_m68k = block->m68k_offsets[target_gb_offset];
+
+        // Tiny loops: skip interrupt check
+        if (disp >= -3) {
+            m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+            emit_bcc_opcode_w(block, cond, m68k_disp);
+            return 0;
+        }
+
+        // Larger loop - check condition, then interrupt flag
+        // Structure:
+        //   bcc.w .check_interrupt   ; if condition met
+        //   bra.w .fall_through      ; condition not met
+        // .check_interrupt:
+        //   tst.b JIT_CTX_INTCHECK(a4)
+        //   beq.w loop_target        ; no interrupt
+        //   <exit to dispatcher>
+        // .fall_through:
+
+        // Branch to check_interrupt if condition met
+        emit_bcc_opcode_w(block, cond, 6);
+
+        // bra.w to .fall_through
+        emit_bra_w(block, 22);
+
+        // .check_interrupt:
+        emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
+
+        // beq.w to native loop target
+        m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+        emit_beq_w(block, m68k_disp);
+
+        // Exit to dispatcher
+        emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+        emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
+        emit_dispatch_jump(block);
+
+        return 0;
+    }
+
+    // Forward/external jump - conditionally exit to dispatcher
+    target_gb_pc = src_address + target_gb_offset;
+
+    // Skip exit if condition NOT met
+    emit_bcc_opcode_w(block, invert_cond(cond), 14);
+
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
+    emit_dispatch_jump(block);
+    return 0;  // doesn't end block - fall through continues
+}
+
+// Fused jp cond - uses live CCR flags
+void compile_jp_cond_fused(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    int cond
+) {
+    uint16_t target = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
+    *src_ptr += 2;
+
+    // Skip exit if condition NOT met
+    emit_bcc_opcode_w(block, invert_cond(cond), 14);
+
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
+    emit_dispatch_jump(block);
+}
+
+// Fused ret cond - uses live CCR flags
+void compile_ret_cond_fused(struct code_block *block, int cond)
+{
+    // Skip return if condition NOT met
+    // Return sequence is 18 bytes
+    emit_bcc_opcode_w(block, invert_cond(cond), 20);
+
+    // Pop return address and dispatch
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC);
+    emit_rol_w_8(block, REG_68K_D_NEXT_PC);
+    emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
+    emit_addq_w_an(block, REG_68K_A_SP, 2);
     emit_dispatch_jump(block);
 }

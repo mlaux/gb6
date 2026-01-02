@@ -2,6 +2,7 @@
 #include "emitters.h"
 #include "flags.h"
 #include "interop.h"
+#include "branches.h"
 
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
@@ -487,10 +488,30 @@ int compile_alu_op(
         return 1;
 
     case 0xa7: // and a, a - set flags based on A
-        emit_cmp_b_imm_dn(block, REG_68K_D_A, 0);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xa0);
-        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);
+        emit_tst_b_dn(block, REG_68K_D_A);
+        {
+            // Lookahead: check if next instruction is conditional branch on Z
+            uint8_t next_op = READ_BYTE(*src_ptr);
+            int cond = get_branch_condition(next_op);
+            // Only fuse for Z conditions (and a doesn't affect C meaningfully)
+            if (cond == COND_EQ || cond == COND_NE) {
+                block->m68k_offsets[*src_ptr] = block->length;
+                (*src_ptr)++;
+
+                if (next_op == 0x20 || next_op == 0x28) {
+                    compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
+                } else if (next_op == 0xc2 || next_op == 0xca) {
+                    compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
+                } else {
+                    compile_ret_cond_fused(block, cond);
+                }
+                return 1;
+            }
+            // No fused branch - save flags normally
+            compile_set_z_flag(block);
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xa0);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);
+        }
         return 1;
 
     case 0xa8: // xor a, b
@@ -601,9 +622,28 @@ int compile_alu_op(
         return 1;
 
     case 0xb7: // or a, a - set flags based on A
-        emit_cmp_b_imm_dn(block, REG_68K_D_A, 0);
-        compile_set_z_flag(block);
-        emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        emit_tst_b_dn(block, REG_68K_D_A);
+        {
+            // Lookahead: check if next instruction is conditional branch on Z
+            uint8_t next_op = READ_BYTE(*src_ptr);
+            int cond = get_branch_condition(next_op);
+            if (cond == COND_EQ || cond == COND_NE) {
+                block->m68k_offsets[*src_ptr] = block->length;
+                (*src_ptr)++;
+
+                if (next_op == 0x20 || next_op == 0x28) {
+                    compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
+                } else if (next_op == 0xc2 || next_op == 0xca) {
+                    compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
+                } else {
+                    compile_ret_cond_fused(block, cond);
+                }
+                return 1;
+            }
+            // No fused branch - save flags normally
+            compile_set_z_flag(block);
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
+        }
         return 1;
 
     case 0xb8: // cp a, b
@@ -704,7 +744,33 @@ int compile_alu_op(
     case 0xfe: // cp a, imm8
         emit_cmp_b_imm_dn(block, REG_68K_D_A, READ_BYTE(*src_ptr));
         (*src_ptr)++;
-        compile_set_znc_flags(block);
+        {
+            // Lookahead: check if next instruction is conditional branch
+            uint8_t next_op = READ_BYTE(*src_ptr);
+            int cond = get_branch_condition(next_op);
+            if (cond != COND_NONE) {
+                // Record m68k offset for the branch instruction
+                block->m68k_offsets[*src_ptr] = block->length;
+                (*src_ptr)++;  // consume branch opcode
+
+                // Emit fused branch based on type
+                if (next_op == 0x20 || next_op == 0x28 ||
+                    next_op == 0x30 || next_op == 0x38) {
+                    // jr nz/z/nc/c
+                    compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
+                } else if (next_op == 0xc2 || next_op == 0xca ||
+                           next_op == 0xd2 || next_op == 0xda) {
+                    // jp nz/z/nc/c
+                    compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
+                } else {
+                    // ret nz/z/nc/c
+                    compile_ret_cond_fused(block, cond);
+                }
+                return 1;
+            }
+            // No fused branch - save flags normally
+            compile_set_znc_flags(block);
+        }
         return 1;
 
     default:

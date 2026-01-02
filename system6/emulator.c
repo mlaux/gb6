@@ -417,6 +417,7 @@ static int jit_step(void)
             return 0;
         }
 
+        // debug_log_block(block);
         block_cache[cpu.pc] = block;
     } else {
       set_status_bar("Running");

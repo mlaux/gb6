@@ -385,6 +385,27 @@ void emit_bne_w(struct code_block *block, int16_t disp)
     emit_word(block, disp);
 }
 
+// bcs.w - branch if C=1 with 16-bit displacement
+void emit_bcs_w(struct code_block *block, int16_t disp)
+{
+    emit_word(block, 0x6500);
+    emit_word(block, disp);
+}
+
+// bcc.w - branch if C=0 with 16-bit displacement
+void emit_bcc_w(struct code_block *block, int16_t disp)
+{
+    emit_word(block, 0x6400);
+    emit_word(block, disp);
+}
+
+// emit Bcc.w with condition code (4=cc, 5=cs, 6=ne, 7=eq)
+void emit_bcc_opcode_w(struct code_block *block, int cond, int16_t disp)
+{
+    emit_word(block, 0x6000 | (cond << 8));
+    emit_word(block, disp);
+}
+
 // btst #bit, Dn - test bit, sets Z=1 if bit is 0
 void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg)
 {
