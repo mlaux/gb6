@@ -31,17 +31,12 @@
 #include "lcd_mac.h"
 #include "dispatcher_asm.h"
 #include "lru.h"
+#include "jit.h"
 
 #include "compiler.h"
 
-// -- JIT INFRASTRUCTURE --
-
-#define HALT_SENTINEL 0xffffffff
-
 // Debug logging - open/close each time to avoid losing data on crash
 static int debug_enabled = 1;
-
-static long last_wall_ticks;
 
 void debug_log_string(const char *str)
 {
@@ -116,43 +111,6 @@ static void debug_log_block(struct code_block *block)
     FSClose(fref);
 }
 
-// register state that persists between block executions
-static unsigned long jit_dregs[8];
-static unsigned long jit_aregs[8];
-
-// runtime context for JIT (must match JIT_CTX_* offsets)
-// Offsets:
-//   0: dmg
-//   4: read_func
-//   8: write_func
-//  12: ei_di_func
-//  16: interrupt_check (1 byte)
-//  17: current_rom_bank (1 byte)
-//  18: _pad (2 bytes)
-//  20: bank0_cache
-//  24: banked_cache
-//  28: upper_cache
-//  32: dispatcher_return
-typedef struct {
-    void *dmg;
-    void *read_func;
-    void *write_func;
-    void *ei_di_func;
-    volatile char interrupt_check;
-    volatile u8 current_rom_bank;
-    char _pad[2];
-    struct code_block **bank0_cache;
-    struct code_block ***banked_cache;
-    struct code_block **upper_cache;
-    void *dispatcher_return;
-    int32_t sp_adjust;
-} jit_context;
-
-static jit_context jit_ctx;
-
-// Compile-time context for address calculation
-static struct compile_ctx compile_ctx;
-
 // Called by dmg.c when ROM bank switches
 static void on_rom_bank_switch(int new_bank)
 {
@@ -160,9 +118,6 @@ static void on_rom_bank_switch(int new_bank)
     // Force exit to dispatcher so we use the correct cache
     jit_ctx.interrupt_check = 1;
 }
-
-// Flag: JIT hit an error
-static int jit_halted = 0;
 
 // Time Manager task for timing and loop interruption
 typedef struct {
@@ -173,8 +128,9 @@ typedef struct {
 static TMInfo interrupt_tm;
 
 #define INTERRUPT_PERIOD (-16667L)
-#define CYCLES_PER_INTERRUPT 70224
 
+// this is pretty much hollowed out and a lot of it can go.
+// from the interpreter version
 struct cpu cpu;
 struct rom rom;
 struct lcd lcd;
@@ -278,202 +234,6 @@ void set_status_bar(const char *str)
 
 // -- JIT EXECUTION --
 
-static void execute_block(void *code)
-{
-  asm volatile(
-    /* Save callee-saved registers */
-    "movem.l %%d2-%%d7/%%a2-%%a4, -(%%sp)\n\t"
-
-    /* Copy code pointer to A0 first */
-    "movea.l %[code], %%a0\n\t"
-
-    /* Load GB state into 68k registers */
-    "move.l %[d4], %%d4\n\t"
-    "move.l %[d5], %%d5\n\t"
-    "move.l %[d6], %%d6\n\t"
-    "move.l %[d7], %%d7\n\t"
-    "movea.l %[a2], %%a2\n\t"
-    "movea.l %[a3], %%a3\n\t"
-    "movea.l %[a4], %%a4\n\t"
-
-    /* Call the generated code */
-    "jsr (%%a0)\n\t"
-
-    /* Save results back to memory */
-    "move.l %%d0, %[out_d0]\n\t"
-    "move.l %%d4, %[out_d4]\n\t"
-    "move.l %%d5, %[out_d5]\n\t"
-    "move.l %%d6, %[out_d6]\n\t"
-    "move.l %%d7, %[out_d7]\n\t"
-    "move.l %%a2, %[out_a2]\n\t"
-    "move.l %%a3, %[out_a3]\n\t"
-
-    /* Restore callee-saved registers */
-    "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a4\n\t"
-
-    : [out_d0] "=m" (jit_dregs[0]),
-      [out_d4] "=m" (jit_dregs[4]),
-      [out_d5] "=m" (jit_dregs[5]),
-      [out_d6] "=m" (jit_dregs[6]),
-      [out_d7] "=m" (jit_dregs[7]),
-      [out_a2] "=m" (jit_aregs[2]),
-      [out_a3] "=m" (jit_aregs[3])
-    : [d4] "m" (jit_dregs[4]),
-      [d5] "m" (jit_dregs[5]),
-      [d6] "m" (jit_dregs[6]),
-      [d7] "m" (jit_dregs[7]),
-      [a2] "m" (jit_aregs[2]),
-      [a3] "m" (jit_aregs[3]),
-      [a4] "m" (jit_aregs[4]),
-      [code] "a" (code)
-    : "d0", "d1", "d2", "d3", "a0", "a1", "cc", "memory"
-  );
-}
-
-// Initialize JIT state for a new emulation session
-static void jit_init(void)
-{
-    int k;
-
-    compiler_init();
-
-    // Initialize LRU cache (also clears any old blocks)
-    lru_init();
-
-    // Clear registers
-    for (k = 0; k < 8; k++) {
-        jit_dregs[k] = 0;
-        jit_aregs[k] = 0;
-    }
-
-    // Set up context - will be initialized properly in StartEmulation
-    jit_ctx.dmg = NULL;
-    jit_ctx.read_func = dmg_read;
-    jit_ctx.write_func = dmg_write;
-    jit_ctx.ei_di_func = dmg_ei_di;
-    jit_ctx.interrupt_check = 0;
-    jit_ctx.current_rom_bank = 1;  // bank 1 is default after boot
-    jit_ctx.bank0_cache = bank0_cache;
-    jit_ctx.banked_cache = banked_cache;
-    jit_ctx.upper_cache = upper_cache;
-    jit_ctx.dispatcher_return = (void *) dispatcher_code;
-
-    jit_halted = 0;
-    last_wall_ticks = TickCount();
-}
-
-static int jit_step(void)
-{
-    struct code_block *block;
-    unsigned long next_pc;
-    char buf[64];
-    int took_interrupt;
-    u32 finished_ticks;
-    u32 wall_ticks;
-
-    if (jit_halted) {
-        return 0;
-    }
-
-    // Clear interrupt check BEFORE executing so we can make progress
-    // even if the timer fired during ProcessEvents
-    jit_ctx.interrupt_check = 0;
-
-    // Look up or compile block
-    block = cache_lookup(cpu.pc, jit_ctx.current_rom_bank);
-
-    if (!block) {
-        u32 free_heap;
-        lru_ensure_memory();
-        free_heap = (u32) FreeMem();
-        sprintf(buf, "Compiling $%02x:%04x free=%u",
-                jit_ctx.current_rom_bank, cpu.pc, free_heap);
-        set_status_bar(buf);
-        block = compile_block(cpu.pc, &compile_ctx);
-        if (!block) {
-            u32 unused;
-            // Try to free memory by evicting LRU blocks
-            lru_clear_all();
-            MaxMem(&unused);
-            block = compile_block(cpu.pc, &compile_ctx);
-            if (!block) {
-              sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
-              set_status_bar(buf);
-              jit_halted = 1;
-              return 0;
-            }
-        }
-
-        if (block->error) {
-            sprintf(buf, "Error pc=%04x op=%02x", block->failed_address, block->failed_opcode);
-            set_status_bar(buf);
-            jit_halted = 1;
-            block_free(block);
-            return 0;
-        }
-
-        //debug_log_block(block);
-        lru_add_block(block, cpu.pc, jit_ctx.current_rom_bank);
-    } else {
-        if (block->lru_node) {
-            lru_promote((lru_node *) block->lru_node);
-        }
-        set_status_bar("Running");
-    }
-
-    execute_block(block->code);
-
-    // Get next PC from D0
-    next_pc = jit_dregs[REG_68K_D_NEXT_PC];
-
-    if (next_pc == HALT_SENTINEL) {
-        set_status_bar("HALT");
-        jit_halted = 1;
-        return 0;
-    }
-
-    took_interrupt = 0;
-    if (cpu.interrupt_enable) {
-      u8 pending = dmg.interrupt_enabled & dmg.interrupt_requested & 0x1f;
-      if (pending) {
-        static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
-        int k;
-        for (k = 0; k < 5; k++) {
-          if (pending & (1 << k)) {
-            // clear IF bit and disable IME
-            dmg.interrupt_requested &= ~(1 << k);
-            cpu.interrupt_enable = 0;
-
-            // push PC to stack
-            u8 *sp_ptr = (u8 *) jit_aregs[REG_68K_A_SP];
-            sp_ptr -= 2;
-            sp_ptr[1] = (next_pc >> 8) & 0xff;
-            sp_ptr[0] = next_pc & 0xff;
-            jit_aregs[REG_68K_A_SP] = (unsigned long) sp_ptr;
-
-            // Jump to handler
-            next_pc = handlers[k];
-            took_interrupt = 1;
-            break;
-          }
-        }
-      }
-    }
-
-    cpu.pc = (u16) next_pc;
-
-    finished_ticks = TickCount();
-    wall_ticks = finished_ticks - last_wall_ticks;
-    last_wall_ticks = finished_ticks;
-
-    // don't sync lcd if interrupt just happened to prevent vblank spam
-    // where the "main thread" can't make progress
-    if (!took_interrupt) {
-      dmg_sync_hw(&dmg, wall_ticks * CYCLES_PER_INTERRUPT);
-    }
-
-    return 1;
-}
 
 void StartEmulation(void)
 {
@@ -507,17 +267,7 @@ void StartEmulation(void)
   offscreen_bmp.rowBytes = 40;
 
   // Initialize JIT
-  jit_init();
-  jit_ctx.dmg = &dmg;
-  jit_aregs[REG_68K_A_SP] = (unsigned long) (dmg.zero_page + 0xfffe - 0xff80);
-  jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
-
-  // Initialize compile-time context
-  compile_ctx.dmg = &dmg;
-  compile_ctx.read = dmg_read;
-  compile_ctx.wram_base = dmg.main_ram;
-  compile_ctx.hram_base = dmg.zero_page;
-
+  jit_init(&dmg);
   emulation_on = 1;
 }
 
@@ -751,8 +501,7 @@ int main(int argc, char *argv[])
     }
 
     if (emulation_on) {
-      // JIT mode: run blocks until timer fires
-      jit_step();
+      jit_step(&dmg);
       frame_count++;
     }
   }

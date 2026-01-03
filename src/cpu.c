@@ -461,8 +461,8 @@ static u16 check_interrupts(struct cpu *cpu)
         return 0;
     }
 
-    u16 enabled = cpu->dmg->interrupt_enabled;
-    u16 requested = cpu->dmg->interrupt_requested;
+    u16 enabled = cpu->dmg->interrupt_enable_mask;
+    u16 requested = cpu->dmg->interrupt_request_mask;
 
     for (k = 0; k < NUM_INTERRUPTS; k++) {
         int check = 1 << k;

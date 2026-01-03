@@ -175,10 +175,10 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
         return dmg->audio_regs[address - 0xff10];
     }
     if (address == 0xff0f) {
-        return dmg->interrupt_requested;
+        return dmg->interrupt_request_mask;
     }
     if (address == 0xffff) {
-        return dmg->interrupt_enabled;
+        return dmg->interrupt_enable_mask;
     }
 
     // external RAM not enabled, or RTC register selected
@@ -273,11 +273,11 @@ void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
         return;
     }
     if (address == 0xff0f) {
-        dmg->interrupt_requested = data;
+        dmg->interrupt_request_mask = data;
         return;
     }
     if (address == 0xffff) {
-        dmg->interrupt_enabled = data;
+        dmg->interrupt_enable_mask = data;
         return;
     }
 }
@@ -295,7 +295,7 @@ void dmg_write(void *_dmg, u16 address, u8 data)
 
 void dmg_request_interrupt(struct dmg *dmg, int nr)
 {
-    dmg->interrupt_requested |= nr;
+    dmg->interrupt_request_mask |= nr;
 }
 
 // sync hardware state - advance by given number of cycles
@@ -351,7 +351,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     if (crosses_vblank) {
         lcd_set_mode(dmg->lcd, 1);
 
-        if (!(dmg->interrupt_requested & (1 << INT_VBLANK))) {
+        if (!(dmg->interrupt_request_mask & (1 << INT_VBLANK))) {
             dmg_request_interrupt(dmg, INT_VBLANK);
         }
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {

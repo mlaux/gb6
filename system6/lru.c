@@ -119,8 +119,6 @@ void lru_init(void)
     lru_pool[MAX_CACHED_BLOCKS - 1].next = NULL;
     lru_pool[MAX_CACHED_BLOCKS - 1].in_use = 0;
     lru_pool[MAX_CACHED_BLOCKS - 1].block = NULL;
-
-    clear_block_caches();
 }
 
 // Remove node from LRU list (but don't free it)
@@ -252,8 +250,10 @@ void lru_clear_all(void)
             node->block = NULL;
         }
     }
+    // individual entries already nulled, but call this to free per-bank arrays
+    clear_block_caches();
 
-    // Reinitialize
+    // reinitialize
     lru_init();
 }
 

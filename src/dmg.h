@@ -42,8 +42,8 @@ struct dmg {
     u32 frame_skip;
     int joypad_selected;
     int action_selected;
-    u8 interrupt_enabled;
-    u8 interrupt_requested;
+    u8 interrupt_enable_mask;
+    u8 interrupt_request_mask;
     void (*rom_bank_switch_hook)(int new_bank);
 
     u8 joypad;
