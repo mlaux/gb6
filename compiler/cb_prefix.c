@@ -6,15 +6,6 @@
 #include "flags.h"
 #include "interop.h"
 
-// GB register encoding in CB-prefix instructions:
-// 0=B, 1=C, 2=D, 3=E, 4=H, 5=L, 6=(HL), 7=A
-//
-// 68k register mapping:
-// D4 = A
-// D5 = BC in split format: 0x00BB00CC (B in bits 16-23, C in bits 0-7)
-// D6 = DE in split format: 0x00DD00EE (D in bits 16-23, E in bits 0-7)
-// A2 = HL (contiguous 16-bit value)
-
 // Set GB flags for shift/rotate: Z from result, N=0, H=0, C from 68k C flag
 // Call this after a shift/rotate operation while 68k CCR still has the result
 // Uses D3 for Z capture to avoid clobbering D1 which may hold the result
