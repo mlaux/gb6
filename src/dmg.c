@@ -77,6 +77,11 @@ void dmg_update_rom_bank(struct dmg *dmg, int bank)
     for (k = 0x40; k <= 0x7f; k++) {
         dmg->read_page[k] = &bank_base[(k - 0x40) << 8];
     }
+
+    // Notify JIT of bank switch
+    if (dmg->rom_bank_switch_hook) {
+        dmg->rom_bank_switch_hook(bank);
+    }
 }
 
 void dmg_update_ram_bank(struct dmg *dmg, u8 *ram_base)
@@ -189,7 +194,6 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
 }
 extern void debug_log_string(const char *str);
 
-// TODO remove, now handled by macros in cpu.c
 u8 dmg_read(void *_dmg, u16 address)
 {
     // char buf[128];

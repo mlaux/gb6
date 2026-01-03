@@ -38,14 +38,18 @@
 #define REG_68K_A_CTX 4
 
 // Runtime context offsets
-#define JIT_CTX_DMG      0
-#define JIT_CTX_READ     4
-#define JIT_CTX_WRITE    8
-#define JIT_CTX_EI_DI    12
-#define JIT_CTX_INTCHECK 16
-// 3 bytes padding after interrupt_check to align to 4 bytes
-#define JIT_CTX_CACHE    20   // struct code_block **block_cache
-#define JIT_CTX_DISPATCH 24   // void *dispatcher_return
+#define JIT_CTX_DMG         0
+#define JIT_CTX_READ        4
+#define JIT_CTX_WRITE       8
+#define JIT_CTX_EI_DI       12
+#define JIT_CTX_INTCHECK    16  // 1 byte
+#define JIT_CTX_ROM_BANK    17  // 1 byte (current ROM bank for MBC)
+// 2 bytes padding to align to 4 bytes
+#define JIT_CTX_BANK0_CACHE   20  // struct code_block **bank0_cache
+#define JIT_CTX_BANKED_CACHE  24  // struct code_block ***banked_cache
+#define JIT_CTX_UPPER_CACHE   28  // struct code_block **upper_cache
+#define JIT_CTX_DISPATCH      32  // void *dispatcher_return
+#define JIT_CTX_SP_ADJUST     36  // int32_t: add to A3 to get GB SP
 
 // Offset of 'code' field in struct code_block (it's at the start)
 #define BLOCK_CODE_OFFSET 0
@@ -62,6 +66,9 @@ struct code_block {
     uint8_t error;
     uint16_t failed_opcode;
     uint16_t failed_address;
+
+    // LRU cache management (set by emulator, NULL in test harness)
+    void *lru_node;
 };
 
 // read function signature: u8 (*read)(void *dmg, u16 address)

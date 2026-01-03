@@ -72,17 +72,28 @@ void compile_ld_sp_imm16(
     *src_ptr += 2;
 
     // calculate mac pointer based on GB SP range
+    // also store sp_adjustment so we can recover GB SP from Mac address
     if (ctx && gb_sp >= 0xc000 && gb_sp <= 0xdfff) {
         // WRAM: main_ram + (gb_sp - 0xC000)
         uint32_t addr = (uint32_t) ctx->wram_base + (gb_sp - 0xc000);
+        int32_t sp_adjust = 0xc000 - (int32_t) ctx->wram_base;
         emit_movea_l_imm32(block, REG_68K_A_SP, addr);
+        // Store sp_adjustment in context for ld hl, sp+i8
+        emit_move_l_dn(block, REG_68K_D_SCRATCH_1, sp_adjust);
+        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
     } else if (ctx && gb_sp >= 0xff80 && gb_sp <= 0xfffe) {
         // HRAM: zero_page + (gb_sp - 0xFF80)
         uint32_t addr = (uint32_t) ctx->hram_base + (gb_sp - 0xff80);
+        int32_t sp_adjust = 0xff80 - (int32_t) ctx->hram_base;
         emit_movea_l_imm32(block, REG_68K_A_SP, addr);
+        // Store sp_adjustment in context for ld hl, sp+i8
+        emit_move_l_dn(block, REG_68K_D_SCRATCH_1, sp_adjust);
+        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
     } else {
-        // for testing
+        // for testing: A3 = GB SP directly, sp_adjustment = 0
         emit_movea_w_imm16(block, REG_68K_A_SP, gb_sp);
+        emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
+        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
     }
 }
 
@@ -115,7 +126,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         // detect overflow of code block
         // could split loops across multiple blocks which is correct but slower
         // longest instruction is probably either adc or inc/dec (hl)
-        if (block->length > sizeof(block->code) - 120) {
+        if (block->length > sizeof(block->code) - 160) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
             emit_dispatch_jump(block);
@@ -261,6 +272,17 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // D7 = Z | C
             break;
 
+        case 0x29: // add hl, hl
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_3);  // D3.w = HL
+            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_SCRATCH_3);  // D3 += D3, sets C
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_3, REG_68K_A_HL);  // HL = D3
+            // capture C, keep Z, clear N
+            emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: D1 = 0xff if C
+            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // D1 = 0x10 if C
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep only Z
+            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // D7 = Z | C
+            break;
+
 
         case 0x1e: // ld e, imm8
             emit_move_b_dn(block, REG_68K_D_DE, READ_BYTE(src_ptr++));
@@ -369,9 +391,21 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             done = 1;
             break;
 
+        case 0xc4: // call nz, imm16
+            compile_call_cond(block, ctx, &src_ptr, src_address, 7, 0);
+            break;
+
+        case 0xcc: // call z, imm16
+            compile_call_cond(block, ctx, &src_ptr, src_address, 7, 1);
+            break;
+
         case 0xcd: // call imm16
             compile_call_imm16(block, ctx, &src_ptr, src_address);
             done = 1;
+            break;
+
+        case 0xd4: // call nc, imm16
+            compile_call_cond(block, ctx, &src_ptr, src_address, 4, 0);
             break;
 
         case 0xd0: // ret nc
@@ -439,6 +473,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             compile_jp_cond(block, ctx, &src_ptr, src_address, 4, 1);
             break;
 
+        case 0xdc: // call c, imm16
+            compile_call_cond(block, ctx, &src_ptr, src_address, 4, 1);
+            break;
+
         case 0xc1: // pop bc
             // D1 = [SP+1] (high byte - B)
             emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
@@ -496,6 +534,36 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_dispatch_jump(block);
             done = 1;
             break;
+        case 0x1f: // rra
+        {
+            // Save old carry (bit 4 of D7) to D2
+            emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_1);
+            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // isolate C flag
+
+            // Shift right - bit 0 goes to 68k C flag, 0 goes to bit 7
+            emit_lsr_b_imm_dn(block, 1, REG_68K_D_A);
+
+            // Capture the new C flag before modifying
+            emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
+
+            // If old carry was set (D2 != 0), OR in bit 7
+            emit_lsl_b_imm_dn(block, 3, REG_68K_D_SCRATCH_1);  // 0x10 -> 0x80
+            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
+
+            // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
+            emit_tst_b_dn(block, REG_68K_D_A);
+            emit_scc(block, 0x07, REG_68K_D_SCRATCH_2);  // seq for Z
+            emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0x80);
+            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_FLAGS);
+
+            break;
+        }
+
+        case 0xc7:
+            compile_rst_n(block, 0x00, src_address + src_ptr);
+            done = 1;
+            break;
 
         case 0xef: // rst 28h - like call $0028
             compile_rst_n(block, 0x28, src_address + src_ptr);
@@ -521,6 +589,53 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_A);  // A = [SP+1]
             emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_FLAGS);  // F = [SP]
             emit_addq_w_an(block, REG_68K_A_SP, 2);
+            break;
+
+        case 0xf8: // ld hl, sp+i8
+            {
+                int8_t offset = (int8_t)READ_BYTE(src_ptr++);
+                uint8_t uoffset = (uint8_t)offset;
+
+                // Get Mac SP (A3) into D3 as long
+                emit_move_l_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_3);
+
+                // Add sp_adjustment from context to get GB SP in D3.w
+                // gb_sp = mac_sp + sp_adjustment (low word is the GB SP)
+                emit_add_l_disp_an_dn(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX, REG_68K_D_SCRATCH_3);
+
+                // Compute HL = GB_SP + sign_extended(offset)
+                if (offset > 0 && offset <= 8) {
+                    emit_addq_w_dn(block, REG_68K_D_SCRATCH_3, offset);
+                } else if (offset < 0 && -offset <= 8) {
+                    emit_subq_w_dn(block, REG_68K_D_SCRATCH_3, -offset);
+                } else if (offset != 0) {
+                    emit_move_w_dn(block, REG_68K_D_SCRATCH_1, offset);
+                    emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_3);
+                }
+
+                // Store result in HL
+                emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_3, REG_68K_A_HL);
+
+                // Compute flags using A3.b (which equals GB SP.low due to alignment)
+                // C flag: set if (SP.low + offset) overflows byte
+                emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);  // D1.b = SP.low
+                emit_addi_b_dn(block, REG_68K_D_SCRATCH_1, uoffset);  // D1.b += offset, sets C
+                emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C
+                emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C (C position)
+            }
+            break;
+
+        case 0xf9: // ld sp, hl
+            // Get HL (GB SP) into D1, zero-extended to 32 bits
+            emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);  // clear D1
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);  // D1.w = HL
+
+            // Compute mac_sp = gb_sp - sp_adjustment
+            // This is the inverse of: gb_sp = mac_sp + sp_adjustment
+            emit_sub_l_disp_an_dn(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX, REG_68K_D_SCRATCH_1);
+
+            // Store in A3
+            emit_movea_l_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
             break;
 
         case 0xd9: // reti
@@ -564,6 +679,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             }
             break;
 
+        case 0x76:
+            // HALT - no-op
+            break;
+
         default:
             // 8-bit ALU ops
             if (compile_alu_op(block, op, ctx, src_address, &src_ptr)) {
@@ -585,10 +704,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
         }
 
-        size_t emitted = block->length - before;
-        if (emitted > 80) {
-            printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
-        }
+        // size_t emitted = block->length - before;
+        // if (emitted > 80) {
+        //     printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
+        // }
 
         // Single instruction mode: emit dispatch and stop after one instruction
         if (ctx->single_instruction && !done) {

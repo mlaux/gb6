@@ -38,11 +38,39 @@
 
 // -- JIT INFRASTRUCTURE --
 
-#define MAX_CACHED_BLOCKS 65536
+#define BANK0_CACHE_SIZE 0x4000
+#define BANKED_CACHE_SIZE 0x4000
+#define UPPER_CACHE_SIZE 0x8000
+#define MAX_ROM_BANKS 256
 #define HALT_SENTINEL 0xffffffff
 
-// block cache indexed by GB PC
-static struct code_block *block_cache[MAX_CACHED_BLOCKS];
+// Block caches for different memory regions
+// Bank 0: 0x0000-0x3FFF (always mapped)
+static struct code_block *bank0_cache[BANK0_CACHE_SIZE];
+// Switchable banks: 0x4000-0x7FFF (allocated on demand per bank)
+static struct code_block **banked_cache[MAX_ROM_BANKS];
+// Upper region: 0x8000-0xFFFF (WRAM, HRAM, etc.)
+static struct code_block *upper_cache[UPPER_CACHE_SIZE];
+
+// -- LRU CACHE MANAGEMENT --
+
+// 4096 blocks * sizeof(lru_node) = 64k
+#define MAX_CACHED_BLOCKS 4096
+
+typedef struct lru_node {
+    struct code_block *block;
+    u16 pc;
+    u8 bank;
+    u8 in_use;
+    struct lru_node *next;
+    struct lru_node *prev;
+} lru_node;
+
+static lru_node lru_pool[MAX_CACHED_BLOCKS];
+static lru_node *lru_head;  // most recently used
+static lru_node *lru_tail;  // least recently used
+static lru_node *lru_free;  // free list head
+static int lru_count;
 
 // Debug logging - open/close each time to avoid losing data on crash
 static int debug_enabled = 1;
@@ -127,15 +155,31 @@ static unsigned long jit_dregs[8];
 static unsigned long jit_aregs[8];
 
 // runtime context for JIT (must match JIT_CTX_* offsets)
+// Offsets:
+//   0: dmg
+//   4: read_func
+//   8: write_func
+//  12: ei_di_func
+//  16: interrupt_check (1 byte)
+//  17: current_rom_bank (1 byte)
+//  18: _pad (2 bytes)
+//  20: bank0_cache
+//  24: banked_cache
+//  28: upper_cache
+//  32: dispatcher_return
 typedef struct {
     void *dmg;
     void *read_func;
     void *write_func;
     void *ei_di_func;
     volatile char interrupt_check;
-    char _pad[3];  // align to 4 bytes
-    struct code_block **block_cache;
+    volatile u8 current_rom_bank;
+    char _pad[2];
+    struct code_block **bank0_cache;
+    struct code_block ***banked_cache;
+    struct code_block **upper_cache;
     void *dispatcher_return;
+    int32_t sp_adjust;
 } jit_context;
 
 static jit_context jit_ctx;
@@ -143,38 +187,370 @@ static jit_context jit_ctx;
 // Dispatcher return routine - 68k machine code
 // Compiled blocks JMP here instead of RTS. This routine:
 // 1. Checks interrupt_check, if set -> RTS to C
-// 2. Looks up block_cache[D0], if found -> JMP to it
-// 3. Otherwise -> RTS to C (to compile the block)
+// 2. Determines which cache to use based on PC in D0
+// 3. Looks up block in appropriate cache, if found -> JMP to it
+// 4. Otherwise -> RTS to C (to compile the block)
+//
+// Context offsets (a4):
+//   16: interrupt_check
+//   17: current_rom_bank
+//   20: bank0_cache      (0x0000-0x3FFF)
+//   24: banked_cache     (0x4000-0x7FFF, indexed by bank)
+//   28: upper_cache      (0x8000-0xFFFF)
 //
 // Assembly:
 //   tst.b   16(a4)              ; check interrupt_check
-//   bne.s   .exit
-//   movea.l 20(a4), a0          ; block_cache pointer
+//   bne     .exit
+//   cmpi.w  #$4000, d0
+//   bcs.s   .bank0              ; PC < $4000
+//   cmpi.w  #$8000, d0
+//   bcs.s   .banked             ; $4000 <= PC < $8000
+//   ; fall through to upper
+// .upper:
+//   movea.l 28(a4), a0          ; upper_cache
 //   moveq   #0, d1
-//   move.w  d0, d1              ; zero-extend PC
-//   lsl.l   #2, d1              ; *4 for pointer size
-//   movea.l (a0,d1.l), a0       ; block_cache[pc]
-//   tst.l   a0
+//   move.w  d0, d1
+//   subi.w  #$8000, d1          ; index = PC - $8000
+//   lsl.l   #2, d1
+//   movea.l (a0,d1.l), a0
+//   cmpa.w  #0, a0              ; check for NULL
 //   beq.s   .exit
-//   jmp     (a0)                ; code is at offset 0 in block
+//   jmp     (a0)
+// .bank0:
+//   movea.l 20(a4), a0          ; bank0_cache
+//   moveq   #0, d1
+//   move.w  d0, d1              ; index = PC
+//   lsl.l   #2, d1
+//   movea.l (a0,d1.l), a0
+//   cmpa.w  #0, a0
+//   beq.s   .exit
+//   jmp     (a0)
+// .banked:
+//   movea.l 24(a4), a0          ; banked_cache base
+//   moveq   #0, d1
+//   move.b  17(a4), d1          ; current_rom_bank
+//   lsl.l   #2, d1
+//   movea.l (a0,d1.l), a0       ; banked_cache[bank]
+//   cmpa.w  #0, a0
+//   beq.s   .exit               ; bank not allocated
+//   moveq   #0, d1
+//   move.w  d0, d1
+//   subi.w  #$4000, d1          ; index = PC - $4000
+//   lsl.l   #2, d1
+//   movea.l (a0,d1.l), a0
+//   cmpa.w  #0, a0
+//   beq.s   .exit
+//   jmp     (a0)
 // .exit:
 //   rts
 static const unsigned char dispatcher_code[] = {
-    0x4a, 0x2c, 0x00, 0x10,  // tst.b 16(a4)
-    0x66, 0x14,              // bne.s +20 (to rts)
-    0x20, 0x6c, 0x00, 0x14,  // movea.l 20(a4), a0
-    0x72, 0x00,              // moveq #0, d1
-    0x32, 0x00,              // move.w d0, d1
-    0xe5, 0x89,              // lsl.l #2, d1
-    0x20, 0x70, 0x18, 0x00,  // movea.l (a0,d1.l), a0
-    0x4a, 0x88,              // tst.l a0
-    0x67, 0x02,              // beq.s +2 (to rts)
-    0x4e, 0xd0,              // jmp (a0)
-    0x4e, 0x75               // rts
+    // tst.b 16(a4); bne.s .exit
+    0x4a, 0x2c, 0x00, 0x10,       // 0: tst.b 16(a4)
+    0x66, 0x68,                   // 4: bne.s -> exit (110-6=104=0x68)
+    // cmpi.w #$4000, d0; bcs.s .bank0
+    0x0c, 0x40, 0x40, 0x00,       // 6: cmpi.w #$4000, d0
+    0x65, 0x20,                   // 10: bcs.s -> bank0 (46-12=34=0x22)
+    // cmpi.w #$8000, d0; bcs.s .banked
+    0x0c, 0x40, 0x80, 0x00,       // 12: cmpi.w #$8000, d0
+    0x65, 0x30,                   // 16: bcs.s -> banked (68-18=50=0x32)
+
+    // .upper: (offset 18)
+    0x20, 0x6c, 0x00, 0x1c,       // 18: movea.l 28(a4), a0
+    0x72, 0x00,                   // 22: moveq #0, d1
+    0x32, 0x00,                   // 24: move.w d0, d1
+    0x04, 0x41, 0x80, 0x00,       // 26: subi.w #$8000, d1
+    0xe5, 0x89,                   // 30: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 32: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 36: cmpa.w #0, a0
+    0x67, 0x44,                   // 40: beq.s -> exit (110-42=68=0x44)
+    0x4e, 0xd0,                   // 42: jmp (a0)
+
+    // .bank0: (offset 44)
+    0x20, 0x6c, 0x00, 0x14,       // 44: movea.l 20(a4), a0
+    0x72, 0x00,                   // 48: moveq #0, d1
+    0x32, 0x00,                   // 50: move.w d0, d1
+    0xe5, 0x89,                   // 52: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 54: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 58: cmpa.w #0, a0
+    0x67, 0x2e,                   // 62: beq.s -> exit (110-64=46=0x2e)
+    0x4e, 0xd0,                   // 64: jmp (a0)
+
+    // .banked: (offset 66)
+    0x20, 0x6c, 0x00, 0x18,       // 66: movea.l 24(a4), a0
+    0x72, 0x00,                   // 70: moveq #0, d1
+    0x12, 0x2c, 0x00, 0x11,       // 72: move.b 17(a4), d1
+    0xe5, 0x89,                   // 76: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 78: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 82: cmpa.w #0, a0
+    0x67, 0x16,                   // 86: beq.s -> exit (110-88=22=0x16)
+    0x72, 0x00,                   // 88: moveq #0, d1
+    0x32, 0x00,                   // 90: move.w d0, d1
+    0x04, 0x41, 0x40, 0x00,       // 92: subi.w #$4000, d1
+    0xe5, 0x89,                   // 96: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 98: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 102: cmpa.w #0, a0
+    0x67, 0x02,                   // 106: beq.s -> exit (110-108=2)
+    0x4e, 0xd0,                   // 108: jmp (a0)
+
+    // .exit: (offset 110)
+    0x4e, 0x75                    // 110: rts
 };
 
 // Compile-time context for address calculation
 static struct compile_ctx compile_ctx;
+
+// Helper: look up cached block for given PC and bank
+static struct code_block *cache_lookup(u16 pc, u8 bank)
+{
+    if (pc < 0x4000) {
+        return bank0_cache[pc];
+    }
+    if (pc < 0x8000) {
+        if (!banked_cache[bank]) {
+            return NULL;
+        }
+        return banked_cache[bank][pc - 0x4000];
+    }
+    return upper_cache[pc - 0x8000];
+}
+
+// Helper: store block in cache for given PC and bank
+static void cache_store(u16 pc, u8 bank, struct code_block *block)
+{
+    if (pc < 0x4000) {
+        bank0_cache[pc] = block;
+    } else if (pc < 0x8000) {
+        if (!banked_cache[bank]) {
+            // Allocate cache for this bank on demand
+            banked_cache[bank] = (struct code_block **)
+                calloc(BANKED_CACHE_SIZE, sizeof(struct code_block *));
+            if (!banked_cache[bank]) {
+                return;  // allocation failed, block won't be cached
+            }
+        }
+        banked_cache[bank][pc - 0x4000] = block;
+    } else {
+        upper_cache[pc - 0x8000] = block;
+    }
+}
+
+// Helper: free all blocks in a cache array
+static void cache_clear_array(struct code_block **cache, int size)
+{
+    int k;
+    for (k = 0; k < size; k++) {
+        if (cache[k]) {
+            block_free(cache[k]);
+            cache[k] = NULL;
+        }
+    }
+}
+
+// -- LRU FUNCTIONS --
+
+// Initialize LRU system
+static void lru_init(void)
+{
+    int k;
+
+    lru_head = NULL;
+    lru_tail = NULL;
+    lru_count = 0;
+
+    // Build free list
+    lru_free = &lru_pool[0];
+    for (k = 0; k < MAX_CACHED_BLOCKS - 1; k++) {
+        lru_pool[k].next = &lru_pool[k + 1];
+        lru_pool[k].in_use = 0;
+        lru_pool[k].block = NULL;
+    }
+    lru_pool[MAX_CACHED_BLOCKS - 1].next = NULL;
+    lru_pool[MAX_CACHED_BLOCKS - 1].in_use = 0;
+    lru_pool[MAX_CACHED_BLOCKS - 1].block = NULL;
+}
+
+// Remove node from LRU list (but don't free it)
+static void lru_unlink(lru_node *node)
+{
+    if (node->prev) {
+        node->prev->next = node->next;
+    } else {
+        lru_head = node->next;
+    }
+    if (node->next) {
+        node->next->prev = node->prev;
+    } else {
+        lru_tail = node->prev;
+    }
+    node->prev = NULL;
+    node->next = NULL;
+}
+
+// Add node to front of LRU list (most recent)
+static void lru_push_front(lru_node *node)
+{
+    node->prev = NULL;
+    node->next = lru_head;
+    if (lru_head) {
+        lru_head->prev = node;
+    } else {
+        lru_tail = node;
+    }
+    lru_head = node;
+}
+
+// Promote node to front (on cache hit)
+static void lru_promote(lru_node *node)
+{
+    if (node == lru_head) {
+        return;
+    }
+    lru_unlink(node);
+    lru_push_front(node);
+}
+
+// Clear cache entry for a node
+static void lru_clear_cache_entry(lru_node *node)
+{
+    u16 pc = node->pc;
+    u8 bank = node->bank;
+
+    if (pc < 0x4000) {
+        bank0_cache[pc] = NULL;
+    } else if (pc < 0x8000) {
+        if (banked_cache[bank]) {
+            banked_cache[bank][pc - 0x4000] = NULL;
+        }
+    } else {
+        upper_cache[pc - 0x8000] = NULL;
+    }
+}
+
+// Evict least recently used block
+static void lru_evict_one(void)
+{
+    lru_node *victim;
+
+    if (!lru_tail) {
+        return;
+    }
+
+    victim = lru_tail;
+    lru_unlink(victim);
+
+    // Clear cache entry
+    lru_clear_cache_entry(victim);
+
+    // Free the block
+    if (victim->block) {
+        block_free(victim->block);
+        victim->block = NULL;
+    }
+
+    // Return to free list
+    victim->in_use = 0;
+    victim->next = lru_free;
+    lru_free = victim;
+    lru_count--;
+}
+
+// Get a free node, evicting if necessary
+static lru_node *lru_alloc_node(void)
+{
+    lru_node *node;
+
+    if (!lru_free) {
+        lru_evict_one();
+    }
+
+    if (!lru_free) {
+        return NULL;  // shouldn't happen
+    }
+
+    node = lru_free;
+    lru_free = node->next;
+    node->next = NULL;
+    node->prev = NULL;
+    node->in_use = 1;
+    node->block = NULL;
+    lru_count++;
+
+    return node;
+}
+
+// Add a new block to LRU and cache
+static void lru_add_block(struct code_block *block, u16 pc, u8 bank)
+{
+    lru_node *node = lru_alloc_node();
+
+    if (!node) {
+        return;
+    }
+
+    node->block = block;
+    node->pc = pc;
+    node->bank = bank;
+
+    // Store back-pointer for promotion on hit
+    block->lru_node = node;
+
+    lru_push_front(node);
+
+    // Store in cache
+    cache_store(pc, bank, block);
+}
+
+// Clear all LRU entries (for reset)
+static void lru_clear_all(void)
+{
+    lru_node *node;
+    int k;
+
+    // Free all blocks in use
+    for (k = 0; k < MAX_CACHED_BLOCKS; k++) {
+        node = &lru_pool[k];
+        if (node->in_use && node->block) {
+            lru_clear_cache_entry(node);
+            block_free(node->block);
+            node->block = NULL;
+        }
+    }
+
+    // Reinitialize
+    lru_init();
+}
+
+// Proactively evict blocks when memory is low
+#define MIN_FREE_HEAP 65536L
+
+static void lru_ensure_memory(void)
+{
+    while (FreeMem() < MIN_FREE_HEAP && lru_count > 0) {
+        lru_evict_one();
+    }
+}
+
+static void clear_block_caches(void)
+{
+  int k;
+  cache_clear_array(bank0_cache, BANK0_CACHE_SIZE);
+  cache_clear_array(upper_cache, UPPER_CACHE_SIZE);
+  for (k = 0; k < MAX_ROM_BANKS; k++) {
+    if (banked_cache[k]) {
+      cache_clear_array(banked_cache[k], BANKED_CACHE_SIZE);
+      free(banked_cache[k]);
+      banked_cache[k] = NULL;
+    }
+  }
+}
+
+// Called by dmg.c when ROM bank switches
+static void on_rom_bank_switch(int new_bank)
+{
+    jit_ctx.current_rom_bank = (u8) new_bank;
+    // Force exit to dispatcher so we use the correct cache
+    jit_ctx.interrupt_check = 1;
+}
 
 // Flag: JIT hit an error
 static int jit_halted = 0;
@@ -253,6 +629,8 @@ void InitEverything(void)
   TEInit();
   InitDialogs(0L);
   InitCursor();
+
+  MaxApplZone();
 
   // enable keyUp events (not delivered by default)
   SetEventMask(everyEvent);
@@ -350,13 +728,9 @@ static void jit_init(void)
 
     compiler_init();
 
-    // Clear block cache
-    for (k = 0; k < MAX_CACHED_BLOCKS; k++) {
-        if (block_cache[k]) {
-            block_free(block_cache[k]);
-            block_cache[k] = NULL;
-        }
-    }
+    // Initialize LRU cache (also clears any old blocks)
+    lru_init();
+    clear_block_caches();
 
     // Clear registers
     for (k = 0; k < 8; k++) {
@@ -366,11 +740,14 @@ static void jit_init(void)
 
     // Set up context - will be initialized properly in StartEmulation
     jit_ctx.dmg = NULL;
-    jit_ctx.read_func = dmg_read_slow;
-    jit_ctx.write_func = dmg_write_slow;
+    jit_ctx.read_func = dmg_read;
+    jit_ctx.write_func = dmg_write;
     jit_ctx.ei_di_func = dmg_ei_di;
     jit_ctx.interrupt_check = 0;
-    jit_ctx.block_cache = block_cache;
+    jit_ctx.current_rom_bank = 1;  // bank 1 is default after boot
+    jit_ctx.bank0_cache = bank0_cache;
+    jit_ctx.banked_cache = banked_cache;
+    jit_ctx.upper_cache = upper_cache;
     jit_ctx.dispatcher_return = (void *) dispatcher_code;
 
     jit_halted = 0;
@@ -395,18 +772,29 @@ static int jit_step(void)
     jit_ctx.interrupt_check = 0;
 
     // Look up or compile block
-    block = block_cache[cpu.pc];
+    block = cache_lookup(cpu.pc, jit_ctx.current_rom_bank);
 
     if (!block) {
-        u32 free_heap = (u32) FreeMem();
-        sprintf(buf, "Compiling $%04x, free=%uk", cpu.pc, free_heap);
+        u32 free_heap;
+        lru_ensure_memory();
+        free_heap = (u32) FreeMem();
+        sprintf(buf, "Compiling $%02x:%04x free=%u",
+                jit_ctx.current_rom_bank, cpu.pc, free_heap);
         set_status_bar(buf);
         block = compile_block(cpu.pc, &compile_ctx);
         if (!block) {
-            sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
-            set_status_bar(buf);
-            jit_halted = 1;
-            return 0;
+            u32 unused;
+            // Try to free memory by evicting LRU blocks
+            lru_clear_all();
+            clear_block_caches();
+            MaxMem(&unused);
+            block = compile_block(cpu.pc, &compile_ctx);
+            if (!block) {
+              sprintf(buf, "JIT: alloc fail pc=%04x", cpu.pc);
+              set_status_bar(buf);
+              jit_halted = 1;
+              return 0;
+            }
         }
 
         if (block->error) {
@@ -418,9 +806,14 @@ static int jit_step(void)
         }
 
         //debug_log_block(block);
-        block_cache[cpu.pc] = block;
+        //if (cpu.pc <= 0x7fff)
+        lru_add_block(block, cpu.pc, jit_ctx.current_rom_bank);
     } else {
-      set_status_bar("Running");
+        // Cache hit - promote in LRU
+        if (block->lru_node) {
+            lru_promote((lru_node *) block->lru_node);
+        }
+        set_status_bar("Running");
     }
 
     execute_block(block->code);
@@ -498,6 +891,7 @@ void StartEmulation(void)
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
   dmg.frame_skip = 1;
+  dmg.rom_bank_switch_hook = on_rom_bank_switch;
   mbc_load_ram(dmg.rom->mbc, save_filename);
 
   cpu.dmg = &dmg;
@@ -510,6 +904,7 @@ void StartEmulation(void)
   // Initialize JIT
   jit_init();
   jit_ctx.dmg = &dmg;
+  jit_aregs[REG_68K_A_SP] = (unsigned long) (dmg.zero_page + 0xfffe - 0xff80);
   jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
 
   // Initialize compile-time context

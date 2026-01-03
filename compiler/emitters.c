@@ -822,3 +822,46 @@ void emit_lea_disp_an_an(
     emit_word(block, 0x41e8 | (dest_areg << 9) | src_areg);
     emit_word(block, disp);
 }
+
+// move.l Dn, d(An) - store long from data register to memory with displacement
+void emit_move_l_dn_disp_an(
+    struct code_block *block,
+    uint8_t dreg,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 00 10 aaa 101 000 ddd
+    emit_word(block, 0x2140 | (areg << 9) | dreg);
+    emit_word(block, disp);
+}
+
+// add.l d(An), Dn - add long from memory to data register
+void emit_add_l_disp_an_dn(
+    struct code_block *block,
+    int16_t disp,
+    uint8_t areg,
+    uint8_t dreg
+) {
+    // 1101 ddd 0 10 101 aaa
+    emit_word(block, 0xd0a8 | (dreg << 9) | areg);
+    emit_word(block, disp);
+}
+
+// sub.l d(An), Dn - subtract long from memory from data register
+void emit_sub_l_disp_an_dn(
+    struct code_block *block,
+    int16_t disp,
+    uint8_t areg,
+    uint8_t dreg
+) {
+    // 1001 ddd 0 10 101 aaa
+    emit_word(block, 0x90a8 | (dreg << 9) | areg);
+    emit_word(block, disp);
+}
+
+// movea.l Dn, An - copy data register to address register (long)
+void emit_movea_l_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
+{
+    // 0010 aaa 001 000 ddd
+    emit_word(block, 0x2040 | (areg << 9) | dreg);
+}

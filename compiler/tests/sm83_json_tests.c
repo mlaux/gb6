@@ -158,15 +158,16 @@ static void setup_runtime_stubs(void)
     memcpy(mem + STUB_BASE + 0x20, stub_write, sizeof(stub_write));
     memcpy(mem + STUB_BASE + 0x40, stub_ei_di, sizeof(stub_ei_di));
 
-    // Set up jit_runtime context
-    m68k_write_memory_32(JIT_CTX_ADDR + 0, 0x00004000);       // dmg (dummy)
-    m68k_write_memory_32(JIT_CTX_ADDR + 4, STUB_BASE);        // read
-    m68k_write_memory_32(JIT_CTX_ADDR + 8, STUB_BASE + 0x20); // write
-    m68k_write_memory_32(JIT_CTX_ADDR + 12, STUB_BASE + 0x40); // ei_di
-    m68k_write_memory_8(JIT_CTX_ADDR + 16, 0);                // interrupt_check
-    // JIT_CTX_DISPATCH (offset 24): where to jump after block ends
+    // Set up jit_runtime context (see compiler.h for JIT_CTX_* offsets)
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DMG, 0);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ, STUB_BASE);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRITE, STUB_BASE + 0x20);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_EI_DI, STUB_BASE + 0x40);
+    m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_INTCHECK, 0);
+    m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_ROM_BANK, 1);
+    // JIT_CTX_DISPATCH: where to jump after block ends
     // Point to an infinite loop so m68k_execute returns
-    m68k_write_memory_32(JIT_CTX_ADDR + 24, CODE_BASE + 0x800);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, CODE_BASE + 0x800);
     m68k_write_memory_16(CODE_BASE + 0x800, 0x60fe);          // bra.s *
 }
 
@@ -302,6 +303,7 @@ static int run_single_test(cJSON *test)
 
     // Debug: dump compiled code if verbose
     if (verbose > 1) {
+        fprintf(stderr, "start_pc: %04x\n", init_pc);
         fprintf(stderr, "  Compiled %zu bytes: ", block->length);
         for (size_t k = 0; k < block->length && k < 32; k++) {
             fprintf(stderr, "%02x ", block->code[k]);
@@ -529,8 +531,8 @@ int main(int argc, char *argv[])
 
     test_ctx.dmg = NULL;
     test_ctx.read = test_read;
-    test_ctx.wram_base = NULL;
-    test_ctx.hram_base = NULL;
+    test_ctx.wram_base = (void *) 0xc000;
+    test_ctx.hram_base = (void *) 0xff80;
     test_ctx.single_instruction = 1;  // Compile one instruction at a time for testing
 
     if (directory) {

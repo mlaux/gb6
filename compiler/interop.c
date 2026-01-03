@@ -43,43 +43,43 @@ static void compile_dmg_write_internal(
     }
 
     // movea.l JIT_CTX_DMG(a4), a0  - get dmg pointer
-    emit_movea_l_disp_an_an(block, JIT_CTX_DMG, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+    // emit_movea_l_disp_an_an(block, JIT_CTX_DMG, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
 
-    // lea WRITE_PAGE_OFFSET(a0), a0  - point to write_page array
-    // (offset 1036 doesn't fit in 8-bit indexed displacement)
-    emit_lea_disp_an_an(block, DMG_WRITE_PAGE_OFFSET, REG_68K_A_SCRATCH_1, REG_68K_A_SCRATCH_1);
+    // // lea WRITE_PAGE_OFFSET(a0), a0  - point to write_page array
+    // // (offset 1036 doesn't fit in 8-bit indexed displacement)
+    // emit_lea_disp_an_an(block, DMG_WRITE_PAGE_OFFSET, REG_68K_A_SCRATCH_1, REG_68K_A_SCRATCH_1);
 
-    // move.w d1, d0  - copy address
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // move.w d1, d0  - copy address
+    // emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // lsr.w #8, d0  - get page index (high byte)
-    emit_lsr_w_imm_dn(block, 8, REG_68K_D_NEXT_PC);
+    // // lsr.w #8, d0  - get page index (high byte)
+    // emit_lsr_w_imm_dn(block, 8, REG_68K_D_NEXT_PC);
 
-    // lsl.w #2, d0  - multiply by 4 for pointer size
-    emit_lsl_w_imm_dn(block, 2, REG_68K_D_NEXT_PC);
+    // // lsl.w #2, d0  - multiply by 4 for pointer size
+    // emit_lsl_w_imm_dn(block, 2, REG_68K_D_NEXT_PC);
 
-    // movea.l (a0,d0.w), a0  - load page pointer
-    emit_movea_l_idx_an_an(block, 0, REG_68K_A_SCRATCH_1,
-                           REG_68K_D_NEXT_PC, REG_68K_A_SCRATCH_1);
+    // // movea.l (a0,d0.w), a0  - load page pointer
+    // emit_movea_l_idx_an_an(block, 0, REG_68K_A_SCRATCH_1,
+    //                        REG_68K_D_NEXT_PC, REG_68K_A_SCRATCH_1);
 
-    // move.l a0, d0  - test for NULL (sets Z flag)
-    emit_move_l_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // move.l a0, d0  - test for NULL (sets Z flag)
+    // emit_move_l_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // beq.b slow_path  - branch if page is NULL
-    emit_beq_b(block, 12);
+    // // beq.b slow_path  - branch if page is NULL
+    // emit_beq_b(block, 12);
 
-    // Fast path: write directly to page
-    // move.w d1, d0  - get address again
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // Fast path: write directly to page
+    // // move.w d1, d0  - get address again
+    // emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // andi.w #$ff, d0  - mask to get offset within page
-    emit_andi_w_dn(block, REG_68K_D_NEXT_PC, 0x00ff);
+    // // andi.w #$ff, d0  - mask to get offset within page
+    // emit_andi_w_dn(block, REG_68K_D_NEXT_PC, 0x00ff);
 
-    // move.b val_reg, (a0,d0.w)  - write byte to page
-    emit_move_b_dn_idx_an(block, val_reg, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // move.b val_reg, (a0,d0.w)  - write byte to page
+    // emit_move_b_dn_idx_an(block, val_reg, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // bra.b done  - skip slow path
-    emit_bra_b(block, 16);
+    // // bra.b done  - skip slow path
+    // emit_bra_b(block, 16);
 
     // Slow path: call dmg_write(dmg, address, value)
     emit_push_b_dn(block, val_reg);  // push value
@@ -120,40 +120,40 @@ void compile_call_dmg_read_to_d0(struct code_block *block)
     // push.w (2) + push.l (4) + movea.l (4) + jsr (2) + addq.l (2) = 14 bytes
 
     // movea.l JIT_CTX_DMG(a4), a0  - get dmg pointer
-    emit_movea_l_disp_an_an(block, JIT_CTX_DMG, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+    // emit_movea_l_disp_an_an(block, JIT_CTX_DMG, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
 
-    // move.w d1, d0  - copy address
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // move.w d1, d0  - copy address
+    // emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // lsr.w #8, d0  - get page index (high byte)
-    emit_lsr_w_imm_dn(block, 8, REG_68K_D_NEXT_PC);
+    // // lsr.w #8, d0  - get page index (high byte)
+    // emit_lsr_w_imm_dn(block, 8, REG_68K_D_NEXT_PC);
 
-    // add.w d0, d0; add.w d0, d0  - multiply by 4 for pointer size
-    emit_lsl_w_imm_dn(block, 2, REG_68K_D_NEXT_PC);
+    // // add.w d0, d0; add.w d0, d0  - multiply by 4 for pointer size
+    // emit_lsl_w_imm_dn(block, 2, REG_68K_D_NEXT_PC);
 
-    // movea.l 12(a0,d0.w), a0  - load page pointer
-    emit_movea_l_idx_an_an(block, DMG_READ_PAGE_OFFSET, REG_68K_A_SCRATCH_1,
-                           REG_68K_D_NEXT_PC, REG_68K_A_SCRATCH_1);
+    // // movea.l 12(a0,d0.w), a0  - load page pointer
+    // emit_movea_l_idx_an_an(block, DMG_READ_PAGE_OFFSET, REG_68K_A_SCRATCH_1,
+    //                        REG_68K_D_NEXT_PC, REG_68K_A_SCRATCH_1);
 
-    // move.l a0, d0  - test for NULL (sets Z flag)
-    emit_move_l_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // move.l a0, d0  - test for NULL (sets Z flag)
+    // emit_move_l_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // beq.b slow_path  - branch if page is NULL
-    emit_beq_b(block, 12);
+    // // beq.b slow_path  - branch if page is NULL
+    // emit_beq_b(block, 12);
 
-    // Fast path: read directly from page
-    // move.w d1, d0  - get address again
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
+    // // Fast path: read directly from page
+    // // move.w d1, d0  - get address again
+    // emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
 
-    // andi.w #$ff, d0  - mask to get offset within page
-    emit_andi_w_dn(block, REG_68K_D_NEXT_PC, 0x00ff);
+    // // andi.w #$ff, d0  - mask to get offset within page
+    // emit_andi_w_dn(block, REG_68K_D_NEXT_PC, 0x00ff);
 
-    // move.b (a0,d0.w), d0  - read byte from page
-    emit_move_b_idx_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC,
-                          REG_68K_D_NEXT_PC);
+    // // move.b (a0,d0.w), d0  - read byte from page
+    // emit_move_b_idx_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_NEXT_PC,
+    //                       REG_68K_D_NEXT_PC);
 
-    // bra.b done  - skip slow path
-    emit_bra_b(block, 14);
+    // // bra.b done  - skip slow path
+    // emit_bra_b(block, 14);
 
     // Slow path: call dmg_read(dmg, address)
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1);

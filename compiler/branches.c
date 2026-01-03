@@ -23,6 +23,10 @@ int get_branch_condition(uint8_t opcode)
     case 0xd2: return COND_CC;  // jp nc
     case 0xd8: return COND_CS;  // ret c
     case 0xda: return COND_CS;  // jp c
+    case 0xc4: return COND_NE;  // call nz
+    case 0xcc: return COND_EQ;  // call z
+    case 0xd4: return COND_CC;  // call nc
+    case 0xdc: return COND_CS;  // call c
     default:   return COND_NONE;
     }
 }
@@ -265,6 +269,50 @@ void compile_call_imm16(
     emit_dispatch_jump(block);
 }
 
+// Compile conditional call (call nz, call z, call nc, call c)
+// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// branch_if_set: if true, call when flag is set; if false, call when clear
+void compile_call_cond(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    uint8_t flag_bit,
+    int branch_if_set
+) {
+    uint16_t target = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
+    uint16_t ret_addr = src_address + *src_ptr + 2;  // address after call
+    *src_ptr += 2;
+
+    // Test the flag bit in D7
+    emit_btst_imm_dn(block, flag_bit, 7);
+
+    // If condition NOT met, skip the call sequence
+    // Call sequence is 28 bytes: moveq(2) + move.w(4) + subq.w(2) + move.b(2) +
+    //                            rol.w(2) + move.b d(An)(4) + moveq(2) + move.w(4) + dispatch_jump(6)
+    // bxx.w displacement is relative to PC after opcode word, so add 2
+    if (branch_if_set) {
+        // Skip call if flag is clear (btst Z=1 when bit=0)
+        emit_beq_w(block, 30);
+    } else {
+        // Skip call if flag is set (btst Z=0 when bit=1)
+        emit_bne_w(block, 30);
+    }
+
+    // Push return address (same as compile_call_imm16)
+    emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
+    emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
+    emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+    emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
+
+    // Jump to target
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
+    emit_dispatch_jump(block);
+}
+
 void compile_ret(struct code_block *block)
 {
     // pop return address from stack (A1 = base + SP)
@@ -430,5 +478,35 @@ void compile_ret_cond_fused(struct code_block *block, int cond)
     emit_rol_w_8(block, REG_68K_D_NEXT_PC);
     emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
     emit_addq_w_an(block, REG_68K_A_SP, 2);
+    emit_dispatch_jump(block);
+}
+
+// Fused call cond - uses live CCR flags
+void compile_call_cond_fused(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    int cond
+) {
+    uint16_t target = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
+    uint16_t ret_addr = src_address + *src_ptr + 2;
+    *src_ptr += 2;
+
+    // Skip call if condition NOT met
+    // Call sequence is 28 bytes
+    emit_bcc_opcode_w(block, invert_cond(cond), 30);
+
+    // Push return address
+    emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
+    emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
+    emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
+    emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
+
+    // Jump to target
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
+    emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
     emit_dispatch_jump(block);
 }

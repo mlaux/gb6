@@ -39,6 +39,9 @@ static int try_fuse_branch(
     case 0xc2: case 0xca: case 0xd2: case 0xda:  // jp nz/z/nc/c
         compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
         break;
+    case 0xc4: case 0xcc: case 0xd4: case 0xdc:  // call nz/z/nc/c
+        compile_call_cond_fused(block, ctx, src_ptr, src_address, cond);
+        break;
     default:  // ret nz/z/nc/c
         compile_ret_cond_fused(block, cond);
         break;
@@ -478,8 +481,8 @@ int compile_alu_op(
     case 0xa0: // and a, b
         emit_swap(block, REG_68K_D_BC);
         emit_and_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        emit_swap(block, REG_68K_D_BC);
         compile_set_z_flag(block);
+        emit_swap(block, REG_68K_D_BC);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xa0);  // keep Z, clear N, C
         emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);   // set H
         return 1;
@@ -494,8 +497,8 @@ int compile_alu_op(
     case 0xa2: // and a, d
         emit_swap(block, REG_68K_D_DE);
         emit_and_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        emit_swap(block, REG_68K_D_DE);
         compile_set_z_flag(block);
+        emit_swap(block, REG_68K_D_DE);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xa0);
         emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);
         return 1;
@@ -545,8 +548,8 @@ int compile_alu_op(
     case 0xa8: // xor a, b
         emit_swap(block, REG_68K_D_BC);
         emit_eor_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        emit_swap(block, REG_68K_D_BC);
         compile_set_z_flag(block);
+        emit_swap(block, REG_68K_D_BC);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
 
@@ -559,8 +562,8 @@ int compile_alu_op(
     case 0xaa: // xor a, d
         emit_swap(block, REG_68K_D_DE);
         emit_eor_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        emit_swap(block, REG_68K_D_DE);
         compile_set_z_flag(block);
+        emit_swap(block, REG_68K_D_DE);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
 
@@ -601,8 +604,8 @@ int compile_alu_op(
     case 0xb0: // or a, b
         emit_swap(block, REG_68K_D_BC);
         emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        emit_swap(block, REG_68K_D_BC);
         compile_set_z_flag(block);
+        emit_swap(block, REG_68K_D_BC);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
 
@@ -615,8 +618,8 @@ int compile_alu_op(
     case 0xb2: // or a, d
         emit_swap(block, REG_68K_D_DE);
         emit_or_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        emit_swap(block, REG_68K_D_DE);
         compile_set_z_flag(block);
+        emit_swap(block, REG_68K_D_DE);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
 

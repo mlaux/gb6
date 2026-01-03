@@ -44,6 +44,7 @@ struct dmg {
     int action_selected;
     u8 interrupt_enabled;
     u8 interrupt_requested;
+    void (*rom_bank_switch_hook)(int new_bank);
 
     u8 joypad;
     u8 action_buttons;
