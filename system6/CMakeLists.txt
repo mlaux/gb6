@@ -28,6 +28,7 @@ add_application(Emulator
     jit.c
     input.c
     lcd_mac.c
+    lru.c
     emulator.c
     resources.r
 )
