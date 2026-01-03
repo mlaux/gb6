@@ -34,7 +34,7 @@
 #define EDIT_PREFERENCES 1
 #define EDIT_KEY_MAPPINGS 2
 
-static int LoadRom(Str63, short);
+int LoadRom(Str63, short);
 
 #include "platform.h"
 

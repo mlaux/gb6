@@ -1,14 +1,13 @@
 /* Game Boy emulator for 68k Macs
    alerts.c - centered alert dialogs */
 
-#ifndef UNITY_BUILD
 #include <Dialogs.h>
+#include <Files.h>
+#include <StandardFile.h>
 #include <Resources.h>
 #include <Menus.h>
 #include "emulator.h"
-#endif
-
-static int LoadRom(Str63, short);
+#include "dialogs.h"
 
 // return true to hide, false to show
 static pascal Boolean RomFileFilter(CInfoPBRec *pb)
@@ -36,7 +35,7 @@ static pascal Boolean RomFileFilter(CInfoPBRec *pb)
   return true;
 }
 
-static int ShowOpenBox(void)
+int ShowOpenBox(void)
 {
   SFReply reply;
   Point pt = { 0, 0 };
@@ -53,7 +52,7 @@ static int ShowOpenBox(void)
   return false;
 }
 
-static void ShowAboutBox(void)
+void ShowAboutBox(void)
 {
   DialogPtr dp;
   EventRecord e;
@@ -66,31 +65,30 @@ static void ShowAboutBox(void)
   DisposeDialog(dp);
 }
 
-typedef short (*AlertProc)(short alertID);
-
 static short AlertWrapper(short alertID) { return Alert(alertID, NULL); }
 static short CautionAlertWrapper(short alertID) { return CautionAlert(alertID, NULL); }
 static short NoteAlertWrapper(short alertID) { return NoteAlert(alertID, NULL); }
 static short StopAlertWrapper(short alertID) { return StopAlert(alertID, NULL); }
 
-static short ShowCenteredAlert(
+short ShowCenteredAlert(
     short alertID,
     const char *s0,
     const char *s1,
     const char *s2,
     const char *s3,
-    AlertProc alertProc
+    int alertType
 ) {
   Handle alrt;
   Rect *bounds;
   Rect screen;
   short width, height, dh, dv;
+  AlertProc funcs[] = { AlertWrapper, NoteAlertWrapper, CautionAlertWrapper, StopAlertWrapper };
   
   ParamText(s0, s1, s2, s3);
 
   alrt = GetResource('ALRT', alertID);
   if (alrt == nil) {
-    return alertProc(alertID);
+    return funcs[alertType](alertID);
   }
 
   bounds = (Rect *) *alrt;
@@ -106,5 +104,5 @@ static short ShowCenteredAlert(
 
   OffsetRect(bounds, dh, dv);
 
-  return alertProc(alertID);
+  return funcs[alertType](alertID);
 }

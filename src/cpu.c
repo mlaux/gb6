@@ -65,11 +65,7 @@ void cpu_panic(struct cpu *cpu)
     exit(0);
 }
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#else
 static inline
-#endif
 u8 read8(struct cpu *cpu, u16 address)
 {
     return FAST_READ(cpu->dmg, address);
@@ -77,22 +73,14 @@ u8 read8(struct cpu *cpu, u16 address)
 
 // optimized read for PC-based operand fetches (always in ROM when PC is in ROM)
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#else
 static inline
-#endif
 u8 read8_pc(struct cpu *cpu)
 {
     u16 addr = cpu->pc++;
     return FAST_ROM_READ(cpu->dmg, addr);
 }
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#else
 static inline
-#endif
 u16 read16_pc(struct cpu *cpu)
 {
     u16 addr = cpu->pc;
@@ -102,11 +90,7 @@ u16 read16_pc(struct cpu *cpu)
     return high << 8 | low;
 }
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#else
 static inline
-#endif
 u16 read16(struct cpu *cpu, u16 address)
 {
     u8 low = read8(cpu, address);
@@ -114,21 +98,13 @@ u16 read16(struct cpu *cpu, u16 address)
     return high << 8 | low;
 }
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#else
 static inline
-#endif
 void write8(struct cpu *cpu, u16 address, u8 data)
 {
     FAST_WRITE(cpu->dmg, address, data);
 }
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#else
 static inline
-#endif
 void write16(struct cpu *cpu, u16 address, u16 data)
 {
     FAST_WRITE(cpu->dmg, address, data & 0xff);
@@ -502,9 +478,6 @@ static u16 check_interrupts(struct cpu *cpu)
     return 0;
 }
 
-#ifdef UNITY_BUILD
-static inline __attribute__((always_inline))
-#endif
 void cpu_step(struct cpu *cpu)
 {
     u8 temp;

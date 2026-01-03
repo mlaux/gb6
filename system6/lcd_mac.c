@@ -1,11 +1,11 @@
 /* Game Boy emulator for 68k Macs
    lcd_mac.c - LCD rendering with 2x dithering */
 
-#ifndef UNITY_BUILD
 #include <Quickdraw.h>
 #include <Windows.h>
+
 #include "../src/lcd.h"
-#endif
+#include "lcd_mac.h"
 
 extern WindowPtr g_wp;
 extern char offscreen_buf[];

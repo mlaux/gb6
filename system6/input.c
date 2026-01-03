@@ -1,6 +1,5 @@
-#ifndef UNITY_BUILD
 #include "../src/dmg.h"
-#endif
+#include "input.h"
 
 extern struct dmg dmg;
 
@@ -24,7 +23,7 @@ static struct key_input key_inputs[] = {
     { 0, 0, 0 }
 };
 
-static void HandleKeyEvent(int ch, int down)
+void HandleKeyEvent(int ch, int down)
 {
   if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
   struct key_input *key = key_inputs;
