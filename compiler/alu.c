@@ -7,6 +7,45 @@
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
 
+// Try to fuse with a following conditional branch using live CCR flags.
+// allow_carry: if true, allow C conditions (for cp/sub); if false, only Z (for and/or/tst)
+// Returns 1 if fused, 0 if caller should save flags normally.
+static int try_fuse_branch(
+    struct code_block *block,
+    struct compile_ctx *ctx,
+    uint16_t *src_ptr,
+    uint16_t src_address,
+    int allow_carry
+) {
+    uint8_t next_op = READ_BYTE(*src_ptr);
+    int cond = get_branch_condition(next_op);
+
+    if (cond == COND_NONE)
+        return 0;
+
+    // For and/or/tst, only fuse Z conditions
+    if (!allow_carry && (cond == COND_CS || cond == COND_CC))
+        return 0;
+
+    // Record m68k offset for branch instruction and consume opcode
+    block->m68k_offsets[*src_ptr] = block->length;
+    (*src_ptr)++;
+
+    // Emit fused branch based on opcode type
+    switch (next_op) {
+    case 0x20: case 0x28: case 0x30: case 0x38:  // jr nz/z/nc/c
+        compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
+        break;
+    case 0xc2: case 0xca: case 0xd2: case 0xda:  // jp nz/z/nc/c
+        compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
+        break;
+    default:  // ret nz/z/nc/c
+        compile_ret_cond_fused(block, cond);
+        break;
+    }
+    return 1;
+}
+
 // ADC core: expects operand already in D1.b
 // Does A = A + D1 + carry using 16-bit arithmetic
 static void compile_adc_core(struct code_block *block)
@@ -86,8 +125,7 @@ int compile_alu_op(
     struct compile_ctx *ctx,
     uint16_t src_address,
     uint16_t *src_ptr
-)
-{
+) {
     switch (op) {
     // inc/dec register ops (0xn4, 0xn5, 0xnc, 0xnd where n = 0-3)
     case 0x04: // inc b
@@ -102,7 +140,7 @@ int compile_alu_op(
         emit_swap(block, REG_68K_D_BC);
         emit_subq_b_dn(block, REG_68K_D_BC, 1);
         compile_set_z_flag(block);
-        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
+        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
         emit_swap(block, REG_68K_D_BC);
         return 1;
 
@@ -114,8 +152,10 @@ int compile_alu_op(
 
     case 0x0d: // dec c
         emit_subq_b_dn(block, REG_68K_D_BC, 1);
-        compile_set_z_flag(block);
-        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
+        }
         return 1;
 
     case 0x14: // inc d
@@ -142,8 +182,10 @@ int compile_alu_op(
 
     case 0x1d: // dec e
         emit_subq_b_dn(block, REG_68K_D_DE, 1);
-        compile_set_z_flag(block);
-        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
+        }
         return 1;
 
     case 0x24: // inc h
@@ -174,12 +216,14 @@ int compile_alu_op(
         emit_andi_b_dn(block, REG_68K_D_FLAGS, ~0x40);
         return 1;
 
-    case 0x2d: // dec l
+    case 0x2d: // dec l (movea doesn't affect CCR, so we can fuse)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_subq_b_dn(block, REG_68K_D_SCRATCH_1, 1);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
-        compile_set_z_flag(block);
-        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);  // N flag
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
+        }
         return 1;
 
     case 0x34: // inc (hl)
@@ -210,8 +254,10 @@ int compile_alu_op(
 
     case 0x3d: // dec a
         emit_subq_b_dn(block, REG_68K_D_A, 1);
-        compile_set_z_flag(block);
-        emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
+            compile_set_z_flag(block);
+            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x40);
+        }
         return 1;
 
     // misc ALU ops
@@ -489,25 +535,7 @@ int compile_alu_op(
 
     case 0xa7: // and a, a - set flags based on A
         emit_tst_b_dn(block, REG_68K_D_A);
-        {
-            // Lookahead: check if next instruction is conditional branch on Z
-            uint8_t next_op = READ_BYTE(*src_ptr);
-            int cond = get_branch_condition(next_op);
-            // Only fuse for Z conditions (and a doesn't affect C meaningfully)
-            if (cond == COND_EQ || cond == COND_NE) {
-                block->m68k_offsets[*src_ptr] = block->length;
-                (*src_ptr)++;
-
-                if (next_op == 0x20 || next_op == 0x28) {
-                    compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
-                } else if (next_op == 0xc2 || next_op == 0xca) {
-                    compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
-                } else {
-                    compile_ret_cond_fused(block, cond);
-                }
-                return 1;
-            }
-            // No fused branch - save flags normally
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
             compile_set_z_flag(block);
             emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xa0);
             emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);
@@ -623,30 +651,14 @@ int compile_alu_op(
 
     case 0xb7: // or a, a - set flags based on A
         emit_tst_b_dn(block, REG_68K_D_A);
-        {
-            // Lookahead: check if next instruction is conditional branch on Z
-            uint8_t next_op = READ_BYTE(*src_ptr);
-            int cond = get_branch_condition(next_op);
-            if (cond == COND_EQ || cond == COND_NE) {
-                block->m68k_offsets[*src_ptr] = block->length;
-                (*src_ptr)++;
-
-                if (next_op == 0x20 || next_op == 0x28) {
-                    compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
-                } else if (next_op == 0xc2 || next_op == 0xca) {
-                    compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
-                } else {
-                    compile_ret_cond_fused(block, cond);
-                }
-                return 1;
-            }
-            // No fused branch - save flags normally
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
             compile_set_z_flag(block);
             emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         }
         return 1;
 
     case 0xb8: // cp a, b
+        // cannot fuse branch because it needs to swap back BC :/
         emit_swap(block, REG_68K_D_BC);
         emit_cmp_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
         compile_set_znc_flags(block);
@@ -655,10 +667,12 @@ int compile_alu_op(
 
     case 0xb9: // cp a, c
         emit_cmp_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_znc_flags(block);
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
+            compile_set_znc_flags(block);
         return 1;
 
-    case 0xba: // cp a, d
+    case 0xba: // cp a, d 
+        // can't fuse
         emit_swap(block, REG_68K_D_DE);
         emit_cmp_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
         compile_set_znc_flags(block);
@@ -667,27 +681,31 @@ int compile_alu_op(
 
     case 0xbb: // cp a, e
         emit_cmp_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_znc_flags(block);
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
+            compile_set_znc_flags(block);
         return 1;
 
     case 0xbc: // cp a, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_znc_flags(block);
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
+            compile_set_znc_flags(block);
         return 1;
 
     case 0xbd: // cp a, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_znc_flags(block);
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
+            compile_set_znc_flags(block);
         return 1;
 
     case 0xbe: // cp a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
         emit_cmp_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
-        compile_set_znc_flags(block);
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
+            compile_set_znc_flags(block);
         return 1;
 
     case 0xbf: // cp a, a - always Z=1, N=1, H=0, C=0
@@ -744,33 +762,8 @@ int compile_alu_op(
     case 0xfe: // cp a, imm8
         emit_cmp_b_imm_dn(block, REG_68K_D_A, READ_BYTE(*src_ptr));
         (*src_ptr)++;
-        {
-            // Lookahead: check if next instruction is conditional branch
-            uint8_t next_op = READ_BYTE(*src_ptr);
-            int cond = get_branch_condition(next_op);
-            if (cond != COND_NONE) {
-                // Record m68k offset for the branch instruction
-                block->m68k_offsets[*src_ptr] = block->length;
-                (*src_ptr)++;  // consume branch opcode
-
-                // Emit fused branch based on type
-                if (next_op == 0x20 || next_op == 0x28 ||
-                    next_op == 0x30 || next_op == 0x38) {
-                    // jr nz/z/nc/c
-                    compile_jr_cond_fused(block, ctx, src_ptr, src_address, cond);
-                } else if (next_op == 0xc2 || next_op == 0xca ||
-                           next_op == 0xd2 || next_op == 0xda) {
-                    // jp nz/z/nc/c
-                    compile_jp_cond_fused(block, ctx, src_ptr, src_address, cond);
-                } else {
-                    // ret nz/z/nc/c
-                    compile_ret_cond_fused(block, cond);
-                }
-                return 1;
-            }
-            // No fused branch - save flags normally
+        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
             compile_set_znc_flags(block);
-        }
         return 1;
 
     default:

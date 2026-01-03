@@ -366,7 +366,7 @@ static void jit_init(void)
 
     // Set up context - will be initialized properly in StartEmulation
     jit_ctx.dmg = NULL;
-    jit_ctx.read_func = dmg_read;
+    jit_ctx.read_func = dmg_read_slow;
     jit_ctx.write_func = dmg_write;
     jit_ctx.ei_di_func = dmg_ei_di;
     jit_ctx.interrupt_check = 0;

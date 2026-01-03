@@ -357,6 +357,12 @@ void emit_dispatch_jump(struct code_block *block)
     emit_word(block, 0x4ed0);
 }
 
+// bra.b - branch always with 8-bit displacement
+void emit_bra_b(struct code_block *block, int8_t disp)
+{
+    emit_word(block, 0x6000 | ((uint8_t) disp));
+}
+
 // bra.w - branch always with 16-bit displacement
 void emit_bra_w(struct code_block *block, int16_t disp)
 {
@@ -456,6 +462,20 @@ void emit_lsl_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
     }
     ccc = count == 8 ? 0 : count;
     emit_word(block, 0xe148 | (ccc << 9) | dreg);
+}
+
+// lsl.l #imm, Dn - logical shift left long by immediate
+void emit_lsl_l_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 1 10 i 01 rrr  (i=0 for immediate, size=10 for long)
+    if (count == 0 || count > 8) {
+        printf("can only lsl by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe188 | (ccc << 9) | dreg);
 }
 
 // move.b #imm, -(A7) - push immediate word
@@ -714,4 +734,66 @@ void emit_tst_b_dn(struct code_block *block, uint8_t dreg)
 {
     // 0100 1010 00 000 rrr
     emit_word(block, 0x4a00 | dreg);
+}
+
+// lsr.w #count, Dn - logical shift right word by immediate (1-8)
+void emit_lsr_w_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 0 01 i 01 rrr (d=0 for right, size=01 for word, i=0 for imm, type=01 for lsr)
+    if (count == 0 || count > 8) {
+        printf("can only lsr by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe048 | (ccc << 9) | dreg);
+}
+
+// lsr.l #count, Dn - logical shift right long by immediate (1-8)
+void emit_lsr_l_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg)
+{
+    uint16_t ccc;
+
+    // 1110 ccc 0 10 i 01 rrr (d=0 for right, size=10 for long, i=0 for imm, type=01 for lsr)
+    if (count == 0 || count > 8) {
+        printf("can only lsr by 1-8\n");
+        exit(1);
+    }
+    ccc = count == 8 ? 0 : count;
+    emit_word(block, 0xe088 | (ccc << 9) | dreg);
+}
+
+// move.l An, Dn - copy address register to data register (long)
+void emit_move_l_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg)
+{
+    // 00 10 ddd 000 001 aaa
+    emit_word(block, 0x2008 | (dreg << 9) | areg);
+}
+
+// movea.l d(An,Dm.w), Ad - load long from indexed address
+void emit_movea_l_idx_an_an(
+    struct code_block *block,
+    int8_t disp,
+    uint8_t base_areg,
+    uint8_t idx_dreg,
+    uint8_t dest_areg
+) {
+    // movea.l ea, An: 00 10 aaa 001 110 bbb (mode 110 = An with index)
+    // extension word: D/A=0 | idx_reg | W/L=0 | 000 | disp8
+    emit_word(block, 0x2070 | (dest_areg << 9) | base_areg);
+    emit_word(block, (idx_dreg << 12) | ((uint8_t) disp));
+}
+
+// move.b (An,Dm.w), Dd - load byte from indexed address
+void emit_move_b_idx_an_dn(
+    struct code_block *block,
+    uint8_t base_areg,
+    uint8_t idx_dreg,
+    uint8_t dest_dreg
+) {
+    // move.b ea, Dn: 00 01 ddd 000 110 aaa (mode 110 = An with index)
+    // extension word: D/A=0 | idx_reg | W/L=0 | 000 | 0 (disp=0)
+    emit_word(block, 0x1030 | (dest_dreg << 9) | base_areg);
+    emit_word(block, idx_dreg << 12);
 }

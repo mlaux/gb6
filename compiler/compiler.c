@@ -23,20 +23,16 @@ void compiler_init(void)
 static void compile_bc_to_addr(struct code_block *block)
 {
     emit_move_l_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D1 = 0x00BB00CC
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);  // D2.w = 0x00CC
-    emit_swap(block, REG_68K_D_SCRATCH_1);  // D1 = 0x00CC00BB
-    emit_lsl_w_imm_dn(block, 8, REG_68K_D_SCRATCH_1);  // D1.w = 0xBB00
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // D1.w = 0xBBCC
+    emit_lsr_l_imm_dn(block, 8, REG_68K_D_SCRATCH_1);             // D1 = 0x0000BB00
+    emit_move_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D1 = 0x0000BBCC
 }
 
 // Reconstruct DE from split format (0x00DD00EE) into D1.w as 0xDDEE
 static void compile_de_to_addr(struct code_block *block)
 {
     emit_move_l_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);  // D1 = 0x00DD00EE
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);  // D2.w = 0x00EE
-    emit_swap(block, REG_68K_D_SCRATCH_1);  // D1 = 0x00EE00DD
-    emit_lsl_w_imm_dn(block, 8, REG_68K_D_SCRATCH_1);  // D1.w = 0xDD00
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // D1.w = 0xDDEE
+    emit_lsr_l_imm_dn(block, 8, REG_68K_D_SCRATCH_1);             // D1 = 0x0000DD00
+    emit_move_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);  // D1 = 0x0000DDEE
 }
 
 static void compile_ld_imm16_split(
@@ -117,7 +113,8 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     while (!done) {
         // detect overflow of code block
         // could split loops across multiple blocks which is correct but slower
-        if (block->length > sizeof(block->code) - 40) {
+        // longest instruction is probably either adc or inc/dec (hl)
+        if (block->length > sizeof(block->code) - 120) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
             emit_dispatch_jump(block);
