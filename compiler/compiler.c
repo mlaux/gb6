@@ -111,6 +111,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     block->failed_address = 0;
 
     while (!done) {
+        size_t before = block->length;
         // detect overflow of code block
         // could split loops across multiple blocks which is correct but slower
         // longest instruction is probably either adc or inc/dec (hl)
@@ -474,7 +475,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             {
                 uint16_t addr = 0xff00 + READ_BYTE(src_ptr++);
                 emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_write(block);
+                compile_call_dmg_write_slow(block);
             }
             break;
 
@@ -505,14 +506,14 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         case 0xe2: // ld ($ff00 + c), a
             emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00);
             emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D1.b |= C
-            compile_call_dmg_write(block);
+            compile_call_dmg_write_slow(block);
             break;
 
         case 0xf0: // ld a, ($ff00 + u8)
             {
                 uint16_t addr = 0xff00 + READ_BYTE(src_ptr++);
                 emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_read(block);
+                compile_call_dmg_read_slow(block);
             }
             break;
 
@@ -582,6 +583,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_dispatch_jump(block);
             done = 1;
             break;
+        }
+
+        size_t emitted = block->length - before;
+        if (emitted > 80) {
+            printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
         }
 
         // Single instruction mode: emit dispatch and stop after one instruction

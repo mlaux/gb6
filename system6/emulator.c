@@ -367,7 +367,7 @@ static void jit_init(void)
     // Set up context - will be initialized properly in StartEmulation
     jit_ctx.dmg = NULL;
     jit_ctx.read_func = dmg_read_slow;
-    jit_ctx.write_func = dmg_write;
+    jit_ctx.write_func = dmg_write_slow;
     jit_ctx.ei_di_func = dmg_ei_di;
     jit_ctx.interrupt_check = 0;
     jit_ctx.block_cache = block_cache;
@@ -417,7 +417,7 @@ static int jit_step(void)
             return 0;
         }
 
-        // debug_log_block(block);
+        //debug_log_block(block);
         block_cache[cpu.pc] = block;
     } else {
       set_status_bar("Running");

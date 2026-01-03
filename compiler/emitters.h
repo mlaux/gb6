@@ -100,5 +100,7 @@ void emit_lsr_l_imm_dn(struct code_block *block, uint8_t count, uint8_t dreg);
 void emit_move_l_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg);
 void emit_movea_l_idx_an_an(struct code_block *block, int8_t disp, uint8_t base_areg, uint8_t idx_dreg, uint8_t dest_areg);
 void emit_move_b_idx_an_dn(struct code_block *block, uint8_t base_areg, uint8_t idx_dreg, uint8_t dest_dreg);
+void emit_move_b_dn_idx_an(struct code_block *block, uint8_t src_dreg, uint8_t base_areg, uint8_t idx_dreg);
+void emit_lea_disp_an_an(struct code_block *block, int16_t disp, uint8_t src_areg, uint8_t dest_areg);
 
 #endif
