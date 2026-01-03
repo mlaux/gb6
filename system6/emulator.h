@@ -36,6 +36,6 @@
 
 int LoadRom(Str63, short);
 
-#include "platform.h"
+void set_status_bar(const char *str);
 
 #endif

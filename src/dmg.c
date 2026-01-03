@@ -8,7 +8,6 @@
 #include "mbc.h"
 #include "types.h"
 #include "bootstrap.h"
-#include "platform.h"
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {

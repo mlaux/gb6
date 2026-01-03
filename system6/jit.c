@@ -10,7 +10,7 @@
 #include "dmg.h"
 #include "lru.h"
 #include "dispatcher_asm.h"
-#include "platform.h"
+#include "emulator.h"
 
 #define CYCLES_PER_INTERRUPT 70224
 
