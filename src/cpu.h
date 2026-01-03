@@ -7,58 +7,10 @@ struct dmg;
 
 struct cpu
 {
-    union {
-        u16 af;
-        struct {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-            u8 f; u8 a;
-#else
-            u8 a; u8 f;
-#endif
-        };
-    };
-    union {
-        u16 bc;
-        struct {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-            u8 c; u8 b;
-#else
-            u8 b; u8 c;
-#endif
-        };
-    };
-    union {
-        u16 de;
-        struct {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-            u8 e; u8 d;
-#else
-            u8 d; u8 e;
-#endif
-        };
-    };
-    union {
-        u16 hl;
-        struct {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-            u8 l; u8 h;
-#else
-            u8 h; u8 l;
-#endif
-        };
-    };
-    u16 sp;
     u16 pc;
-    u32 cycle_count;  // used by interpreter, not JIT
     u8 interrupt_enable;
-
-    u8 halted;
-
     struct dmg *dmg;
 };
-
-void cpu_step(struct cpu *cpu);
-int flag_isset(struct cpu *cpu, int flag);
 
 #define FLAG_ZERO       0x80
 #define FLAG_SIGN       0x40

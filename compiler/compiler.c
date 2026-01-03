@@ -9,7 +9,6 @@
 #include "cb_prefix.h"
 #include "reg_loads.h"
 #include "alu.h"
-#include "instructions.h"
 
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
