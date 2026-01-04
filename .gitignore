@@ -20,3 +20,4 @@ examples/*.bin
 test_compiler
 build_native
 *.md
+compiler/tests/sm83_json*

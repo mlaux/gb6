@@ -349,7 +349,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     if (crosses_vblank) {
         lcd_set_mode(dmg->lcd, 1);
 
-        if (!(dmg->interrupt_request_mask & (1 << INT_VBLANK))) {
+        if (!(dmg->interrupt_request_mask & INT_VBLANK)) {
             dmg_request_interrupt(dmg, INT_VBLANK);
         }
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {

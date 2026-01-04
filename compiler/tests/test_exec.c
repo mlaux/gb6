@@ -1674,6 +1674,101 @@ TEST(test_ldh_dec_preserves_value)
     ASSERT_EQ(get_mem_byte(0xff91), 0x04);
 }
 
+// Slow path pop tests - SP set to address outside WRAM/HRAM (simulates Pokemon VBlankCopy)
+// The slow path reads via dmg_read (stub_read in test harness) which reads from mem[].
+// We use GB code (ld (hl), imm8) to write test data to mem before the pop.
+TEST(test_pop_de_slow_path)
+{
+    // Write test data to $5000/$5001 using GB code, then pop from there
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50,   // 0x0000: ld hl, $5000
+        0x36, 0xab,         // 0x0003: ld (hl), $ab   ; low byte at $5000
+        0x23,               // 0x0005: inc hl
+        0x36, 0xcd,         // 0x0006: ld (hl), $cd   ; high byte at $5001
+        0x31, 0x00, 0x50,   // 0x0008: ld sp, $5000   ; SP points to our data (slow mode)
+        0xd1,               // 0x000b: pop de
+        0x10                // 0x000c: stop
+    };
+    run_program(rom, 0);
+    // DE in split format: 0x00DD00EE = 0x00cd00ab
+    ASSERT_EQ(get_dreg(REG_68K_D_DE), 0x00cd00ab);
+}
+
+TEST(test_pop_bc_slow_path)
+{
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50,   // ld hl, $5000
+        0x36, 0x34,         // ld (hl), $34  ; C
+        0x23,               // inc hl
+        0x36, 0x12,         // ld (hl), $12  ; B
+        0x31, 0x00, 0x50,   // ld sp, $5000
+        0xc1,               // pop bc
+        0x10                // stop
+    };
+    run_program(rom, 0);
+    // BC in split format: 0x00BB00CC = 0x00120034
+    ASSERT_EQ(get_dreg(REG_68K_D_BC), 0x00120034);
+}
+
+TEST(test_pop_hl_slow_path)
+{
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50,   // ld hl, $5000
+        0x36, 0x78,         // ld (hl), $78  ; L
+        0x23,               // inc hl
+        0x36, 0x56,         // ld (hl), $56  ; H
+        0x31, 0x00, 0x50,   // ld sp, $5000
+        0xe1,               // pop hl
+        0x10                // stop
+    };
+    run_program(rom, 0);
+    // HL is contiguous: 0xHHLL = 0x5678
+    ASSERT_EQ(get_areg(REG_68K_A_HL) & 0xffff, 0x5678);
+}
+
+TEST(test_pop_af_slow_path)
+{
+    uint8_t rom[] = {
+        0x21, 0x00, 0x50,   // ld hl, $5000
+        0x36, 0x80,         // ld (hl), $80  ; F (Z flag set)
+        0x23,               // inc hl
+        0x36, 0xef,         // ld (hl), $ef  ; A
+        0x31, 0x00, 0x50,   // ld sp, $5000
+        0xf1,               // pop af
+        0x10                // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0xef);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0xff, 0x80);
+}
+
+TEST(test_vblank_copy_pattern)
+{
+    // Simulates Pokemon's VBlankCopy: use pop to read from arbitrary memory
+    uint8_t rom[] = {
+        // Set up test data at $5000-$5003
+        0x21, 0x00, 0x50,   // ld hl, $5000
+        0x36, 0x11,         // ld (hl), $11
+        0x23,               // inc hl
+        0x36, 0x22,         // ld (hl), $22
+        0x23,               // inc hl
+        0x36, 0x33,         // ld (hl), $33
+        0x23,               // inc hl
+        0x36, 0x44,         // ld (hl), $44
+        // Now do the VBlankCopy pattern
+        0x31, 0x00, 0x50,   // ld sp, $5000
+        0xd1,               // pop de -> DE = 0x00220011
+        0x43,               // ld b, e (save E to B)
+        0xd1,               // pop de -> DE = 0x00440033
+        0x10                // stop
+    };
+    run_program(rom, 0);
+    // After second pop, DE = 0x00440033
+    ASSERT_EQ(get_dreg(REG_68K_D_DE), 0x00440033);
+    // B should have first low byte 0x11 (from first pop's E value)
+    ASSERT_EQ((get_dreg(REG_68K_D_BC) >> 16) & 0xff, 0x11);
+}
+
 void register_exec_tests(void)
 {
     printf("\nExecution tests:\n");
@@ -1828,6 +1923,13 @@ void register_exec_tests(void)
     RUN_TEST(test_ld_hl_sp_plus_positive);
     RUN_TEST(test_ld_hl_sp_plus_negative);
     RUN_TEST(test_ld_sp_hl_roundtrip);
+
+    printf("\nSlow path pop tests:\n");
+    RUN_TEST(test_pop_de_slow_path);
+    RUN_TEST(test_pop_bc_slow_path);
+    RUN_TEST(test_pop_hl_slow_path);
+    RUN_TEST(test_pop_af_slow_path);
+    RUN_TEST(test_vblank_copy_pattern);
 
     printf("\nLoad from (HL):\n");
     RUN_TEST(test_ld_d_hl_ind);

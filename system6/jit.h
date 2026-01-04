@@ -19,14 +19,13 @@ typedef struct {
     /* 18 */ struct code_block ***banked_cache;
     /* 1c */ struct code_block **upper_cache;
     /* 20 */ void *dispatcher_return;
-    /* 24 */ u32 sp_adjust;
+    /* 24 */ u32 sp_adjust;  // 0 = slow mode (SP outside WRAM/HRAM)
+    /* 28 */ u16 gb_sp;      // always-accurate GB SP value
+    /* 2a */ u8 _pad2[2];
 } jit_context;
 
 extern jit_context jit_ctx;
 extern int jit_halted;
-
-extern u32 jit_dregs[8];
-extern u32 jit_aregs[8];
 
 void jit_init(struct dmg *dmg);
 

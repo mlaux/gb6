@@ -2,6 +2,7 @@
 #include <Timer.h>
 
 #include <stdio.h>
+#include <string.h>
 
 #include "types.h"
 #include "jit.h"
@@ -11,12 +12,16 @@
 #include "lru.h"
 #include "dispatcher_asm.h"
 #include "emulator.h"
+#include "debug.h"
 
 #define CYCLES_PER_INTERRUPT 70224
 
 // register state that persists between block executions
-u32 jit_dregs[8];
-u32 jit_aregs[8];
+struct {
+  u32 d4, d5, d6, d7;
+  u32 a2, a3, a4;
+} jit_regs;
+u32 jit_d0;
 
 // exposed to main emulator.c
 jit_context jit_ctx;
@@ -40,45 +45,24 @@ static void execute_block(void *code)
     "movea.l %[code], %%a0\n\t"
 
     // load GB state into 68k registers
-    "move.l %[d4], %%d4\n\t"
-    "move.l %[d5], %%d5\n\t"
-    "move.l %[d6], %%d6\n\t"
-    "move.l %[d7], %%d7\n\t"
-    "movea.l %[a2], %%a2\n\t"
-    "movea.l %[a3], %%a3\n\t"
-    "movea.l %[a4], %%a4\n\t"
+    "lea %[jit_regs], %%a1\n\t"
+    "movem.l (%%a1), %%d4-%%d7/%%a2-%%a4\n\t"
 
     // call the generated code, this can then chain to other blocks
     "jsr (%%a0)\n\t"
 
     // save results back to memory
     "move.l %%d0, %[out_d0]\n\t"
-    "move.l %%d4, %[out_d4]\n\t"
-    "move.l %%d5, %[out_d5]\n\t"
-    "move.l %%d6, %[out_d6]\n\t"
-    "move.l %%d7, %[out_d7]\n\t"
-    "move.l %%a2, %[out_a2]\n\t"
-    "move.l %%a3, %[out_a3]\n\t"
+    "lea %[jit_regs], %%a0\n\t"
+    "movem.l %%d4-%%d7/%%a2-%%a3, (%%a0)\n\t"
 
     // restore callee-saved registers
     "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a4\n\t"
 
-    : [out_d0] "=m" (jit_dregs[0]),
-      [out_d4] "=m" (jit_dregs[4]),
-      [out_d5] "=m" (jit_dregs[5]),
-      [out_d6] "=m" (jit_dregs[6]),
-      [out_d7] "=m" (jit_dregs[7]),
-      [out_a2] "=m" (jit_aregs[2]),
-      [out_a3] "=m" (jit_aregs[3])
-    : [d4] "m" (jit_dregs[4]),
-      [d5] "m" (jit_dregs[5]),
-      [d6] "m" (jit_dregs[6]),
-      [d7] "m" (jit_dregs[7]),
-      [a2] "m" (jit_aregs[2]),
-      [a3] "m" (jit_aregs[3]),
-      [a4] "m" (jit_aregs[4]),
+    : [out_d0] "=m" (jit_d0)
+    : [jit_regs] "m" (jit_regs),
       [code] "a" (code)
-    : "d0", "d1", "d2", "d3", "a0", "a1", "cc", "memory"
+    : "d0", "d1", "a0", "a1", "cc", "memory"
   );
 }
 
@@ -93,10 +77,7 @@ void jit_init(struct dmg *dmg)
     // also clears old blocks
     lru_init();
 
-    for (k = 0; k < 8; k++) {
-        jit_dregs[k] = 0;
-        jit_aregs[k] = 0;
-    }
+    memset(&jit_regs, 0, sizeof jit_regs);
 
     // Initialize compile-time context
     compile_ctx.dmg = dmg;
@@ -115,8 +96,12 @@ void jit_init(struct dmg *dmg)
     jit_ctx.upper_cache = upper_cache;
     jit_ctx.dispatcher_return = (void *) dispatcher_code;
 
-    jit_aregs[REG_68K_A_SP] = (unsigned long) (dmg->zero_page + 0xfffe - 0xff80);
-    jit_aregs[REG_68K_A_CTX] = (unsigned long) &jit_ctx;
+    // Initialize SP to point to top of HRAM (0xFFFE)
+    // A3 is the native pointer, gb_sp is the GB address, sp_adjust converts between them
+    jit_regs.a3 = (unsigned long) (dmg->zero_page + 0xfffe - 0xff80);
+    jit_ctx.gb_sp = 0xfffe;
+    jit_ctx.sp_adjust = 0xff80 - (u32) dmg->zero_page;
+    jit_regs.a4 = (unsigned long) &jit_ctx;
 
     jit_halted = 0;
     last_wall_ticks = TickCount();
@@ -125,7 +110,6 @@ void jit_init(struct dmg *dmg)
 int jit_step(struct dmg *dmg)
 {
     struct code_block *block;
-    unsigned long next_pc;
     char buf[64];
     int took_interrupt;
     u32 finished_ticks;
@@ -187,9 +171,7 @@ int jit_step(struct dmg *dmg)
     execute_block(block->code);
 
     // Get next PC from D0
-    next_pc = jit_dregs[REG_68K_D_NEXT_PC];
-
-    if (next_pc == HALT_SENTINEL) {
+    if (jit_d0 == HALT_SENTINEL) {
         set_status_bar("HALT");
         jit_halted = 1;
         return 0;
@@ -208,14 +190,15 @@ int jit_step(struct dmg *dmg)
             dmg->cpu->interrupt_enable = 0;
 
             // push PC to stack
-            u8 *sp_ptr = (u8 *) jit_aregs[REG_68K_A_SP];
+            u8 *sp_ptr = (u8 *) jit_regs.a3;
             sp_ptr -= 2;
-            sp_ptr[1] = (next_pc >> 8) & 0xff;
-            sp_ptr[0] = next_pc & 0xff;
-            jit_aregs[REG_68K_A_SP] = (unsigned long) sp_ptr;
+            sp_ptr[1] = (jit_d0 >> 8) & 0xff;
+            sp_ptr[0] = jit_d0 & 0xff;
+            jit_regs.a3 = (unsigned long) sp_ptr;
+            jit_ctx.gb_sp -= 2;
 
             // Jump to handler
-            next_pc = handlers[k];
+            jit_d0 = handlers[k];
             took_interrupt = 1;
             break;
           }
@@ -223,7 +206,7 @@ int jit_step(struct dmg *dmg)
       }
     }
 
-    dmg->cpu->pc = (u16) next_pc;
+    dmg->cpu->pc = (u16) jit_d0;
 
     finished_ticks = TickCount();
     wall_ticks = finished_ticks - last_wall_ticks;

@@ -50,6 +50,8 @@
 #define JIT_CTX_UPPER_CACHE   28  // struct code_block **upper_cache
 #define JIT_CTX_DISPATCH      32  // void *dispatcher_return
 #define JIT_CTX_SP_ADJUST     36  // int32_t: add to A3 to get GB SP
+#define JIT_CTX_SP_ADJUST     36  // int32_t: add to A3 to get GB SP (0 = slow mode)
+#define JIT_CTX_GB_SP         40  // uint16_t: always-accurate GB SP value
 
 // Offset of 'code' field in struct code_block (it's at the start)
 #define BLOCK_CODE_OFFSET 0

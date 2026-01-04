@@ -35,13 +35,13 @@ void compile_set_z_flag(struct code_block *block)
 void compile_set_znc_flags(struct code_block *block)
 {
     // extract both flags first using scc (scc doesn't affect CCR)
-    // seq D5 (D5 = 0xff if Z, 0x00 if NZ)
+    // seq D1 (D1 = 0xff if Z, 0x00 if NZ)
     emit_scc(block, 0x7, REG_68K_D_SCRATCH_1);
     // scs D7 (D7 = 0xff if C, 0x00 if NC)
     emit_scc(block, 0x5, REG_68K_D_FLAGS);
 
     // now CCR doesn't matter anymore
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80); // D5 = 0x80 if Z was set
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80); // D1 = 0x80 if Z was set
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10); // D7 = 0x10 if C was set
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);   // D7 = Z_bit | C_bit
 

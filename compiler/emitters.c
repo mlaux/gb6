@@ -672,11 +672,18 @@ void emit_sub_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     emit_word(block, 0x9040 | (dest << 9) | src);
 }
 
-// adda.w Dn, An - ADD data register to address register
+// adda.w Dn, An - ADD data register to address register (sign-extends source)
 void emit_adda_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
 {
     // 1101 aaa 011 000 ddd
     emit_word(block, 0xd0c0 | (areg << 9) | dreg);
+}
+
+// adda.l Dn, An - ADD data register to address register (full 32-bit)
+void emit_adda_l_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
+{
+    // 1101 aaa 111 000 ddd
+    emit_word(block, 0xd1c0 | (areg << 9) | dreg);
 }
 
 // tst.b d(An) - test byte at displacement from address register
@@ -864,4 +871,62 @@ void emit_movea_l_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
 {
     // 0010 aaa 001 000 ddd
     emit_word(block, 0x2040 | (areg << 9) | dreg);
+}
+
+// move.w Dn, d(An) - store word to memory with displacement
+void emit_move_w_dn_disp_an(
+    struct code_block *block,
+    uint8_t dreg,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 00 11 aaa 101 000 ddd
+    emit_word(block, 0x3140 | (areg << 9) | dreg);
+    emit_word(block, disp);
+}
+
+// move.w d(An), Dn - load word from memory with displacement
+void emit_move_w_disp_an_dn(
+    struct code_block *block,
+    int16_t disp,
+    uint8_t areg,
+    uint8_t dreg
+) {
+    // 00 11 ddd 000 101 aaa
+    emit_word(block, 0x3028 | (dreg << 9) | areg);
+    emit_word(block, disp);
+}
+
+// tst.l d(An) - test long at displacement from address register
+void emit_tst_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg)
+{
+    // 0100 1010 10 101 aaa
+    emit_word(block, 0x4aa8 | areg);
+    emit_word(block, disp);
+}
+
+// addi.w #imm, d(An) - add immediate word to memory
+void emit_addi_w_disp_an(
+    struct code_block *block,
+    int16_t imm,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 0000 0110 01 101 aaa
+    emit_word(block, 0x0668 | areg);
+    emit_word(block, imm);
+    emit_word(block, disp);
+}
+
+// subi.w #imm, d(An) - subtract immediate word from memory
+void emit_subi_w_disp_an(
+    struct code_block *block,
+    int16_t imm,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 0000 0100 01 101 aaa
+    emit_word(block, 0x0468 | areg);
+    emit_word(block, imm);
+    emit_word(block, disp);
 }

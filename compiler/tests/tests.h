@@ -80,8 +80,6 @@ uint32_t get_areg(int reg);
 uint8_t get_mem_byte(uint16_t addr);
 void set_mem_byte(uint16_t addr, uint8_t value);
 
-// Test registration functions
-void register_unit_tests(void);
 void register_exec_tests(void);
 
 #define GLOBALS_BASE 0x4000 // random variables

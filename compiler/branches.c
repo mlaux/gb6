@@ -253,8 +253,9 @@ void compile_call_imm16(
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
 
-    // SP -= 2
+    // SP -= 2 (both A3 and gb_sp)
     emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_subi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
 
     // [SP] = low byte
     emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
@@ -288,21 +289,22 @@ void compile_call_cond(
     emit_btst_imm_dn(block, flag_bit, 7);
 
     // If condition NOT met, skip the call sequence
-    // Call sequence is 28 bytes: moveq(2) + move.w(4) + subq.w(2) + move.b(2) +
+    // Call sequence is 34 bytes: moveq(2) + move.w(4) + subq.w(2) + subi.w(6) + move.b(2) +
     //                            rol.w(2) + move.b d(An)(4) + moveq(2) + move.w(4) + dispatch_jump(6)
     // bxx.w displacement is relative to PC after opcode word, so add 2
     if (branch_if_set) {
         // Skip call if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 30);
+        emit_beq_w(block, 36);
     } else {
         // Skip call if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 30);
+        emit_bne_w(block, 36);
     }
 
     // Push return address (same as compile_call_imm16)
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
     emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_subi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
     emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
     emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
@@ -315,17 +317,18 @@ void compile_call_cond(
 
 void compile_ret(struct code_block *block)
 {
-    // pop return address from stack (A1 = base + SP)
+    // pop return address from stack (A3 = base + SP)
     // need to use byte operations here bc GB stack pointer can be odd
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     // D0 = [SP+1] (high byte)
     emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC);
-     // shift to high position
+    // shift to high position
     emit_rol_w_8(block, REG_68K_D_NEXT_PC);
     // D0.b = [SP] (low byte)
     emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
-    // SP += 2
+    // SP += 2 (both A3 and gb_sp)
     emit_addq_w_an(block, REG_68K_A_SP, 2);
+    emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
     emit_dispatch_jump(block);
 }
 
@@ -338,15 +341,15 @@ void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_
     emit_btst_imm_dn(block, flag_bit, 7);
 
     // If condition NOT met, skip the return sequence
-    // Return sequence is 18 bytes: moveq(2) + move.b d(An),Dn(4) + rol.w(2) +
-    //                              move.b (An),Dn(2) + addq.w(2) + dispatch_jump(6)
+    // Return sequence is 24 bytes: moveq(2) + move.b d(An),Dn(4) + rol.w(2) +
+    //                              move.b (An),Dn(2) + addq.w(2) + addi.w(6) + dispatch_jump(6)
     // bxx.w displacement is relative to PC after opcode word, so add 2
     if (branch_if_set) {
         // Skip return if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 20);
+        emit_beq_w(block, 26);
     } else {
         // Skip return if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 20);
+        emit_bne_w(block, 26);
     }
 
     // Pop return address and return (same as compile_ret)
@@ -355,6 +358,7 @@ void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_
     emit_rol_w_8(block, REG_68K_D_NEXT_PC);
     emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
     emit_addq_w_an(block, REG_68K_A_SP, 2);
+    emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
     emit_dispatch_jump(block);
 }
 
@@ -364,6 +368,7 @@ void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
     emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_subi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
     emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
     emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
@@ -469,8 +474,8 @@ void compile_jp_cond_fused(
 void compile_ret_cond_fused(struct code_block *block, int cond)
 {
     // Skip return if condition NOT met
-    // Return sequence is 18 bytes
-    emit_bcc_opcode_w(block, invert_cond(cond), 20);
+    // Return sequence is 24 bytes (18 + 6 for addi.w)
+    emit_bcc_opcode_w(block, invert_cond(cond), 26);
 
     // Pop return address and dispatch
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
@@ -478,6 +483,7 @@ void compile_ret_cond_fused(struct code_block *block, int cond)
     emit_rol_w_8(block, REG_68K_D_NEXT_PC);
     emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
     emit_addq_w_an(block, REG_68K_A_SP, 2);
+    emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
     emit_dispatch_jump(block);
 }
 
@@ -494,13 +500,14 @@ void compile_call_cond_fused(
     *src_ptr += 2;
 
     // Skip call if condition NOT met
-    // Call sequence is 28 bytes
-    emit_bcc_opcode_w(block, invert_cond(cond), 30);
+    // Call sequence is 34 bytes (28 + 6 for subi.w)
+    emit_bcc_opcode_w(block, invert_cond(cond), 36);
 
     // Push return address
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
     emit_subq_w_an(block, REG_68K_A_SP, 2);
+    emit_subi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
     emit_move_b_dn_ind_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
     emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);

@@ -146,6 +146,9 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_INTCHECK, 0);
     m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_ROM_BANK, 1);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, 0); // infinite loop at 0
+    // sp_adjust must be non-zero for fast path (0 = slow mode)
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_SP_ADJUST, 1);
+    m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_GB_SP, DEFAULT_GB_SP);
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run
