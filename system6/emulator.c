@@ -4,19 +4,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <Windows.h>
 #include <Quickdraw.h>
-#include <StandardFile.h>
-#include <Dialogs.h>
+#include <Fonts.h>
+#include <Windows.h>
 #include <Menus.h>
+#include <TextEdit.h>
+#include <Dialogs.h>
+#include <Memory.h>
 #include <ToolUtils.h>
 #include <Devices.h>
-#include <Memory.h>
-#include <Sound.h>
 #include <Timer.h>
 #include <Files.h>
 #include <SegLoad.h>
-#include <Resources.h>
 
 #include "emulator.h"
 
