@@ -324,7 +324,7 @@ int compile_alu_op(
     case 0x86: // add a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_add_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+        emit_add_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
         compile_set_zc_flags(block);
         return 1;
 
@@ -372,7 +372,7 @@ int compile_alu_op(
     case 0x8e: // adc a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_1);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);
         compile_adc_core(block);
         return 1;
 
@@ -421,7 +421,7 @@ int compile_alu_op(
     case 0x96: // sub a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_sub_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+        emit_sub_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
         compile_set_znc_flags(block);
         return 1;
 
@@ -469,7 +469,7 @@ int compile_alu_op(
     case 0x9e: // sbc a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_1);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);
         compile_sbc_core(block);
         return 1;
 
@@ -530,7 +530,7 @@ int compile_alu_op(
     case 0xa6: // and a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_and_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+        emit_and_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
         compile_set_z_flag(block);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xa0);
         emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);
@@ -591,7 +591,7 @@ int compile_alu_op(
     case 0xae: // xor a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_eor_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+        emit_eor_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
         compile_set_z_flag(block);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
@@ -647,7 +647,7 @@ int compile_alu_op(
     case 0xb6: // or a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_or_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
         compile_set_z_flag(block);
         emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);
         return 1;
@@ -706,7 +706,7 @@ int compile_alu_op(
     case 0xbe: // cp a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);
-        emit_cmp_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_A);
+        emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
         if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
             compile_set_znc_flags(block);
         return 1;

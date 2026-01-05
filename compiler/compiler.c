@@ -259,14 +259,14 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         case 0x09: // add hl, bc
         case 0x19: // add hl, de
             // use add.w so flags are set
-            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_3);
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
             if (op == 0x09) {
                 compile_bc_to_addr(block);  // D1.w = BC
             } else {
                 compile_de_to_addr(block);  // D1.w = DE
             }
-            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_3);  // D3 += D1, sets C
-            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_3, REG_68K_A_HL);  // HL = D3
+            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D3 += D1, sets C
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
             // capture C, keep Z, clear N
             emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: D1 = 0xff if C
             emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // D1 = 0x10 if C
@@ -275,9 +275,9 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0x29: // add hl, hl
-            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_3);  // D3.w = HL
-            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_SCRATCH_3);  // D3 += D3, sets C
-            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_3, REG_68K_A_HL);  // HL = D3
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);  // D3.w = HL
+            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);  // D3 += D3, sets C
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
             // capture C, keep Z, clear N
             emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: D1 = 0xff if C
             emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // D1 = 0x10 if C
@@ -704,20 +704,20 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 uint8_t uoffset = (uint8_t)offset;
 
                 // Load gb_sp from context
-                emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_3);
+                emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
 
                 // Compute HL = GB_SP + sign_extended(offset)
                 if (offset > 0 && offset <= 8) {
-                    emit_addq_w_dn(block, REG_68K_D_SCRATCH_3, offset);
+                    emit_addq_w_dn(block, REG_68K_D_SCRATCH_0, offset);
                 } else if (offset < 0 && -offset <= 8) {
-                    emit_subq_w_dn(block, REG_68K_D_SCRATCH_3, -offset);
+                    emit_subq_w_dn(block, REG_68K_D_SCRATCH_0, -offset);
                 } else if (offset != 0) {
                     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, offset);
-                    emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_3);
+                    emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
                 }
 
                 // Store result in HL
-                emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_3, REG_68K_A_HL);
+                emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);
 
                 // Compute flags: C flag set if (SP.low + offset) overflows byte
                 // Need original gb_sp for this, reload it

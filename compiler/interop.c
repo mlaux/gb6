@@ -32,7 +32,7 @@ static void compile_dmg_write_internal(
         val_reg = REG_68K_D_A; // use D4 directly
         break;
     case WRITE_VAL_D0:
-        emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_2);  // save D0 to D2
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_2);  // save D0 to D2
         val_reg = REG_68K_D_SCRATCH_2;
         break;
     case WRITE_VAL_IMM:
@@ -114,7 +114,7 @@ void compile_slow_pop_to_d1(struct code_block *block)
     emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
     emit_addq_l_an(block, 7, 6);
     // D0 = low byte, save to D2
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_2);
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_2);
 
     // Read high byte: dmg_read(dmg, gb_sp+1)
     emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_1);
@@ -127,9 +127,9 @@ void compile_slow_pop_to_d1(struct code_block *block)
     // D0 = high byte
 
     // Combine: D1.w = (high << 8) | low
-    emit_rol_w_8(block, REG_68K_D_NEXT_PC);  // D0.w = high byte in upper
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_NEXT_PC);  // D0.b = low
-    emit_move_w_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_1);  // D1.w = result
+    emit_rol_w_8(block, REG_68K_D_SCRATCH_0);  // D0.w = high byte in upper
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_0);  // D0.b = low
+    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // D1.w = result
 
     // Increment gb_sp by 2
     emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);

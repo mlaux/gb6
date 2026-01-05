@@ -4,10 +4,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// D0 = dispatcher return value (next GB PC)
+// D0 = scratch/C interop return value
 // D1 = scratch
 // D2 = scratch
-// D3 = scratch
+// D3 = dispatcher return value (next GB PC)
 // D4 = A (GB accumulator)
 // D5 = BC (split: 0x00BB00CC)
 // D6 = DE (split: 0x00DD00EE)
@@ -22,10 +22,10 @@
 // A6 = reserved (Mac frame pointer)
 // A7 = 68k stack pointer
 
-#define REG_68K_D_NEXT_PC 0
+#define REG_68K_D_SCRATCH_0 0
 #define REG_68K_D_SCRATCH_1 1
 #define REG_68K_D_SCRATCH_2 2
-#define REG_68K_D_SCRATCH_3 3
+#define REG_68K_D_NEXT_PC 3
 #define REG_68K_D_A 4
 #define REG_68K_D_BC 5
 #define REG_68K_D_DE 6

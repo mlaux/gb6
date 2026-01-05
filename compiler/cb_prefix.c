@@ -16,21 +16,21 @@ static void compile_shift_flags(struct code_block *block)
 
     // Capture both flags with scc (doesn't affect CCR)
     // Use D3 for Z to avoid clobbering D1 which holds result for non-A registers
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq: D3 = 0xff if Z=1
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq: D3 = 0xff if Z=1
     emit_scc(block, 0x05, REG_68K_D_FLAGS);      // scs: D7 = 0xff if C=1
 
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);  // D3 = 0x80 if Z was set
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);  // D3 = 0x80 if Z was set
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);      // D7 = 0x10 if C was set
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);  // D7 = Z | C
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);  // D7 = Z | C
 }
 
 // Set GB flags for SWAP: Z from result, N=0, H=0, C=0
 // Uses D3 for Z capture to avoid clobbering D1 which may hold the result
 static void compile_swap_flags(struct code_block *block)
 {
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq: D3 = 0xff if Z=1
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);  // mask to Z position
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq: D3 = 0xff if Z=1
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);  // mask to Z position
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
 }
 
 // Set GB flags for BIT instruction: Z from 68k Z flag, N=0, H=1, C unchanged
@@ -83,7 +83,7 @@ static int get_reg_for_op(struct code_block *block, int gb_reg)
     case 6: // (HL) - memory indirect
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);  // result in D0
-        emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_1);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);
         return REG_68K_D_SCRATCH_1;
     case 7: // A - directly accessible
         return REG_68K_D_A;
@@ -131,7 +131,7 @@ static void put_reg_result(struct code_block *block, int gb_reg)
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_2, REG_68K_A_HL);
         break;
     case 6: // (HL) - write back to memory
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_write_d0(block);
         break;
@@ -180,9 +180,9 @@ static void compile_rl_reg(struct code_block *block, int gb_reg)
 
     // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
     emit_tst_b_dn(block, op_reg);
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq for Z
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq for Z
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
 
     put_reg_result(block, gb_reg);
 }
@@ -209,9 +209,9 @@ static void compile_rr_reg(struct code_block *block, int gb_reg)
 
     // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
     emit_tst_b_dn(block, op_reg);
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_3);  // seq for Z
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_3, 0x80);
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_3, REG_68K_D_FLAGS);
+    emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq for Z
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
 
     put_reg_result(block, gb_reg);
 }
@@ -279,7 +279,7 @@ static void compile_bit_reg(struct code_block *block, int bit, int gb_reg)
     case 6: // (HL) - memory indirect
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);  // result in D0
-        emit_btst_imm_dn(block, bit, REG_68K_D_NEXT_PC);
+        emit_btst_imm_dn(block, bit, REG_68K_D_SCRATCH_0);
         break;
     case 7: // A
         emit_btst_imm_dn(block, bit, REG_68K_D_A);
@@ -317,7 +317,7 @@ static void compile_res_reg(struct code_block *block, int bit, int gb_reg)
     case 6: // (HL) - read, modify, write
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);  // D0 = memory[HL]
-        emit_bclr_imm_dn(block, bit, REG_68K_D_NEXT_PC);  // clear bit in D0
+        emit_bclr_imm_dn(block, bit, REG_68K_D_SCRATCH_0);  // clear bit in D0
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);  // D1 = address
         compile_call_dmg_write_d0(block);  // write D2 to address D1
         break;
@@ -356,7 +356,7 @@ static void compile_set_reg(struct code_block *block, int bit, int gb_reg)
     case 6: // (HL) - read, modify, write
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read_to_d0(block);  // D0 = memory[HL]
-        emit_bset_imm_dn(block, bit, REG_68K_D_NEXT_PC);  // set bit in D0
+        emit_bset_imm_dn(block, bit, REG_68K_D_SCRATCH_0);  // set bit in D0
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);  // D1 = address
         compile_call_dmg_write_d0(block);  // write D0 to address D1
         break;

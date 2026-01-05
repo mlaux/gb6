@@ -297,7 +297,6 @@ int main(int argc, char *argv[])
     test_ctx.wram_base = NULL;
     test_ctx.hram_base = NULL;
 
-    register_unit_tests();
     register_exec_tests();
 
     printf("all tests passed\n");

@@ -230,7 +230,7 @@ static void get_gb_state(
     a3 = m68k_get_reg(NULL, M68K_REG_A3);
     *sp = a3 & 0xffff;
 
-    d0 = m68k_get_reg(NULL, M68K_REG_D0);
+    d0 = m68k_get_reg(NULL, M68K_REG_D3);
     *pc = d0 & 0xffff;
 }
 

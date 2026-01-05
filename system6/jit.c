@@ -18,10 +18,10 @@
 
 // register state that persists between block executions
 struct {
-  u32 d4, d5, d6, d7;
-  u32 a2, a3, a4;
+  u32 d3; // next pc, output only
+  u32 d4, d5, d6, d7; // a, bc, de, f
+  u32 a2, a3, a4; // hl, sp, ctx
 } jit_regs;
-u32 jit_d0;
 
 // exposed to main emulator.c
 jit_context jit_ctx;
@@ -46,20 +46,19 @@ static void execute_block(void *code)
 
     // load GB state into 68k registers
     "lea %[jit_regs], %%a1\n\t"
-    "movem.l (%%a1), %%d4-%%d7/%%a2-%%a4\n\t"
+    "movem.l (%%a1), %%d3-%%d7/%%a2-%%a4\n\t"
 
     // call the generated code, this can then chain to other blocks
     "jsr (%%a0)\n\t"
 
     // save results back to memory
-    "move.l %%d0, %[out_d0]\n\t"
     "lea %[jit_regs], %%a0\n\t"
-    "movem.l %%d4-%%d7/%%a2-%%a3, (%%a0)\n\t"
+    "movem.l %%d3-%%d7/%%a2-%%a3, (%%a0)\n\t"
 
     // restore callee-saved registers
     "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a4\n\t"
 
-    : [out_d0] "=m" (jit_d0)
+    : // no outputs
     : [jit_regs] "m" (jit_regs),
       [code] "a" (code)
     : "d0", "d1", "a0", "a1", "cc", "memory"
@@ -170,8 +169,8 @@ int jit_step(struct dmg *dmg)
 
     execute_block(block->code);
 
-    // Get next PC from D0
-    if (jit_d0 == HALT_SENTINEL) {
+    // Get next PC from D3
+    if (jit_regs.d3 == HALT_SENTINEL) {
         set_status_bar("HALT");
         jit_halted = 1;
         return 0;
@@ -192,13 +191,13 @@ int jit_step(struct dmg *dmg)
             // push PC to stack
             u8 *sp_ptr = (u8 *) jit_regs.a3;
             sp_ptr -= 2;
-            sp_ptr[1] = (jit_d0 >> 8) & 0xff;
-            sp_ptr[0] = jit_d0 & 0xff;
+            sp_ptr[1] = (jit_regs.d3 >> 8) & 0xff;
+            sp_ptr[0] = jit_regs.d3 & 0xff;
             jit_regs.a3 = (unsigned long) sp_ptr;
             jit_ctx.gb_sp -= 2;
 
             // Jump to handler
-            jit_d0 = handlers[k];
+            jit_regs.d3 = handlers[k];
             took_interrupt = 1;
             break;
           }
@@ -206,7 +205,7 @@ int jit_step(struct dmg *dmg)
       }
     }
 
-    dmg->cpu->pc = (u16) jit_d0;
+    dmg->cpu->pc = (u16) jit_regs.d3;
 
     finished_ticks = TickCount();
     wall_ticks = finished_ticks - last_wall_ticks;
