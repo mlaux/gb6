@@ -22,6 +22,7 @@ typedef struct {
     /* 24 */ u32 sp_adjust;  // 0 = slow mode (SP outside WRAM/HRAM)
     /* 28 */ u16 gb_sp;      // always-accurate GB SP value
     /* 2a */ u8 _pad2[2];
+    /* 2c */ u32 cycles_accumulated;  // GB cycles accumulated by compiled code
 } jit_context;
 
 extern jit_context jit_ctx;

@@ -112,5 +112,8 @@ void emit_move_w_disp_an_dn(struct code_block *block, int16_t disp, uint8_t areg
 void emit_tst_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg);
 void emit_addi_w_disp_an(struct code_block *block, int16_t imm, int16_t disp, uint8_t areg);
 void emit_subi_w_disp_an(struct code_block *block, int16_t imm, int16_t disp, uint8_t areg);
+void emit_addq_l_disp_an(struct code_block *block, uint8_t data, int16_t disp, uint8_t areg);
+void emit_addi_l_disp_an(struct code_block *block, uint32_t imm, int16_t disp, uint8_t areg);
+void emit_add_cycles(struct code_block *block, int cycles);
 
 #endif

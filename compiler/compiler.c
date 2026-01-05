@@ -9,6 +9,7 @@
 #include "cb_prefix.h"
 #include "reg_loads.h"
 #include "alu.h"
+#include "instructions.h"
 
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
@@ -119,6 +120,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
     block->length = 0;
     block->src_address = src_address;
+    block->gb_cycles = 0;
     block->error = 0;
     block->failed_opcode = 0;
     block->failed_address = 0;
@@ -138,6 +140,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         block->m68k_offsets[src_ptr] = block->length;
         op = READ_BYTE(src_ptr);
         src_ptr++;
+
+        // emit cycle counting before instruction (CB prefix handled specially)
+        if (op != 0xcb) {
+            emit_add_cycles(block, instructions[op].cycles);
+        }
 
         switch (op) {
         case 0x00: // nop
@@ -345,6 +352,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         case 0xcb: // CB prefix
             {
                 uint8_t cb_op = READ_BYTE(src_ptr++);
+                emit_add_cycles(block, instructions[0x100 + cb_op].cycles);
                 if (!compile_cb_insn(block, cb_op)) {
                     block->error = 1;
                     block->failed_opcode = 0xcb00 | cb_op;
@@ -870,6 +878,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         // if (emitted > 80) {
         //     printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
         // }
+
         if (ctx->single_instruction && !done) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);

@@ -930,3 +930,42 @@ void emit_subi_w_disp_an(
     emit_word(block, imm);
     emit_word(block, disp);
 }
+
+// addq.l #data, d(An) - add quick (1-8) to memory long
+void emit_addq_l_disp_an(
+    struct code_block *block,
+    uint8_t data,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 0101 ddd 0 10 101 aaa (ddd: 1-7 = 1-7, 0 = 8)
+    uint8_t ddd = (data == 8) ? 0 : data;
+    emit_word(block, 0x5080 | (ddd << 9) | 0x28 | areg);
+    emit_word(block, disp);
+}
+
+// addi.l #imm32, d(An) - add immediate long to memory
+void emit_addi_l_disp_an(
+    struct code_block *block,
+    uint32_t imm,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 0000 0110 10 101 aaa
+    emit_word(block, 0x06a8 | areg);
+    emit_long(block, imm);
+    emit_word(block, disp);
+}
+
+// emit_add_cycles - add GB cycles to context, picks optimal instruction
+void emit_add_cycles(struct code_block *block, int cycles)
+{
+    if (cycles <= 0) {
+        return;
+    }
+    if (cycles <= 8) {
+        emit_addq_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
+    } else {
+        emit_addi_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
+    }
+}

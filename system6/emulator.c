@@ -416,17 +416,13 @@ int main(int argc, char *argv[])
   while (app_running) {
     unsigned int now;
 
-    if (frame_count % 10 == 0) {
-      if (!ProcessEvents()) {
-        break;
-      }
+    if (!ProcessEvents()) {
+      break;
     }
 
 
     if (emulation_on) {
       jit_step(&dmg);
-      // not really a frame count anymore
-      frame_count++;
     }
   }
   if (mbc_save_ram(dmg.rom->mbc, save_filename)) {

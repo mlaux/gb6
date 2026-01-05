@@ -297,56 +297,46 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 }
 
 // sync hardware state - advance by given number of cycles
-// this is per-scanline to allow for varying cycles, but in practice,
-// cycles is always 70224, because the mac is too slow to check this
-// after every scanline
+#define CYCLES_PER_FRAME 70224
+
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
-    // Timer DIV increments every cycle (wraps at 16 bits)
+    int prev_ly, new_ly, lyc, crossed_lyc;
+
+    // Timer DIV always increments
     dmg->timer_div += cycles;
 
-    int scanlines = cycles / 456;
-    int current_ly = lcd_read(dmg->lcd, REG_LY);
-    int lyc = lcd_read(dmg->lcd, REG_LYC);
+    // Calculate LY before and after adding cycles
+    prev_ly = (dmg->cycles_since_render / 456) % 154;
+    dmg->cycles_since_render += cycles;
+    new_ly = (dmg->cycles_since_render / 456) % 154;
 
-    // LYC match if lyc is in range [current_ly, current_ly + scanlines) mod 154
-    int crosses_lyc = 0;
-    if (scanlines >= 154) {
-        // full frame always hits every scanline
-        crosses_lyc = 1;
+    // Update LY register
+    lcd_write(dmg->lcd, REG_LY, new_ly);
+
+    // Check if we crossed LYC (prev_ly, new_ly] range, handling wrap
+    lyc = lcd_read(dmg->lcd, REG_LYC);
+    if (new_ly >= prev_ly) {
+        crossed_lyc = (lyc > prev_ly && lyc <= new_ly);
     } else {
-        int end_ly = current_ly + scanlines;
-        if (end_ly > 154) {
-            // wraps around: check [current_ly, 154) and [0, end_ly % 154)
-            crosses_lyc = (lyc >= current_ly) || (lyc < (end_ly % 154));
-        } else {
-            crosses_lyc = (lyc >= current_ly) && (lyc < end_ly);
-        }
+        // wrapped around 153->0
+        crossed_lyc = (lyc > prev_ly || lyc <= new_ly);
     }
 
-    if (crosses_lyc) {
+    // Set/clear match flag based on current LY
+    if (new_ly == lyc) {
         lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
-            dmg_request_interrupt(dmg, INT_LCDSTAT);
-        }
     } else {
         lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
     }
 
-    // Check if we cross scanline 144 (vblank)
-    int crosses_vblank = 0;
-    if (scanlines >= 154) {
-        crosses_vblank = 1;
-    } else {
-        int end_ly = current_ly + scanlines;
-        if (end_ly > 154) {
-            crosses_vblank = (current_ly < 144) || ((end_ly % 154) >= 144);
-        } else {
-            crosses_vblank = (current_ly < 144) && (end_ly >= 144);
-        }
+    // Fire interrupt only when we cross LYC
+    if (crossed_lyc && lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
+        dmg_request_interrupt(dmg, INT_LCDSTAT);
     }
 
-    if (crosses_vblank) {
+    // Frame boundary - handle vblank and rendering
+    if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
         lcd_set_mode(dmg->lcd, 1);
 
         if (!(dmg->interrupt_request_mask & INT_VBLANK)) {
@@ -359,23 +349,17 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
-                int window_enabled = lcdc & LCDC_ENABLE_WINDOW;
-                lcd_render_background(dmg, lcdc, window_enabled);
+                lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
             }
-
             if (lcdc & LCDC_ENABLE_OBJ) {
                 lcd_render_objs(dmg);
             }
-
             lcd_draw(dmg->lcd);
         }
 
         dmg->frames_rendered++;
+        dmg->cycles_since_render %= CYCLES_PER_FRAME;
     }
-
-    // this also advances every time it's read as a hack to get things unstuck...
-    int new_ly = (current_ly + scanlines) % 154;
-    lcd_write(dmg->lcd, REG_LY, new_ly);
 }
 
 void dmg_ei_di(void *_dmg, u16 enabled)

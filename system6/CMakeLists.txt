@@ -20,6 +20,7 @@ add_application(Emulator
     ../compiler/cb_prefix.c
     ../compiler/reg_loads.c
     ../compiler/alu.c
+    ../compiler/instructions.c
     dialogs.c
     debug.c
     dispatcher_asm.c

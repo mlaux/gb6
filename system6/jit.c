@@ -14,8 +14,6 @@
 #include "emulator.h"
 #include "debug.h"
 
-#define CYCLES_PER_INTERRUPT 70224
-
 static u32 time_in_jit = 0;
 static u32 time_in_sync = 0;
 static u32 time_in_lookup = 0;
@@ -32,10 +30,8 @@ struct {
 jit_context jit_ctx;
 int jit_halted = 0;
 
-// Compile-time context for address calculation
+// compile-time context for address calculation
 static struct compile_ctx compile_ctx;
-
-static long last_wall_ticks;
 
 // this is a huge context switch and my main goal is to do this as little as
 // possible. currently it will not return to C when jumping to another compiled 
@@ -105,19 +101,16 @@ void jit_init(struct dmg *dmg)
     jit_regs.a3 = (unsigned long) (dmg->zero_page + 0xfffe - 0xff80);
     jit_ctx.gb_sp = 0xfffe;
     jit_ctx.sp_adjust = 0xff80 - (u32) dmg->zero_page;
+    jit_ctx.cycles_accumulated = 0;
     jit_regs.a4 = (unsigned long) &jit_ctx;
 
     jit_halted = 0;
-    last_wall_ticks = TickCount();
 }
 
 int jit_step(struct dmg *dmg)
 {
     struct code_block *block;
     char buf[64];
-    int took_interrupt;
-    u32 finished_ticks;
-    u32 wall_ticks;
     u16 start_pc = dmg->cpu->pc;
     u32 t0, t1, t2, t3;
     t0 = TickCount();
@@ -137,9 +130,9 @@ int jit_step(struct dmg *dmg)
         u32 free_heap;
         lru_ensure_memory();
         free_heap = (u32) FreeMem();
-        // sprintf(buf, "Compiling $%02x:%04x free=%u",
-        //         jit_ctx.current_rom_bank, start_pc, free_heap);
-        // set_status_bar(buf);
+        sprintf(buf, "Compiling $%02x:%04x free=%u",
+                jit_ctx.current_rom_bank, start_pc, free_heap);
+        set_status_bar(buf);
         block = compile_block(start_pc, &compile_ctx);
         if (!block) {
             u32 unused;
@@ -171,7 +164,7 @@ int jit_step(struct dmg *dmg)
         if (block->lru_node) {
             lru_promote((lru_node *) block->lru_node);
         }
-        //set_status_bar("Running");
+        set_status_bar("Running");
     }
 
     t1 = TickCount();
@@ -185,7 +178,6 @@ int jit_step(struct dmg *dmg)
         return 0;
     }
 
-    took_interrupt = 0;
     if (dmg->cpu->interrupt_enable) {
       u8 pending = dmg->interrupt_enable_mask & dmg->interrupt_request_mask & 0x1f;
       if (pending) {
@@ -207,7 +199,6 @@ int jit_step(struct dmg *dmg)
 
             // Jump to handler
             jit_regs.d3 = handlers[k];
-            took_interrupt = 1;
             break;
           }
         }
@@ -216,27 +207,21 @@ int jit_step(struct dmg *dmg)
 
     dmg->cpu->pc = (u16) jit_regs.d3;
 
-    finished_ticks = TickCount();
-    wall_ticks = finished_ticks - last_wall_ticks;
-    last_wall_ticks = finished_ticks;
-
-    // don't sync lcd if interrupt just happened to prevent vblank spam
-    // where the "main thread" can't make progress
-    if (!took_interrupt) {
-      dmg_sync_hw(dmg, /* wall_ticks * */CYCLES_PER_INTERRUPT);
-    }
-
+    // sync hardware with cycles accumulated by compiled code
+    // dmg_sync_hw accumulates internally and renders at frame boundaries
+    dmg_sync_hw(dmg, jit_ctx.cycles_accumulated);
+    jit_ctx.cycles_accumulated = 0;
 
     t3 = TickCount();
     time_in_lookup += t1 - t0;
     time_in_jit += t2 - t1;
     time_in_sync += t3 - t2;
     call_count++;
-    if (call_count % 1000 == 0) {
-      sprintf(buf, "L:%lu J:%lu S:%lu",
-              time_in_lookup, time_in_jit, time_in_sync);
-      set_status_bar(buf);
-    }
+    // if (call_count % 1000 == 0) {
+    //   sprintf(buf, "L:%lu J:%lu S:%lu",
+    //           time_in_lookup, time_in_jit, time_in_sync);
+    //   set_status_bar(buf);
+    // }
 
     return 1;
 }

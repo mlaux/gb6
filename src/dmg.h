@@ -55,6 +55,9 @@ struct dmg {
 
     // audio registers $ff10-$ff3f, no-op, just stores values
     u8 audio_regs[0x30];
+
+    // cycle accumulator for timing - only sync LCD when >= CYCLES_PER_FRAME
+    u32 cycles_since_render;
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);
