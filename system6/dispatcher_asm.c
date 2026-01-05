@@ -52,6 +52,9 @@
 // .exit:
 //   rts
 const unsigned char dispatcher_code[] = {
+    // 0x0c, 0xac, 0x00, 0x01, 0x12, 0x50, 0x00, 0x2c,      // 0: cmpi.l #70224, 44(a4)
+    // 0x64, 0x68,                   // 8: bcs.s -> exit
+
     // tst.b 16(a4); bne.s .exit
     0x4a, 0x2c, 0x00, 0x10,       // 0: tst.b 16(a4)
     0x66, 0x68,                   // 4: bne.s -> exit

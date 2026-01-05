@@ -131,16 +131,40 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        // hack
-        return lcd_step(dmg->lcd);
+        dmg->cycles_since_render += 32;
+        return (dmg->cycles_since_render / 456) % 154;
     }
 
     if (address == REG_STAT) {
-        // also a hack
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
-        u8 new_stat = (stat & 0xfc) | (((stat & 3) + 1) & 3);
-        lcd_write(dmg->lcd, REG_STAT, new_stat);
-        return new_stat;
+        int ly = (dmg->cycles_since_render / 456) % 154;
+        int mode;
+
+        if (ly >= 144) {
+            // vblank
+            mode = 1;
+        } else {
+            int cycle_in_line = dmg->cycles_since_render % 456;
+            if (cycle_in_line < 80) {
+                // OAM scan
+                mode = 2;
+            } else if (cycle_in_line < 252) {
+                // active area, 160 visible pixels + 12 extra
+                // https://gbdev.io/pandocs/Rendering.html#first12
+                mode = 3;
+            } else {
+                // hblank
+                mode = 0;
+            }
+        }
+
+        // advance time to simulate polling loop progress, this will double
+        // count because these same cycles will be added when the JIT returns
+        // to C, but it;s probably fine?
+        // ld a, ($ff41) + and 3 + jr nz ~32 cycles
+        dmg->cycles_since_render += 32;
+
+        return (stat & 0xfc) | mode;
     }
 
     // OAM and LCD registers
@@ -194,7 +218,6 @@ extern void debug_log_string(const char *str);
 
 u8 dmg_read(void *_dmg, u16 address)
 {
-    // char buf[128];
     u8 val;
     struct dmg *dmg = (struct dmg *) _dmg;
     u8 *page = dmg->read_page[address >> 8];
@@ -203,8 +226,6 @@ u8 dmg_read(void *_dmg, u16 address)
     } else {
         val = dmg_read_slow(dmg, address);
     }
-    // sprintf(buf, "dmg_read pc=%04x addr=%04x value=%02x\n", dmg->cpu->pc, address, val);
-    // debug_log_string(buf);
     return val;
 }
 
@@ -335,17 +356,15 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         dmg_request_interrupt(dmg, INT_LCDSTAT);
     }
 
-    // Frame boundary - handle vblank and rendering
-    if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
-        lcd_set_mode(dmg->lcd, 1);
-
-        if (!(dmg->interrupt_request_mask & INT_VBLANK)) {
-            dmg_request_interrupt(dmg, INT_VBLANK);
-        }
+    if (dmg->cycles_since_render >= CYCLES_PER_FRAME - (456 * 10)) {
+        dmg_request_interrupt(dmg, INT_VBLANK);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);
         }
+    }
 
+    // Frame boundary - render
+    if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {

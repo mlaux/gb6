@@ -79,6 +79,7 @@ int compile_jr(
 
         // Larger loop - check interrupt flag, exit to dispatcher if set
         // tst.b JIT_CTX_INTCHECK(a4)
+        // TODO: cmpi.l #70224, JIT_CTX_CYCLES(a4)
         emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
         // beq.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14)
         emit_beq_w(block, 14);
