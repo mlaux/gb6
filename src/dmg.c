@@ -131,7 +131,7 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        dmg->cycles_since_render += 32;
+        //dmg->cycles_since_render += 32;
         return (dmg->cycles_since_render / 456) % 154;
     }
 
@@ -162,7 +162,7 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
         // count because these same cycles will be added when the JIT returns
         // to C, but it;s probably fine?
         // ld a, ($ff41) + and 3 + jr nz ~32 cycles
-        dmg->cycles_since_render += 32;
+        //dmg->cycles_since_render += 32;
 
         return (stat & 0xfc) | mode;
     }
@@ -322,7 +322,7 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
-    int prev_ly, new_ly, lyc, crossed_lyc;
+    int prev_ly, new_ly, lyc, crossed_lyc, crossed_vblank;
 
     // Timer DIV always increments
     dmg->timer_div += cycles;
@@ -356,7 +356,15 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         dmg_request_interrupt(dmg, INT_LCDSTAT);
     }
 
-    if (dmg->cycles_since_render >= CYCLES_PER_FRAME - (456 * 10)) {
+    // Check if we crossed into vblank (LY 144), same logic as LYC
+    if (new_ly >= prev_ly) {
+        crossed_vblank = (prev_ly < 144 && new_ly >= 144);
+    } else {
+        // wrapped around 153->0, we definitely passed through vblank
+        crossed_vblank = (prev_ly < 144);
+    }
+
+    if (crossed_vblank) {
         dmg_request_interrupt(dmg, INT_VBLANK);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);

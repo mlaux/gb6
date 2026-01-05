@@ -77,18 +77,18 @@ int compile_jr(
             return 0;
         }
 
-        // Larger loop - check interrupt flag, exit to dispatcher if set
-        // tst.b JIT_CTX_INTCHECK(a4)
-        // TODO: cmpi.l #70224, JIT_CTX_CYCLES(a4)
-        emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
-        // beq.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14)
-        emit_beq_w(block, 14);
+        // Larger loop - check cycle count, exit to dispatcher if >= frame
+        // cmpi.l #70224, JIT_CTX_CYCLES(a4)
+        emit_cmpi_l_imm32_disp_an(block, 456, JIT_CTX_CYCLES, REG_68K_A_CTX);
+        // bcs.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14)
+        // bcs = branch if carry set = branch if cycles < 70224
+        emit_bcs_w(block, 14);
         // Exit to dispatcher with target PC
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
         emit_dispatch_jump(block);
 
-        // Native branch (interrupt flag was clear)
+        // Native branch (cycles < frame boundary)
         // Must recompute displacement since block->length changed
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bra_w(block, m68k_disp);
@@ -147,42 +147,42 @@ void compile_jr_cond(
             return;
         }
 
-        // Larger loop - check condition, then interrupt flag
+        // Larger loop - check condition, then cycle count
         // Structure:
         //   btst #flag_bit, d7           ; already emitted above
-        //   bne/beq .check_interrupt     ; if condition met, check interrupt
+        //   bne/beq .check_cycles        ; if condition met, check cycles
         //   bra.w .fall_through          ; condition not met, skip all
-        // .check_interrupt:
-        //   tst.b JIT_CTX_INTCHECK(a4)
-        //   beq.w loop_target            ; no interrupt, do native branch
-        //   moveq #0, d0                 ; interrupt pending, exit
+        // .check_cycles:
+        //   cmpi.l #70224, JIT_CTX_CYCLES(a4)
+        //   bcs.w loop_target            ; cycles < 70224, do native branch
+        //   moveq #0, d0                 ; cycles >= 70224, exit
         //   move.w #target, d0
         //   dispatch_jump
         // .fall_through:
 
-        // Sizes: bne/beq(4) + bra.w(4) + tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 28
-        // .check_interrupt is at +8 from first branch
-        // .fall_through is at +28 from first branch
+        // Sizes: bne/beq(4) + bra.w(4) + cmpi.l(8) + bcs.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 32
+        // .check_cycles is at +8 from first branch
+        // .fall_through is at +32 from first branch
 
         if (branch_if_set) {
             // Branch if flag is set: btst gives Z=0 when bit=1, so use bne
-            emit_bne_w(block, 6);  // skip to .check_interrupt (+8, but PC is at +2)
+            emit_bne_w(block, 6);  // skip to .check_cycles (+8, but PC is at +2)
         } else {
             // Branch if flag is clear: btst gives Z=1 when bit=0, so use beq
             emit_beq_w(block, 6);
         }
 
-        // bra.w to .fall_through (tst.b(4) + beq.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 20, plus 2 for PC = 22)
-        emit_bra_w(block, 22);
+        // bra.w to .fall_through (cmpi.l(8) + bcs.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 24, plus 2 for PC = 26)
+        emit_bra_w(block, 26);
 
-        // .check_interrupt:
-        emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
+        // .check_cycles:
+        emit_cmpi_l_imm32_disp_an(block, 456, JIT_CTX_CYCLES, REG_68K_A_CTX);
 
-        // beq.w to native loop target (no interrupt pending)
+        // bcs.w to native loop target (cycles < 70224)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
-        emit_beq_w(block, m68k_disp);
+        emit_bcs_w(block, m68k_disp);
 
-        // Exit to dispatcher (interrupt pending)
+        // Exit to dispatcher (cycles >= 70224)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
         emit_dispatch_jump(block);
@@ -402,37 +402,37 @@ int compile_jr_cond_fused(
         target_gb_pc = src_address + target_gb_offset;
         target_m68k = block->m68k_offsets[target_gb_offset];
 
-        // Tiny loops: skip interrupt check
+        // Tiny loops: skip cycle check
         if (disp >= -3) {
             m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
             emit_bcc_opcode_w(block, cond, m68k_disp);
             return 0;
         }
 
-        // Larger loop - check condition, then interrupt flag
+        // Larger loop - check condition, then cycle count
         // Structure:
-        //   bcc.w .check_interrupt   ; if condition met
+        //   bcc.w .check_cycles      ; if condition met
         //   bra.w .fall_through      ; condition not met
-        // .check_interrupt:
-        //   tst.b JIT_CTX_INTCHECK(a4)
-        //   beq.w loop_target        ; no interrupt
+        // .check_cycles:
+        //   cmpi.l #70224, JIT_CTX_CYCLES(a4)
+        //   bcs.w loop_target        ; cycles < 70224
         //   <exit to dispatcher>
         // .fall_through:
 
-        // Branch to check_interrupt if condition met
+        // Branch to check_cycles if condition met
         emit_bcc_opcode_w(block, cond, 6);
 
-        // bra.w to .fall_through
-        emit_bra_w(block, 22);
+        // bra.w to .fall_through (cmpi.l(8) + bcs.w(4) + exit(12) = 24, plus 2 = 26)
+        emit_bra_w(block, 26);
 
-        // .check_interrupt:
-        emit_tst_b_disp_an(block, JIT_CTX_INTCHECK, REG_68K_A_CTX);
+        // .check_cycles:
+        emit_cmpi_l_imm32_disp_an(block, 456, JIT_CTX_CYCLES, REG_68K_A_CTX);
 
-        // beq.w to native loop target
+        // bcs.w to native loop target (cycles < 70224)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
-        emit_beq_w(block, m68k_disp);
+        emit_bcs_w(block, m68k_disp);
 
-        // Exit to dispatcher
+        // Exit to dispatcher (cycles >= 70224)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
         emit_dispatch_jump(block);

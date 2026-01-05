@@ -957,6 +957,19 @@ void emit_addi_l_disp_an(
     emit_word(block, disp);
 }
 
+// cmpi.l #imm32, d(An) - compare immediate long with memory
+void emit_cmpi_l_imm32_disp_an(
+    struct code_block *block,
+    uint32_t imm,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 0000 1100 10 101 aaa
+    emit_word(block, 0x0ca8 | areg);
+    emit_long(block, imm);
+    emit_word(block, disp);
+}
+
 // emit_add_cycles - add GB cycles to context, picks optimal instruction
 void emit_add_cycles(struct code_block *block, int cycles)
 {
