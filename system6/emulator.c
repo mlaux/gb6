@@ -42,18 +42,7 @@ static void on_rom_bank_switch(int new_bank)
     // force exit to dispatcher ?
     // only way this is needed is if games switch banks and then don't jump
     // or call afterwards... 
-    // jit_ctx.interrupt_check = 1;
 }
-
-// Time Manager task for timing and loop interruption
-typedef struct {
-    long appA5;
-    TMTask task;
-} TMInfo;
-
-static TMInfo interrupt_tm;
-
-#define INTERRUPT_PERIOD (-16667L)
 
 // this is pretty much hollowed out and a lot of it can go.
 // from the interpreter version
@@ -90,23 +79,6 @@ static void build_save_filename(void)
   // build Pascal string
   save_filename_p[0] = len;
   memcpy(&save_filename_p[1], save_filename, len);
-}
-
-static pascal void interrupt_tm_proc(void)
-{
-    asm volatile(
-        "move.l %%a5, -(%%sp)\n\t"
-        "move.l -4(%%a1), %%a5\n\t"
-        ::: "memory"
-    );
-
-    jit_ctx.interrupt_check = 1;
-    PrimeTime((QElemPtr) &interrupt_tm.task, INTERRUPT_PERIOD);
-
-    asm volatile(
-        "move.l (%%sp)+, %%a5\n\t"
-        ::: "memory"
-    );
 }
 
 void InitEverything(void)
@@ -183,7 +155,6 @@ void StartEmulation(void)
   mbc_load_ram(dmg.rom->mbc, save_filename);
 
   cpu.dmg = &dmg;
-  cpu.pc = 0x100;
 
   offscreen_bmp.baseAddr = offscreen_buf;
   offscreen_bmp.bounds = offscreen_rect;
@@ -393,18 +364,10 @@ static int CheckFinderFiles(void)
 
 int main(int argc, char *argv[])
 {
-  unsigned int frame_count = 0;
-  unsigned int last_ticks = 0;
   int finderResult;
 
   InitEverything();
   init_dither_lut();
-
-  // Install Time Manager task for timing and loop interruption
-  interrupt_tm.appA5 = (long) SetCurrentA5();
-  interrupt_tm.task.tmAddr = (TimerProcPtr) interrupt_tm_proc;
-  InsTime((QElemPtr) &interrupt_tm.task);
-  PrimeTime((QElemPtr) &interrupt_tm.task, INTERRUPT_PERIOD);
 
   finderResult = CheckFinderFiles();
   if (finderResult == 1) {
@@ -420,7 +383,6 @@ int main(int argc, char *argv[])
       break;
     }
 
-
     if (emulation_on) {
       jit_step(&dmg);
     }
@@ -433,7 +395,6 @@ int main(int argc, char *argv[])
       SetFInfo(save_filename_p, 0, &fndrInfo);
     }
   }
-  RmvTime((QElemPtr) &interrupt_tm.task);
 
   return 0;
 }

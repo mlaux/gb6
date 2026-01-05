@@ -141,7 +141,6 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         op = READ_BYTE(src_ptr);
         src_ptr++;
 
-        // emit cycle counting before instruction (CB prefix handled specially)
         if (op != 0xcb) {
             emit_add_cycles(block, instructions[op].cycles);
         }

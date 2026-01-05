@@ -44,6 +44,7 @@ void emit_andi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
 void emit_ori_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
 void emit_subi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
 void emit_addi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm);
+void emit_addi_l_dn(struct code_block *block, uint8_t dreg, uint32_t imm);
 void emit_or_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 void emit_or_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 
@@ -69,6 +70,9 @@ void emit_push_b_imm(struct code_block *block, uint16_t val);
 void emit_push_w_imm(struct code_block *block, uint16_t val);
 void emit_push_b_dn(struct code_block *block, uint8_t dreg);
 void emit_push_w_dn(struct code_block *block, uint8_t dreg);
+void emit_push_l_dn(struct code_block *block, uint8_t dreg);
+void emit_pop_w_dn(struct code_block *block, uint8_t dreg);
+void emit_pop_l_dn(struct code_block *block, uint8_t dreg);
 void emit_push_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg);
 void emit_movea_l_disp_an_an(struct code_block *block, int16_t disp, uint8_t src_areg, uint8_t dest_areg);
 void emit_jsr_ind_an(struct code_block *block, uint8_t areg);
@@ -115,6 +119,7 @@ void emit_subi_w_disp_an(struct code_block *block, int16_t imm, int16_t disp, ui
 void emit_addq_l_disp_an(struct code_block *block, uint8_t data, int16_t disp, uint8_t areg);
 void emit_addi_l_disp_an(struct code_block *block, uint32_t imm, int16_t disp, uint8_t areg);
 void emit_cmpi_l_imm32_disp_an(struct code_block *block, uint32_t imm, int16_t disp, uint8_t areg);
+void emit_cmpi_l_imm_dn(struct code_block *block, uint32_t imm, uint8_t dreg);
 void emit_add_cycles(struct code_block *block, int cycles);
 
 #endif

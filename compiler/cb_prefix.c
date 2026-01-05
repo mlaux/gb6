@@ -117,18 +117,18 @@ static void put_reg_result(struct code_block *block, int gb_reg)
         break;
     case 4: // H - write back to high byte of A2
         emit_ror_w_8(block, REG_68K_D_SCRATCH_1);  // H back to high byte
-        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_2);
-        emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0xff);  // keep only L
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
+        emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0xff);  // keep only L
         emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0xff00);  // keep only H
-        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
         break;
     case 5: // L - write back to low byte of A2
-        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_2);
-        emit_andi_l_dn(block, REG_68K_D_SCRATCH_2, 0xff00);  // keep only H
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
+        emit_andi_l_dn(block, REG_68K_D_SCRATCH_0, 0xff00);  // keep only H
         emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0xff);  // keep only L
-        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);
-        emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_2, REG_68K_A_HL);
+        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
+        emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);
         break;
     case 6: // (HL) - write back to memory
         emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
@@ -163,9 +163,9 @@ static void compile_rl_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
 
-    // Save old carry (bit 4 of D7) to D2
-    emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_2);
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0x10);  // isolate C flag
+    // Save old carry (bit 4 of D7) to D0
+    emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_0);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x10);  // isolate C flag
 
     // Shift left - bit 7 goes to 68k C flag, 0 goes to bit 0
     emit_lsl_b_imm_dn(block, 1, op_reg);
@@ -174,11 +174,11 @@ static void compile_rl_reg(struct code_block *block, int gb_reg)
     emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
 
-    // If old carry was set (D2 != 0), OR in bit 0
-    emit_lsr_b_imm_dn(block, 4, REG_68K_D_SCRATCH_2);  // 0x10 -> 0x01
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, op_reg);
+    // If old carry was set, OR in bit 0
+    emit_lsr_b_imm_dn(block, 4, REG_68K_D_SCRATCH_0);  // 0x10 -> 0x01
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, op_reg);
 
-    // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
+    // Set Z flag based on result (D0 is now free to reuse)
     emit_tst_b_dn(block, op_reg);
     emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq for Z
     emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);
@@ -192,9 +192,9 @@ static void compile_rr_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
 
-    // Save old carry (bit 4 of D7) to D2
-    emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_2);
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_2, 0x10);  // isolate C flag
+    // Save old carry (bit 4 of D7) to D0
+    emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_0);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x10);  // isolate C flag
 
     // Shift right - bit 0 goes to 68k C flag, 0 goes to bit 7
     emit_lsr_b_imm_dn(block, 1, op_reg);
@@ -203,11 +203,11 @@ static void compile_rr_reg(struct code_block *block, int gb_reg)
     emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
 
-    // If old carry was set (D2 != 0), OR in bit 7
-    emit_lsl_b_imm_dn(block, 3, REG_68K_D_SCRATCH_2);  // 0x10 -> 0x80
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_2, op_reg);
+    // If old carry was set, OR in bit 7
+    emit_lsl_b_imm_dn(block, 3, REG_68K_D_SCRATCH_0);  // 0x10 -> 0x80
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, op_reg);
 
-    // Set Z flag based on result (use D3 to avoid clobbering op_reg if D1)
+    // Set Z flag based on result (D0 is now free to reuse)
     emit_tst_b_dn(block, op_reg);
     emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq for Z
     emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);

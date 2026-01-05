@@ -237,9 +237,9 @@ int compile_reg_load(struct code_block *block, uint8_t op)
 
     case 0x65: // ld h, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);  // D2 = L
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D2 = L
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // H in low byte position
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // copy L to H position
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // copy L to H position
         emit_ror_w_8(block, REG_68K_D_SCRATCH_1);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
         break;
@@ -293,9 +293,9 @@ int compile_reg_load(struct code_block *block, uint8_t op)
     case 0x6c: // ld l, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // H in low byte
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);  // D2 = H
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D2 = H
         emit_ror_w_8(block, REG_68K_D_SCRATCH_1);  // restore order
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_1);  // L = H
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // L = H
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
         break;
 

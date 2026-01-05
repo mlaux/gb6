@@ -2,9 +2,8 @@
 #include "emitters.h"
 #include "interop.h"
 
-// Offset of page arrays in struct dmg
 #define DMG_READ_PAGE_OFFSET 12
-#define DMG_WRITE_PAGE_OFFSET (12 + 256 * 4)  // after read_page[256]
+#define DMG_WRITE_PAGE_OFFSET (12 + 256 * 4)
 
 // Value source for write operations
 typedef enum {
@@ -13,18 +12,11 @@ typedef enum {
     WRITE_VAL_IMM   // immediate value
 } write_val_src;
 
-// Internal helper for dmg_write with page table fast path
-// addr in D1, value source specified by src parameter
 static void compile_dmg_write_internal(
     struct code_block *block,
     write_val_src src,
     uint8_t imm_val
 ) {
-    // Fast path sizes for branch calculation:
-    // move.w d1,d0 (2) + andi.w (4) + move.b indexed (4) + bra.b (2) = 12 bytes
-    // Slow path size:
-    // push.b (2) + push.w (2) + push.l (4) + movea.l (4) + jsr (2) + addq.l (2) = 16 bytes
-
     uint8_t val_reg;
 
     switch (src) {
@@ -32,21 +24,22 @@ static void compile_dmg_write_internal(
         val_reg = REG_68K_D_A; // use D4 directly
         break;
     case WRITE_VAL_D0:
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_2);  // save D0 to D2
-        val_reg = REG_68K_D_SCRATCH_2;
+        val_reg = REG_68K_D_SCRATCH_0;
         break;
     case WRITE_VAL_IMM:
-        emit_move_b_dn(block, REG_68K_D_SCRATCH_2, imm_val);  // load imm to D2
-        val_reg = REG_68K_D_SCRATCH_2;
+        emit_move_b_dn(block, REG_68K_D_SCRATCH_0, imm_val);  // load imm to D0
+        val_reg = REG_68K_D_SCRATCH_0;
         break;
     }
 
+    emit_push_l_dn(block, REG_68K_D_SCRATCH_2);
     emit_push_b_dn(block, val_reg); // push value
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1); // push address
     emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX); // push dmg pointer
     emit_movea_l_disp_an_an(block, JIT_CTX_WRITE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
     emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
     emit_addq_l_an(block, 7, 8); // clean up stack
+    emit_pop_l_dn(block, REG_68K_D_SCRATCH_2);
 }
 
 // Call dmg_write(dmg, addr, val) - addr in D1, val in D4 (A register)
@@ -113,8 +106,9 @@ void compile_slow_pop_to_d1(struct code_block *block)
     emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
     emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
     emit_addq_l_an(block, 7, 6);
-    // D0 = low byte, save to D2
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_2);
+
+    // Save low byte on 68k stack
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_0);
 
     // Read high byte: dmg_read(dmg, gb_sp+1)
     emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_1);
@@ -128,7 +122,8 @@ void compile_slow_pop_to_d1(struct code_block *block)
 
     // Combine: D1.w = (high << 8) | low
     emit_rol_w_8(block, REG_68K_D_SCRATCH_0);  // D0.w = high byte in upper
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_SCRATCH_0);  // D0.b = low
+    emit_pop_w_dn(block, REG_68K_D_SCRATCH_1); // D1 = saved low byte
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D0.b = low
     emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // D1.w = result
 
     // Increment gb_sp by 2

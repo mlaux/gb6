@@ -6,103 +6,55 @@
 // 3. Looks up block in appropriate cache, if found -> JMP to it
 // 4. Otherwise -> RTS to C to compile the block
 // context offsets in jit.h
-// Assembly:
-//   tst.b   16(a4)              ; check interrupt_check
-//   bne     .exit
-//   cmpi.w  #$4000, d3
-//   bcs.s   .bank0              ; PC < $4000
-//   cmpi.w  #$8000, d3
-//   bcs.s   .banked             ; $4000 <= PC < $8000
-//   ; fall through to upper
-// .upper:
-//   movea.l 28(a4), a0          ; upper_cache
-//   moveq   #0, d1
-//   move.w  d3, d1
-//   subi.w  #$8000, d1          ; index = PC - $8000
-//   lsl.l   #2, d1
-//   movea.l (a0,d1.l), a0
-//   cmpa.w  #0, a0              ; check for NULL
-//   beq.s   .exit
-//   jmp     (a0)
-// .bank0:
-//   movea.l 20(a4), a0          ; bank0_cache
-//   moveq   #0, d1
-//   move.w  d3, d1              ; index = PC
-//   lsl.l   #2, d1
-//   movea.l (a0,d1.l), a0
-//   cmpa.w  #0, a0
-//   beq.s   .exit
-//   jmp     (a0)
-// .banked:
-//   movea.l 24(a4), a0          ; banked_cache base
-//   moveq   #0, d1
-//   move.b  17(a4), d1          ; current_rom_bank
-//   lsl.l   #2, d1
-//   movea.l (a0,d1.l), a0       ; banked_cache[bank]
-//   cmpa.w  #0, a0
-//   beq.s   .exit               ; bank not allocated
-//   moveq   #0, d1
-//   move.w  d3, d1
-//   subi.w  #$4000, d1          ; index = PC - $4000
-//   lsl.l   #2, d1
-//   movea.l (a0,d1.l), a0
-//   cmpa.w  #0, a0
-//   beq.s   .exit
-//   jmp     (a0)
-// .exit:
-//   rts
 const unsigned char dispatcher_code[] = {
-    0x0c, 0xac, 0x00, 0x00, 0x01, 0xc8, 0x00, 0x2c,      // 0: cmpi.l #70224, 44(a4)
-    0x64, 0x68,                   // 8: bcs.s -> exit
+    0x0c, 0x82, 0x00, 0x00, 0x01, 0xc8,  // 0: cmpi.l #456, d2
+    0x64, 0x68,                   // 6: bcc.s -> exit
 
-    // tst.b 16(a4); bne.s .exit
-    // 0x4a, 0x2c, 0x00, 0x10,       // 0: tst.b 16(a4)
-    // 0x66, 0x68,                   // 4: bne.s -> exit
     // cmpi.w #$4000, d3; bcs.s .bank0
-    0x0c, 0x43, 0x40, 0x00,       // 6: cmpi.w #$4000, d3
-    0x65, 0x20,                   // 10: bcs.s -> bank0
+    0x0c, 0x43, 0x40, 0x00,       // 8: cmpi.w #$4000, d3
+    0x65, 0x20,                   // 12: bcs.s -> bank0
     // cmpi.w #$8000, d3; bcs.s .banked
-    0x0c, 0x43, 0x80, 0x00,       // 12: cmpi.w #$8000, d3
-    0x65, 0x30,                   // 16: bcs.s -> banked
+    0x0c, 0x43, 0x80, 0x00,       // 14: cmpi.w #$8000, d3
+    0x65, 0x30,                   // 18: bcs.s -> banked
 
-    // .upper: (offset 18)
-    0x20, 0x6c, 0x00, 0x1c,       // 18: movea.l 28(a4), a0
-    0x72, 0x00,                   // 22: moveq #0, d1
-    0x32, 0x03,                   // 24: move.w d3, d1
-    0x04, 0x41, 0x80, 0x00,       // 26: subi.w #$8000, d1
-    0xe5, 0x89,                   // 30: lsl.l #2, d1
-    0x20, 0x70, 0x18, 0x00,       // 32: movea.l (a0,d1.l), a0
-    0xb0, 0xfc, 0x00, 0x00,       // 36: cmpa.w #0, a0
-    0x67, 0x44,                   // 40: beq.s -> exit
-    0x4e, 0xd0,                   // 42: jmp (a0)
+    // .upper: (offset 20)
+    0x20, 0x6c, 0x00, 0x1c,       // 20: movea.l 28(a4), a0
+    0x72, 0x00,                   // 24: moveq #0, d1
+    0x32, 0x03,                   // 26: move.w d3, d1
+    0x04, 0x41, 0x80, 0x00,       // 28: subi.w #$8000, d1
+    0xe5, 0x89,                   // 32: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 34: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 38: cmpa.w #0, a0
+    0x67, 0x44,                   // 42: beq.s -> exit
+    0x4e, 0xd0,                   // 44: jmp (a0)
 
-    // .bank0: (offset 44)
-    0x20, 0x6c, 0x00, 0x14,       // 44: movea.l 20(a4), a0
-    0x72, 0x00,                   // 48: moveq #0, d1
-    0x32, 0x03,                   // 50: move.w d3, d1
-    0xe5, 0x89,                   // 52: lsl.l #2, d1
-    0x20, 0x70, 0x18, 0x00,       // 54: movea.l (a0,d1.l), a0
-    0xb0, 0xfc, 0x00, 0x00,       // 58: cmpa.w #0, a0
-    0x67, 0x2e,                   // 62: beq.s -> exit
-    0x4e, 0xd0,                   // 64: jmp (a0)
+    // .bank0: (offset 46)
+    0x20, 0x6c, 0x00, 0x14,       // 46: movea.l 20(a4), a0
+    0x72, 0x00,                   // 50: moveq #0, d1
+    0x32, 0x03,                   // 52: move.w d3, d1
+    0xe5, 0x89,                   // 54: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 56: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 60: cmpa.w #0, a0
+    0x67, 0x2e,                   // 64: beq.s -> exit
+    0x4e, 0xd0,                   // 66: jmp (a0)
 
-    // .banked: (offset 66)
-    0x20, 0x6c, 0x00, 0x18,       // 66: movea.l 24(a4), a0
-    0x72, 0x00,                   // 70: moveq #0, d1
-    0x12, 0x2c, 0x00, 0x11,       // 72: move.b 17(a4), d1
-    0xe5, 0x89,                   // 76: lsl.l #2, d1
-    0x20, 0x70, 0x18, 0x00,       // 78: movea.l (a0,d1.l), a0
-    0xb0, 0xfc, 0x00, 0x00,       // 82: cmpa.w #0, a0
-    0x67, 0x16,                   // 86: beq.s -> exit
-    0x72, 0x00,                   // 88: moveq #0, d1
-    0x32, 0x03,                   // 90: move.w d3, d1
-    0x04, 0x41, 0x40, 0x00,       // 92: subi.w #$4000, d1
-    0xe5, 0x89,                   // 96: lsl.l #2, d1
-    0x20, 0x70, 0x18, 0x00,       // 98: movea.l (a0,d1.l), a0
-    0xb0, 0xfc, 0x00, 0x00,       // 102: cmpa.w #0, a0
-    0x67, 0x02,                   // 106: beq.s -> exit
-    0x4e, 0xd0,                   // 108: jmp (a0)
+    // .banked: (offset 68)
+    0x20, 0x6c, 0x00, 0x18,       // 68: movea.l 24(a4), a0
+    0x72, 0x00,                   // 72: moveq #0, d1
+    0x12, 0x2c, 0x00, 0x11,       // 74: move.b 17(a4), d1
+    0xe5, 0x89,                   // 78: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 80: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 84: cmpa.w #0, a0
+    0x67, 0x16,                   // 88: beq.s -> exit
+    0x72, 0x00,                   // 90: moveq #0, d1
+    0x32, 0x03,                   // 92: move.w d3, d1
+    0x04, 0x41, 0x40, 0x00,       // 94: subi.w #$4000, d1
+    0xe5, 0x89,                   // 98: lsl.l #2, d1
+    0x20, 0x70, 0x18, 0x00,       // 100: movea.l (a0,d1.l), a0
+    0xb0, 0xfc, 0x00, 0x00,       // 104: cmpa.w #0, a0
+    0x67, 0x02,                   // 108: beq.s -> exit
+    0x4e, 0xd0,                   // 110: jmp (a0)
 
-    // .exit: (offset 110)
-    0x4e, 0x75                    // 110: rts
+    // .exit: (offset 112)
+    0x4e, 0x75                    // 112: rts
 };

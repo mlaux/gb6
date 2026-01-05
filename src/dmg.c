@@ -131,13 +131,12 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        //dmg->cycles_since_render += 32;
-        return (dmg->cycles_since_render / 456) % 154;
+        return lcd_read(dmg->lcd, REG_LY);
     }
 
     if (address == REG_STAT) {
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
-        int ly = (dmg->cycles_since_render / 456) % 154;
+        int ly = lcd_read(dmg->lcd, REG_LY);
         int mode;
 
         if (ly >= 144) {
@@ -157,14 +156,7 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
                 mode = 0;
             }
         }
-
-        // advance time to simulate polling loop progress, this will double
-        // count because these same cycles will be added when the JIT returns
-        // to C, but it;s probably fine?
-        // ld a, ($ff41) + and 3 + jr nz ~32 cycles
-        //dmg->cycles_since_render += 32;
-
-        return (stat & 0xfc) | mode;
+        return stat;
     }
 
     // OAM and LCD registers
@@ -322,56 +314,34 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
-    int prev_ly, new_ly, lyc, crossed_lyc, crossed_vblank;
+    int new_ly, lyc;
 
-    // Timer DIV always increments
     dmg->timer_div += cycles;
 
-    // Calculate LY before and after adding cycles
-    prev_ly = (dmg->cycles_since_render / 456) % 154;
-    dmg->cycles_since_render += cycles;
-    new_ly = (dmg->cycles_since_render / 456) % 154;
-
-    // Update LY register
+    new_ly = lcd_read(dmg->lcd, REG_LY) + 1;
+    if (new_ly >= 154) { 
+        new_ly = 0;
+    }
     lcd_write(dmg->lcd, REG_LY, new_ly);
 
-    // Check if we crossed LYC (prev_ly, new_ly] range, handling wrap
     lyc = lcd_read(dmg->lcd, REG_LYC);
-    if (new_ly >= prev_ly) {
-        crossed_lyc = (lyc > prev_ly && lyc <= new_ly);
-    } else {
-        // wrapped around 153->0
-        crossed_lyc = (lyc > prev_ly || lyc <= new_ly);
-    }
-
-    // Set/clear match flag based on current LY
     if (new_ly == lyc) {
         lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
+            dmg_request_interrupt(dmg, INT_LCDSTAT);
+        }
     } else {
         lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
     }
 
-    // Fire interrupt only when we cross LYC
-    if (crossed_lyc && lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
-        dmg_request_interrupt(dmg, INT_LCDSTAT);
-    }
-
-    // Check if we crossed into vblank (LY 144), same logic as LYC
-    if (new_ly >= prev_ly) {
-        crossed_vblank = (prev_ly < 144 && new_ly >= 144);
-    } else {
-        // wrapped around 153->0, we definitely passed through vblank
-        crossed_vblank = (prev_ly < 144);
-    }
-
-    if (crossed_vblank) {
+    if (new_ly == 144) {
         dmg_request_interrupt(dmg, INT_VBLANK);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);
         }
     }
 
-    // Frame boundary - render
+    dmg->cycles_since_render += cycles;
     if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
@@ -385,12 +355,12 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         }
 
         dmg->frames_rendered++;
-        dmg->cycles_since_render %= CYCLES_PER_FRAME;
+        dmg->cycles_since_render -= CYCLES_PER_FRAME;
     }
 }
 
 void dmg_ei_di(void *_dmg, u16 enabled)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
-    dmg->cpu->interrupt_enable = enabled ? 1 : 0;
+    dmg->interrupt_enable = enabled ? 1 : 0;
 }

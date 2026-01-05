@@ -325,6 +325,14 @@ void emit_addi_b_dn(struct code_block *block, uint8_t dreg, uint8_t imm)
     emit_word(block, imm);
 }
 
+// addi.l #imm, Dn
+void emit_addi_l_dn(struct code_block *block, uint8_t dreg, uint32_t imm)
+{
+    // 0000 0110 10 000 rrr
+    emit_word(block, 0x0680 | dreg);
+    emit_long(block, imm);
+}
+
 // or.b Ds, Dd (result to Dd)
 void emit_or_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
 {
@@ -507,6 +515,27 @@ void emit_push_w_dn(struct code_block *block, uint8_t dreg)
 {
     // 00 11 111 100 000 ddd  (dest = -(A7), src = Dn)
     emit_word(block, 0x3f00 | dreg);
+}
+
+// move.w (A7)+, Dn - pop word to data register
+void emit_pop_w_dn(struct code_block *block, uint8_t dreg)
+{
+    // 00 11 ddd 000 011 111  (dest = Dn, src = (A7)+)
+    emit_word(block, 0x301f | (dreg << 9));
+}
+
+// move.l Dn, -(A7) - push word from data register
+void emit_push_l_dn(struct code_block *block, uint8_t dreg)
+{
+    // 00 10 111 100 000 ddd  (dest = -(A7), src = Dn)
+    emit_word(block, 0x2f00 | dreg);
+}
+
+// move.l (A7)+, Dn - pop word to data register
+void emit_pop_l_dn(struct code_block *block, uint8_t dreg)
+{
+    // 00 10 ddd 000 011 111  (dest = Dn, src = (A7)+)
+    emit_word(block, 0x201f | (dreg << 9));
 }
 
 // move.l d(An), -(A7) - push long from memory with displacement
@@ -970,6 +999,14 @@ void emit_cmpi_l_imm32_disp_an(
     emit_word(block, disp);
 }
 
+// cmpi.l #imm32, Dn - compare immediate long with data register
+void emit_cmpi_l_imm_dn(struct code_block *block, uint32_t imm, uint8_t dreg)
+{
+    // 0000 1100 10 000 rrr
+    emit_word(block, 0x0c80 | dreg);
+    emit_long(block, imm);
+}
+
 // emit_add_cycles - add GB cycles to context, picks optimal instruction
 void emit_add_cycles(struct code_block *block, int cycles)
 {
@@ -977,8 +1014,10 @@ void emit_add_cycles(struct code_block *block, int cycles)
         return;
     }
     if (cycles <= 8) {
-        emit_addq_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
+        emit_addq_l_dn(block, REG_68K_D_SCRATCH_2, cycles);
+        // emit_addq_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
     } else {
-        emit_addi_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
+        emit_addi_l_dn(block, REG_68K_D_SCRATCH_2, cycles);
+        // emit_addi_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
     }
 }

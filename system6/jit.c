@@ -10,6 +10,7 @@
 #include "cpu.h"
 #include "dmg.h"
 #include "lru.h"
+#include "lcd.h"
 #include "dispatcher_asm.h"
 #include "emulator.h"
 #include "debug.h"
@@ -21,6 +22,7 @@ static u32 call_count = 0;
 
 // register state that persists between block executions
 struct {
+  u32 d2; // accumulated cycles, output
   u32 d3; // next pc, output only
   u32 d4, d5, d6, d7; // a, bc, de, f
   u32 a2, a3, a4; // hl, sp, ctx
@@ -47,14 +49,14 @@ static void execute_block(void *code)
 
     // load GB state into 68k registers
     "lea %[jit_regs], %%a1\n\t"
-    "movem.l (%%a1), %%d3-%%d7/%%a2-%%a4\n\t"
+    "movem.l (%%a1), %%d2-%%d7/%%a2-%%a4\n\t"
 
     // call the generated code, this can then chain to other blocks
     "jsr (%%a0)\n\t"
 
     // save results back to memory
     "lea %[jit_regs], %%a0\n\t"
-    "movem.l %%d3-%%d7/%%a2-%%a3, (%%a0)\n\t"
+    "movem.l %%d2-%%d7/%%a2-%%a3, (%%a0)\n\t"
 
     // restore callee-saved registers
     "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a4\n\t"
@@ -65,6 +67,11 @@ static void execute_block(void *code)
     : "d0", "d1", "a0", "a1", "cc", "memory"
   );
 }
+
+
+// sync hardware state - advance by given number of cycles
+#define CYCLES_PER_FRAME 70224
+
 
 // Initialize JIT state for a new emulation session
 void jit_init(struct dmg *dmg)
@@ -89,19 +96,19 @@ void jit_init(struct dmg *dmg)
     jit_ctx.read_func = dmg_read;
     jit_ctx.write_func = dmg_write;
     jit_ctx.ei_di_func = dmg_ei_di;
-    jit_ctx.interrupt_check = 0;
     jit_ctx.current_rom_bank = 1;  // bank 1 is default after boot
     jit_ctx.bank0_cache = bank0_cache;
     jit_ctx.banked_cache = banked_cache;
     jit_ctx.upper_cache = upper_cache;
     jit_ctx.dispatcher_return = (void *) dispatcher_code;
 
+    jit_regs.d2 = 0;
+    jit_regs.d3 = 0x100;
     // Initialize SP to point to top of HRAM (0xFFFE)
     // A3 is the native pointer, gb_sp is the GB address, sp_adjust converts between them
     jit_regs.a3 = (unsigned long) (dmg->zero_page + 0xfffe - 0xff80);
     jit_ctx.gb_sp = 0xfffe;
     jit_ctx.sp_adjust = 0xff80 - (u32) dmg->zero_page;
-    jit_ctx.cycles_accumulated = 0;
     jit_regs.a4 = (unsigned long) &jit_ctx;
 
     jit_halted = 0;
@@ -111,7 +118,6 @@ int jit_step(struct dmg *dmg)
 {
     struct code_block *block;
     char buf[64];
-    u16 start_pc = dmg->cpu->pc;
     u32 t0, t1, t2, t3;
     t0 = TickCount();
 
@@ -119,31 +125,27 @@ int jit_step(struct dmg *dmg)
         return 0;
     }
 
-    // clear interrupt check before executing so we can make progress
-    // even if the timer fired during ProcessEvents
-    jit_ctx.interrupt_check = 0;
-
     // Look up or compile block
-    block = cache_lookup(start_pc, jit_ctx.current_rom_bank);
+    block = cache_lookup(jit_regs.d3, jit_ctx.current_rom_bank);
 
     if (!block) {
         u32 free_heap;
         lru_ensure_memory();
         free_heap = (u32) FreeMem();
-        sprintf(buf, "Compiling $%02x:%04x free=%u",
-                jit_ctx.current_rom_bank, start_pc, free_heap);
-        set_status_bar(buf);
-        block = compile_block(start_pc, &compile_ctx);
+        // sprintf(buf, "Compiling $%02x:%04x free=%u",
+        //         jit_ctx.current_rom_bank, jit_regs.d3, free_heap);
+        // set_status_bar(buf);
+        block = compile_block(jit_regs.d3, &compile_ctx);
         if (!block) {
             u32 unused;
 
             // try to free memory by evicting LRU blocks
             lru_clear_all();
             MaxMem(&unused);
-            block = compile_block(start_pc, &compile_ctx);
+            block = compile_block(jit_regs.d3, &compile_ctx);
 
             if (!block) {
-              sprintf(buf, "JIT: alloc fail pc=%04x", start_pc);
+              sprintf(buf, "JIT: alloc fail pc=%04x", jit_regs.d3);
               set_status_bar(buf);
               jit_halted = 1;
               return 0;
@@ -159,12 +161,12 @@ int jit_step(struct dmg *dmg)
         }
 
         //debug_log_block(block);
-        lru_add_block(block, start_pc, jit_ctx.current_rom_bank);
+        lru_add_block(block, jit_regs.d3, jit_ctx.current_rom_bank);
     } else {
         if (block->lru_node) {
             lru_promote((lru_node *) block->lru_node);
         }
-        set_status_bar("Running");
+        // set_status_bar("Running");
     }
 
     t1 = TickCount();
@@ -178,7 +180,11 @@ int jit_step(struct dmg *dmg)
         return 0;
     }
 
-    if (dmg->cpu->interrupt_enable) {
+    // sync hardware with cycles accumulated by compiled code
+    dmg_sync_hw(dmg, jit_regs.d2);
+    jit_regs.d2 = 0;
+
+    if (dmg->interrupt_enable) {
       u8 pending = dmg->interrupt_enable_mask & dmg->interrupt_request_mask & 0x1f;
       if (pending) {
         static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
@@ -187,7 +193,7 @@ int jit_step(struct dmg *dmg)
           if (pending & (1 << k)) {
             // clear IF bit and disable IME
             dmg->interrupt_request_mask &= ~(1 << k);
-            dmg->cpu->interrupt_enable = 0;
+            dmg->interrupt_enable = 0;
 
             // push PC to stack
             u8 *sp_ptr = (u8 *) jit_regs.a3;
@@ -205,23 +211,16 @@ int jit_step(struct dmg *dmg)
       }
     }
 
-    dmg->cpu->pc = (u16) jit_regs.d3;
-
-    // sync hardware with cycles accumulated by compiled code
-    // dmg_sync_hw accumulates internally and renders at frame boundaries
-    dmg_sync_hw(dmg, jit_ctx.cycles_accumulated);
-    jit_ctx.cycles_accumulated = 0;
-
     t3 = TickCount();
     time_in_lookup += t1 - t0;
     time_in_jit += t2 - t1;
     time_in_sync += t3 - t2;
     call_count++;
-    // if (call_count % 1000 == 0) {
-    //   sprintf(buf, "L:%lu J:%lu S:%lu",
-    //           time_in_lookup, time_in_jit, time_in_sync);
-    //   set_status_bar(buf);
-    // }
+    if (call_count % 1000 == 0) {
+      sprintf(buf, "L:%lu J:%lu S:%lu",
+              time_in_lookup, time_in_jit, time_in_sync);
+      set_status_bar(buf);
+    }
 
     return 1;
 }

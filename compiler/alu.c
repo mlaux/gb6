@@ -57,19 +57,19 @@ static void compile_adc_core(struct code_block *block)
     emit_andi_w_dn(block, REG_68K_D_SCRATCH_1, 0x00ff);
 
     // Zero-extend A into D2: moveq #0, D2; move.b D4, D2
-    emit_moveq_dn(block, REG_68K_D_SCRATCH_2, 0);
-    emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_2);
+    emit_moveq_dn(block, REG_68K_D_SCRATCH_0, 0);
+    emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_0);
 
     // Add operand: add.w D1, D2
-    emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);
+    emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
 
     // Test old carry and conditionally add 1
     emit_btst_imm_dn(block, 4, REG_68K_D_FLAGS);  // btst #4, D7
     emit_beq_b(block, 2);                          // beq +2 (skip addq)
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_2, 1); // addq.w #1, D2
+    emit_addq_w_dn(block, REG_68K_D_SCRATCH_0, 1); // addq.w #1, D2
 
     // Store result: move.b D2, D4
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_A);
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
 
     // Set Z flag: tst.b D4; seq D1; andi.b #0x80, D1
     emit_tst_b_dn(block, REG_68K_D_A);
@@ -77,7 +77,7 @@ static void compile_adc_core(struct code_block *block)
     emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);
 
     // Set C flag from bit 8: btst #8, D2; sne D7; andi.b #0x10, D7
-    emit_btst_imm_dn(block, 8, REG_68K_D_SCRATCH_2);
+    emit_btst_imm_dn(block, 8, REG_68K_D_SCRATCH_0);
     emit_scc(block, 0x06, REG_68K_D_FLAGS);  // sne
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);
 
@@ -93,19 +93,19 @@ static void compile_sbc_core(struct code_block *block)
     emit_andi_w_dn(block, REG_68K_D_SCRATCH_1, 0x00ff);
 
     // Zero-extend A into D2: moveq #0, D2; move.b D4, D2
-    emit_moveq_dn(block, REG_68K_D_SCRATCH_2, 0);
-    emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_2);
+    emit_moveq_dn(block, REG_68K_D_SCRATCH_0, 0);
+    emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_0);
 
     // Subtract operand: sub.w D1, D2
-    emit_sub_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_2);
+    emit_sub_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
 
     // Test old carry and conditionally subtract 1
     emit_btst_imm_dn(block, 4, REG_68K_D_FLAGS);  // btst #4, D7
     emit_beq_b(block, 2);                          // beq +2 (skip subq)
-    emit_subq_w_dn(block, REG_68K_D_SCRATCH_2, 1); // subq.w #1, D2
+    emit_subq_w_dn(block, REG_68K_D_SCRATCH_0, 1); // subq.w #1, D2
 
     // Store result: move.b D2, D4
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_2, REG_68K_D_A);
+    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
 
     // Set Z flag: tst.b D4; seq D1; andi.b #0x80, D1
     emit_tst_b_dn(block, REG_68K_D_A);
@@ -113,7 +113,7 @@ static void compile_sbc_core(struct code_block *block)
     emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);
 
     // Set C flag from bit 15 (borrow): btst #15, D2; sne D7; andi.b #0x10, D7
-    emit_btst_imm_dn(block, 15, REG_68K_D_SCRATCH_2);
+    emit_btst_imm_dn(block, 15, REG_68K_D_SCRATCH_0);
     emit_scc(block, 0x06, REG_68K_D_FLAGS);  // sne
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);
 

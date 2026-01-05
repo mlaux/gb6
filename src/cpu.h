@@ -8,7 +8,6 @@ struct dmg;
 struct cpu
 {
     u16 pc;
-    u8 interrupt_enable;
     struct dmg *dmg;
 };
 
