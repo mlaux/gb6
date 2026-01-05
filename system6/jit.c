@@ -16,6 +16,11 @@
 
 #define CYCLES_PER_INTERRUPT 70224
 
+static u32 time_in_jit = 0;
+static u32 time_in_sync = 0;
+static u32 time_in_lookup = 0;
+static u32 call_count = 0;
+
 // register state that persists between block executions
 struct {
   u32 d3; // next pc, output only
@@ -114,6 +119,8 @@ int jit_step(struct dmg *dmg)
     u32 finished_ticks;
     u32 wall_ticks;
     u16 start_pc = dmg->cpu->pc;
+    u32 t0, t1, t2, t3;
+    t0 = TickCount();
 
     if (jit_halted) {
         return 0;
@@ -130,9 +137,9 @@ int jit_step(struct dmg *dmg)
         u32 free_heap;
         lru_ensure_memory();
         free_heap = (u32) FreeMem();
-        sprintf(buf, "Compiling $%02x:%04x free=%u",
-                jit_ctx.current_rom_bank, start_pc, free_heap);
-        set_status_bar(buf);
+        // sprintf(buf, "Compiling $%02x:%04x free=%u",
+        //         jit_ctx.current_rom_bank, start_pc, free_heap);
+        // set_status_bar(buf);
         block = compile_block(start_pc, &compile_ctx);
         if (!block) {
             u32 unused;
@@ -164,10 +171,12 @@ int jit_step(struct dmg *dmg)
         if (block->lru_node) {
             lru_promote((lru_node *) block->lru_node);
         }
-        set_status_bar("Running");
+        //set_status_bar("Running");
     }
 
+    t1 = TickCount();
     execute_block(block->code);
+    t2 = TickCount();
 
     // Get next PC from D3
     if (jit_regs.d3 == HALT_SENTINEL) {
@@ -214,7 +223,19 @@ int jit_step(struct dmg *dmg)
     // don't sync lcd if interrupt just happened to prevent vblank spam
     // where the "main thread" can't make progress
     if (!took_interrupt) {
-      dmg_sync_hw(dmg, wall_ticks * CYCLES_PER_INTERRUPT);
+      dmg_sync_hw(dmg, /* wall_ticks * */CYCLES_PER_INTERRUPT);
+    }
+
+
+    t3 = TickCount();
+    time_in_lookup += t1 - t0;
+    time_in_jit += t2 - t1;
+    time_in_sync += t3 - t2;
+    call_count++;
+    if (call_count % 1000 == 0) {
+      sprintf(buf, "L:%lu J:%lu S:%lu",
+              time_in_lookup, time_in_jit, time_in_sync);
+      set_status_bar(buf);
     }
 
     return 1;

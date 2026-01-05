@@ -39,8 +39,10 @@
 static void on_rom_bank_switch(int new_bank)
 {
     jit_ctx.current_rom_bank = (u8) new_bank;
-    // Force exit to dispatcher so we use the correct cache
-    jit_ctx.interrupt_check = 1;
+    // force exit to dispatcher ?
+    // only way this is needed is if games switch banks and then don't jump
+    // or call afterwards... 
+    // jit_ctx.interrupt_check = 1;
 }
 
 // Time Manager task for timing and loop interruption
@@ -176,7 +178,7 @@ void StartEmulation(void)
   lcd_new(&lcd);
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
-  dmg.frame_skip = 1;
+  dmg.frame_skip = 3;
   dmg.rom_bank_switch_hook = on_rom_bank_switch;
   mbc_load_ram(dmg.rom->mbc, save_filename);
 
@@ -414,12 +416,16 @@ int main(int argc, char *argv[])
   while (app_running) {
     unsigned int now;
 
-    if (!ProcessEvents()) {
-      break;
+    if (frame_count % 10 == 0) {
+      if (!ProcessEvents()) {
+        break;
+      }
     }
+
 
     if (emulation_on) {
       jit_step(&dmg);
+      // not really a frame count anymore
       frame_count++;
     }
   }
