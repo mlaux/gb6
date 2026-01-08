@@ -413,6 +413,12 @@ void emit_bcc_w(struct code_block *block, int16_t disp)
     emit_word(block, disp);
 }
 
+// bcc.s - branch if C=0 with 8-bit displacement
+void emit_bcc_s(struct code_block *block, int8_t disp)
+{
+    emit_word(block, 0x6400 | ((uint8_t) disp));
+}
+
 // emit Bcc.w with condition code (4=cc, 5=cs, 6=ne, 7=eq)
 void emit_bcc_opcode_w(struct code_block *block, int cond, int16_t disp)
 {
@@ -1020,4 +1026,28 @@ void emit_add_cycles(struct code_block *block, int cycles)
         emit_addi_l_dn(block, REG_68K_D_SCRATCH_2, cycles);
         // emit_addi_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
     }
+}
+
+// Emit inline mini-dispatcher with patchable exit
+// This sequence:
+// 1. Checks cycle count (exit if >= 456)
+// 2. Calls patch_helper via JSR (first execution)
+// 3. patch_helper will patch the movea.l+jsr into jmp.l <target> for future runs
+// 16 bytes total
+void emit_patchable_exit(struct code_block *block)
+{
+    // cmpi.l #456, d2 (6 bytes)
+    emit_cmpi_l_imm_dn(block, 70224, REG_68K_D_SCRATCH_2);
+
+    // bcc.s +6 = skip over movea.l + jsr to rts (2 bytes)
+    emit_bcc_s(block, 6);
+
+    // movea.l JIT_CTX_PATCH_HELPER(a4), a0 (4 bytes)
+    emit_movea_l_disp_an_an(block, JIT_CTX_PATCH_HELPER, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+
+    // jsr (a0) (2 bytes)
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
+
+    // rts (2 bytes)
+    emit_rts(block);
 }

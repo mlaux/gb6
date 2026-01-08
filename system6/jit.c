@@ -19,6 +19,7 @@ static u32 time_in_jit = 0;
 static u32 time_in_sync = 0;
 static u32 time_in_lookup = 0;
 static u32 call_count = 0;
+static u32 last_report_tick = 0;
 
 // register state that persists between block executions
 struct {
@@ -68,11 +69,6 @@ static void execute_block(void *code)
   );
 }
 
-
-// sync hardware state - advance by given number of cycles
-#define CYCLES_PER_FRAME 70224
-
-
 // Initialize JIT state for a new emulation session
 void jit_init(struct dmg *dmg)
 {
@@ -101,6 +97,8 @@ void jit_init(struct dmg *dmg)
     jit_ctx.banked_cache = banked_cache;
     jit_ctx.upper_cache = upper_cache;
     jit_ctx.dispatcher_return = (void *) dispatcher_code;
+    jit_ctx.patch_helper = (void *) patch_helper_code;
+    jit_ctx.patch_count = 0;
 
     jit_regs.d2 = 0;
     jit_regs.d3 = 0x100;
@@ -114,11 +112,13 @@ void jit_init(struct dmg *dmg)
     jit_halted = 0;
 }
 
+static u32 cycles_min = 0xffffffff, cycles_max;
+
 int jit_step(struct dmg *dmg)
 {
     struct code_block *block;
     char buf[64];
-    u32 t0, t1, t2, t3;
+    u32 t0, t1, t2, t3, cycles;
     t0 = TickCount();
 
     if (jit_halted) {
@@ -182,6 +182,13 @@ int jit_step(struct dmg *dmg)
 
     // sync hardware with cycles accumulated by compiled code
     dmg_sync_hw(dmg, jit_regs.d2);
+    cycles = jit_regs.d2;
+    if (cycles < cycles_min) {
+      cycles_min = cycles;
+    }
+    if (cycles > cycles_max) {
+      cycles_max = cycles;
+    }
     jit_regs.d2 = 0;
 
     if (dmg->interrupt_enable) {
@@ -216,9 +223,12 @@ int jit_step(struct dmg *dmg)
     time_in_jit += t2 - t1;
     time_in_sync += t3 - t2;
     call_count++;
-    if (call_count % 1000 == 0) {
-      sprintf(buf, "L:%lu J:%lu S:%lu",
-              time_in_lookup, time_in_jit, time_in_sync);
+    if (call_count % 100 == 0) {
+      u32 now = TickCount();
+      u32 elapsed = now - last_report_tick;
+      u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
+      last_report_tick = now;
+      sprintf(buf, "E/s:%lu P:%lu C:%lu (%lu-%lu)", exits_per_sec, jit_ctx.patch_count, cycles, cycles_min, cycles_max);
       set_status_bar(buf);
     }
 

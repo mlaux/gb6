@@ -7,6 +7,8 @@
 #include "types.h"
 #include "compiler.h"
 #include "lru.h"
+#include "jit.h"
+#include "dispatcher_asm.h"
 
 // Block caches for different memory regions
 // Bank 0: 0x0000-0x3FFF (always mapped)
@@ -161,6 +163,54 @@ void lru_promote(lru_node *node)
     lru_push_front(node);
 }
 
+// Invalidate any patched jumps to the evicted block
+// Scans all cached blocks for JMP.L (0x4ef9) pointing to evicted_code
+// and resets them back to: movea.l JIT_CTX_PATCH_HELPER(a4), a0; jsr (a0)
+static void invalidate_patches_to(void *evicted_code)
+{
+    int k;
+    u32 target_addr = (u32) evicted_code;
+
+    for (k = 0; k < MAX_CACHED_BLOCKS; k++) {
+        lru_node *node = &lru_pool[k];
+        struct code_block *block;
+        size_t offset;
+
+        if (!node->in_use || !node->block) {
+            continue;
+        }
+
+        block = node->block;
+
+        // Scan for JMP.L opcode (0x4ef9) followed by the evicted address
+        for (offset = 0; offset + 6 <= block->length; offset += 2) {
+            u8 *p = &block->code[offset];
+            u32 jmp_target;
+
+            // Check for JMP.L opcode
+            if (p[0] != 0x4e || p[1] != 0xf9) {
+                continue;
+            }
+
+            // Read the target address (big-endian)
+            jmp_target = ((u32)p[2] << 24) | ((u32)p[3] << 16) |
+                         ((u32)p[4] << 8) | p[5];
+
+            if (jmp_target == target_addr) {
+                // Reset to: movea.l JIT_CTX_PATCH_HELPER(a4), a0; jsr (a0)
+                // movea.l 48(a4), a0 = 0x206c 0x0030
+                p[0] = 0x20;
+                p[1] = 0x6c;
+                p[2] = 0x00;
+                p[3] = JIT_CTX_PATCH_HELPER;
+                // jsr (a0) = 0x4e90
+                p[4] = 0x4e;
+                p[5] = 0x90;
+            }
+        }
+    }
+}
+
 // Evict least recently used block
 static void lru_evict_one(void)
 {
@@ -176,8 +226,9 @@ static void lru_evict_one(void)
     // Clear cache entry
     lru_clear_cache_entry(victim);
 
-    // Free the block
+    // Invalidate any patches pointing to this block before freeing
     if (victim->block) {
+        invalidate_patches_to(victim->block->code);
         block_free(victim->block);
         victim->block = NULL;
     }

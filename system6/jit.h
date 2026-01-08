@@ -23,6 +23,8 @@ typedef struct {
     /* 28 */ u16 gb_sp;      // always-accurate GB SP value
     /* 2a */ u8 _pad2[2];
     /* 2c */ u32 cycles_accumulated;  // GB cycles accumulated by compiled code
+    /* 30 */ void *patch_helper;  // patch_helper routine for lazy block patching
+    /* 34 */ u32 patch_count;     // number of patches applied (for debugging)
 } jit_context;
 
 extern jit_context jit_ctx;

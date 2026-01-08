@@ -50,6 +50,7 @@ void emit_or_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
 
 void emit_rts(struct code_block *block);
 void emit_dispatch_jump(struct code_block *block);
+void emit_patchable_exit(struct code_block *block);
 void emit_bra_b(struct code_block *block, int8_t disp);
 void emit_bra_w(struct code_block *block, int16_t disp);
 void emit_beq_b(struct code_block *block, int8_t disp);
@@ -57,6 +58,7 @@ void emit_beq_w(struct code_block *block, int16_t disp);
 void emit_bne_w(struct code_block *block, int16_t disp);
 void emit_bcs_w(struct code_block *block, int16_t disp);
 void emit_bcc_w(struct code_block *block, int16_t disp);
+void emit_bcc_s(struct code_block *block, int8_t disp);
 void emit_bcc_opcode_w(struct code_block *block, int cond, int16_t disp);
 void emit_btst_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg);
 void emit_bclr_imm_dn(struct code_block *block, uint8_t bit, uint8_t dreg);

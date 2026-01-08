@@ -131,31 +131,39 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        return lcd_read(dmg->lcd, REG_LY);
+        int ly = lcd_read(dmg->lcd, REG_LY) + 1;
+        if (ly == 154) {
+            ly = 0;
+        }
+        lcd_write(dmg->lcd, REG_LY, ly);
+        return ly;
+        // return lcd_read(dmg->lcd, REG_LY);
     }
 
     if (address == REG_STAT) {
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
-        int ly = lcd_read(dmg->lcd, REG_LY);
-        int mode;
+        // int ly = lcd_read(dmg->lcd, REG_LY);
+        // int mode;
 
-        if (ly >= 144) {
-            // vblank
-            mode = 1;
-        } else {
-            int cycle_in_line = dmg->cycles_since_render % 456;
-            if (cycle_in_line < 80) {
-                // OAM scan
-                mode = 2;
-            } else if (cycle_in_line < 252) {
-                // active area, 160 visible pixels + 12 extra
-                // https://gbdev.io/pandocs/Rendering.html#first12
-                mode = 3;
-            } else {
-                // hblank
-                mode = 0;
-            }
-        }
+        // if (ly >= 144) {
+        //     // vblank
+        //     mode = 1;
+        // } else {
+        //     int cycle_in_line = dmg->cycles_since_render % 456;
+        //     if (cycle_in_line < 80) {
+        //         // OAM scan
+        //         mode = 2;
+        //     } else if (cycle_in_line < 252) {
+        //         // active area, 160 visible pixels + 12 extra
+        //         // https://gbdev.io/pandocs/Rendering.html#first12
+        //         mode = 3;
+        //     } else {
+        //         // hblank
+        //         mode = 0;
+        //     }
+        // }
+        stat = (stat & 0xfc) + (((stat & 3) + 1) & 3);
+        lcd_write(dmg->lcd, REG_STAT, stat);
         return stat;
     }
 
@@ -318,31 +326,33 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
     dmg->timer_div += cycles;
 
-    new_ly = lcd_read(dmg->lcd, REG_LY) + 1;
-    if (new_ly >= 154) { 
-        new_ly = 0;
-    }
-    lcd_write(dmg->lcd, REG_LY, new_ly);
+    // new_ly = lcd_read(dmg->lcd, REG_LY) + 1;
+    // if (new_ly >= 154) { 
+    //     new_ly = 0;
+    // }
+    // lcd_write(dmg->lcd, REG_LY, new_ly);
 
-    lyc = lcd_read(dmg->lcd, REG_LYC);
-    if (new_ly == lyc) {
-        lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
-            dmg_request_interrupt(dmg, INT_LCDSTAT);
-        }
-    } else {
-        lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-    }
+    // lyc = lcd_read(dmg->lcd, REG_LYC);
+    // if (new_ly == lyc) {
+    //     lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+    //     if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
+    //         dmg_request_interrupt(dmg, INT_LCDSTAT);
+    //     }
+    // } else {
+    //     lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+    // }
 
-    if (new_ly == 144) {
-        dmg_request_interrupt(dmg, INT_VBLANK);
-        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
-            dmg_request_interrupt(dmg, INT_LCDSTAT);
-        }
-    }
+    // if (new_ly == 144) {
+    //     dmg_request_interrupt(dmg, INT_VBLANK);
+    //     if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
+    //         dmg_request_interrupt(dmg, INT_LCDSTAT);
+    //     }
+    // }
 
     dmg->cycles_since_render += cycles;
     if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
+        // fire VBLANK once per frame
+        dmg_request_interrupt(dmg, INT_VBLANK);
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
@@ -356,6 +366,8 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
         dmg->frames_rendered++;
         dmg->cycles_since_render -= CYCLES_PER_FRAME;
+        // reset LY to start of frame
+        lcd_write(dmg->lcd, REG_LY, 0);
     }
 }
 

@@ -133,7 +133,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         if (block->length > sizeof(block->code) - 160) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
-            emit_dispatch_jump(block);
+            emit_patchable_exit(block);
             break;
         }
 
@@ -377,7 +377,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 src_ptr += 2;
                 emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
                 emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-                emit_dispatch_jump(block);
+                emit_patchable_exit(block);
                 done = 1;
             }
             break;
@@ -881,7 +881,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         if (ctx->single_instruction && !done) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
-            emit_dispatch_jump(block);
+            emit_patchable_exit(block);
             break;
         }
     }

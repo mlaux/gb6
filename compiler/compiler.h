@@ -53,6 +53,8 @@
 #define JIT_CTX_GB_SP         40  // uint16_t: always-accurate GB SP value
 // 2 bytes padding at 42
 #define JIT_CTX_CYCLES        44  // u32: accumulated GB cycles
+#define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
+#define JIT_CTX_PATCH_COUNT   52  // u32 patch count (debug)
 
 // Offset of 'code' field in struct code_block (it's at the start)
 #define BLOCK_CODE_OFFSET 0

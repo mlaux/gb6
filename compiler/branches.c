@@ -78,16 +78,16 @@ int compile_jr(
         }
 
         // Larger loop - check cycle count, exit to dispatcher if >= scanline
-        // cmpi.l #456, d2
-        emit_cmpi_l_imm_dn(block, 456, REG_68K_D_SCRATCH_2);
+        // cmpi.l #70224, d2
+        emit_cmpi_l_imm_dn(block, 70224, REG_68K_D_SCRATCH_2);
 
-        // bcs.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14)
-        // bcs = branch if carry set = branch if cycles < 456
-        emit_bcs_w(block, 14);
+        // bcs.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + patchable_exit(16) = 22, plus 2 = 24)
+        // bcs = branch if carry set = branch if cycles < 70224
+        emit_bcs_w(block, 24);
         // Exit to dispatcher with target PC
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-        emit_dispatch_jump(block);
+        emit_patchable_exit(block);
 
         // Native branch (cycles < scanline boundary)
         // Must recompute displacement since block->length changed
@@ -96,11 +96,11 @@ int compile_jr(
         return 0;
     }
 
-    // Forward jump or outside block - go through dispatcher
+    // Forward jump or outside block - go through patchable exit
     target_gb_pc = src_address + target_gb_offset;
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
     return 1;
 }
 
@@ -154,16 +154,16 @@ void compile_jr_cond(
         //   bne/beq .check_cycles        ; if condition met, check cycles
         //   bra.w .fall_through          ; condition not met, skip all
         // .check_cycles:
-        //   cmpi.l #456, d2
-        //   bcs.w loop_target            ; cycles < 456, do native branch
-        //   moveq #0, d0                 ; cycles >= 456, exit
+        //   cmpi.l #70224, d2
+        //   bcs.w loop_target            ; cycles < 70224, do native branch
+        //   moveq #0, d0                 ; cycles >= 70224, exit
         //   move.w #target, d0
-        //   dispatch_jump
+        //   patchable_exit
         // .fall_through:
 
-        // Sizes: bne/beq(4) + bra.w(4) + cmpi.l(8) + bcs.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 32
+        // Sizes: bne/beq(4) + bra.w(4) + cmpi.l(6) + bcs.w(4) + moveq(2) + move.w(4) + patchable_exit(16) = 40
         // .check_cycles is at +8 from first branch
-        // .fall_through is at +32 from first branch
+        // .fall_through is at +40 from first branch
 
         if (branch_if_set) {
             // Branch if flag is set: btst gives Z=0 when bit=1, so use bne
@@ -173,40 +173,40 @@ void compile_jr_cond(
             emit_beq_w(block, 6);
         }
 
-        // bra.w to .fall_through (cmpi.l(6) + bcs.w(4) + moveq(2) + move.w(4) + dispatch_jump(6) = 22, plus 2 for PC = 24)
-        emit_bra_w(block, 24);
+        // bra.w to .fall_through (cmpi.l(6) + bcs.w(4) + moveq(2) + move.w(4) + patchable_exit(16) = 32, plus 2 for PC = 34)
+        emit_bra_w(block, 34);
 
         // .check_cycles:
-        emit_cmpi_l_imm_dn(block, 456, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, 70224, REG_68K_D_SCRATCH_2);
 
-        // bcs.w to native loop target (cycles < 456)
+        // bcs.w to native loop target (cycles < 70224)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bcs_w(block, m68k_disp);
 
-        // Exit to dispatcher (cycles >= 456)
+        // Exit to dispatcher (cycles >= 70224)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-        emit_dispatch_jump(block);
+        emit_patchable_exit(block);
 
         // .fall_through: block continues
         return;
     }
 
-    // Forward/external jump - conditionally exit to dispatcher
+    // Forward/external jump - conditionally exit via patchable exit
     // If condition NOT met, skip the exit sequence
     target_gb_pc = src_address + target_gb_offset;
 
     if (branch_if_set) {
         // Skip exit if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 14);  // skip: moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14
+        emit_beq_w(block, 24);  // skip: moveq(2) + move.w(4) + patchable_exit(16) = 22, plus 2 = 24
     } else {
         // Skip exit if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 14);
+        emit_bne_w(block, 24);
     }
 
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
 
 // Compile conditional absolute jump (jp nz, jp z, jp nc, jp c)
@@ -229,15 +229,15 @@ void compile_jp_cond(
     // If condition NOT met, skip the exit sequence
     if (branch_if_set) {
         // Skip exit if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 14);  // skip: moveq(2) + move.w(4) + dispatch_jump(6) = 12, plus 2 = 14
+        emit_beq_w(block, 24);  // skip: moveq(2) + move.w(4) + patchable_exit(16) = 22, plus 2 = 24
     } else {
         // Skip exit if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 14);
+        emit_bne_w(block, 24);
     }
 
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
 
 void compile_call_imm16(
@@ -269,7 +269,7 @@ void compile_call_imm16(
     // jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
 
 // Compile conditional call (call nz, call z, call nc, call c)
@@ -291,15 +291,15 @@ void compile_call_cond(
     emit_btst_imm_dn(block, flag_bit, 7);
 
     // If condition NOT met, skip the call sequence
-    // Call sequence is 34 bytes: moveq(2) + move.w(4) + subq.w(2) + subi.w(6) + move.b(2) +
-    //                            rol.w(2) + move.b d(An)(4) + moveq(2) + move.w(4) + dispatch_jump(6)
+    // Call sequence is 44 bytes: moveq(2) + move.w(4) + subq.w(2) + subi.w(6) + move.b(2) +
+    //                            rol.w(2) + move.b d(An)(4) + moveq(2) + move.w(4) + patchable_exit(16)
     // bxx.w displacement is relative to PC after opcode word, so add 2
     if (branch_if_set) {
         // Skip call if flag is clear (btst Z=1 when bit=0)
-        emit_beq_w(block, 36);
+        emit_beq_w(block, 46);
     } else {
         // Skip call if flag is set (btst Z=0 when bit=1)
-        emit_bne_w(block, 36);
+        emit_bne_w(block, 46);
     }
 
     // Push return address (same as compile_call_imm16)
@@ -314,7 +314,7 @@ void compile_call_cond(
     // Jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
 
 void compile_ret(struct code_block *block)
@@ -376,7 +376,7 @@ void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_1, 1, REG_68K_A_SP);
     // jump to target (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
 
 // Fused jr cond - uses live CCR flags from preceding ALU op
@@ -415,41 +415,41 @@ int compile_jr_cond_fused(
         //   bcc.w .check_cycles      ; if condition met
         //   bra.w .fall_through      ; condition not met
         // .check_cycles:
-        //   cmpi.l #456, d2
-        //   bcs.w loop_target        ; cycles < 456
-        //   <exit to dispatcher>
+        //   cmpi.l #70224, d2
+        //   bcs.w loop_target        ; cycles < 70224
+        //   <exit via patchable_exit>
         // .fall_through:
 
         // Branch to check_cycles if condition met
         emit_bcc_opcode_w(block, cond, 6);
 
-        // bra.w to .fall_through (cmpi.l(6) + bcs.w(4) + exit(12) = 22, plus 2 = 24)
-        emit_bra_w(block, 24);
+        // bra.w to .fall_through (cmpi.l(6) + bcs.w(4) + exit(22) = 32, plus 2 = 34)
+        emit_bra_w(block, 34);
 
         // .check_cycles:
-        emit_cmpi_l_imm_dn(block, 456, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, 70224, REG_68K_D_SCRATCH_2);
 
-        // bcs.w to native loop target (cycles < 456)
+        // bcs.w to native loop target (cycles < 70224)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bcs_w(block, m68k_disp);
 
-        // Exit to dispatcher (cycles >= 456)
+        // Exit via patchable exit (cycles >= 70224)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-        emit_dispatch_jump(block);
+        emit_patchable_exit(block);
 
         return 0;
     }
 
-    // Forward/external jump - conditionally exit to dispatcher
+    // Forward/external jump - conditionally exit via patchable exit
     target_gb_pc = src_address + target_gb_offset;
 
-    // Skip exit if condition NOT met
-    emit_bcc_opcode_w(block, invert_cond(cond), 14);
+    // Skip exit if condition NOT met (skip: moveq(2) + move.w(4) + patchable_exit(16) = 22, +2 = 24)
+    emit_bcc_opcode_w(block, invert_cond(cond), 24);
 
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
     return 0;  // doesn't end block - fall through continues
 }
 
@@ -464,12 +464,12 @@ void compile_jp_cond_fused(
     uint16_t target = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
     *src_ptr += 2;
 
-    // Skip exit if condition NOT met
-    emit_bcc_opcode_w(block, invert_cond(cond), 14);
+    // Skip exit if condition NOT met (skip: moveq(2) + move.w(4) + patchable_exit(16) = 22, +2 = 24)
+    emit_bcc_opcode_w(block, invert_cond(cond), 24);
 
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
 
 // Fused ret cond - uses live CCR flags
@@ -502,8 +502,9 @@ void compile_call_cond_fused(
     *src_ptr += 2;
 
     // Skip call if condition NOT met
-    // Call sequence is 34 bytes (28 + 6 for subi.w)
-    emit_bcc_opcode_w(block, invert_cond(cond), 36);
+    // Call sequence is 44 bytes: moveq(2) + move.w(4) + subq.w(2) + subi.w(6) + move.b(2) +
+    //                            rol.w(2) + move.b d(An)(4) + moveq(2) + move.w(4) + patchable_exit(16)
+    emit_bcc_opcode_w(block, invert_cond(cond), 46);
 
     // Push return address
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
@@ -517,5 +518,5 @@ void compile_call_cond_fused(
     // Jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
     emit_move_w_dn(block, REG_68K_D_NEXT_PC, target);
-    emit_dispatch_jump(block);
+    emit_patchable_exit(block);
 }
