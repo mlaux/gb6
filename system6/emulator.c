@@ -55,6 +55,8 @@ WindowPtr g_wp;
 unsigned char app_running;
 unsigned char emulation_on;
 
+static unsigned long soft_reset_release_tick;
+
 static Rect window_bounds = { WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT, WINDOW_X + WINDOW_WIDTH };
 
 static char save_filename[32];
@@ -101,6 +103,7 @@ void InitEverything(void)
   mbar = GetNewMBar(MBAR_DEFAULT);
   SetMenuBar(mbar);
   AppendResMenu(GetMenuHandle(MENU_APPLE), 'DRVR');
+  InsertMenuItem(GetMenuHandle(MENU_FILE), "\pSoft Reset", FILE_SCREENSHOT);
   DrawMenuBar();
 
   app_running = 1;
@@ -163,6 +166,15 @@ void StartEmulation(void)
   // Initialize JIT
   jit_init(&dmg);
   emulation_on = 1;
+}
+
+void CheckSoftResetRelease(void)
+{
+  if (soft_reset_release_tick && TickCount() >= soft_reset_release_tick) {
+    dmg_set_button(&dmg, FIELD_ACTION,
+        BUTTON_A | BUTTON_B | BUTTON_SELECT | BUTTON_START, 0);
+    soft_reset_release_tick = 0;
+  }
 }
 
 int LoadRom(Str63 fileName, short vRefNum)
@@ -242,6 +254,13 @@ void OnMenuAction(long action)
     if(item == FILE_OPEN) {
       if(ShowOpenBox())
         StartEmulation();
+    }
+    else if(item == FILE_SOFT_RESET) {
+      if (emulation_on) {
+        dmg_set_button(&dmg, FIELD_ACTION,
+            BUTTON_A | BUTTON_B | BUTTON_SELECT | BUTTON_START, 1);
+        soft_reset_release_tick = TickCount() + SOFT_RESET_TICKS;
+      }
     }
     else if(item == FILE_QUIT) {
       app_running = 0;
@@ -384,6 +403,7 @@ int main(int argc, char *argv[])
     }
 
     if (emulation_on) {
+      CheckSoftResetRelease();
       jit_step(&dmg);
     }
   }

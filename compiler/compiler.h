@@ -103,4 +103,7 @@ void block_free(struct code_block *block);
 void emit_byte(struct code_block *block, uint8_t byte);
 void emit_word(struct code_block *block, uint16_t word);
 
+void compile_bc_to_addr(struct code_block *block);
+void compile_de_to_addr(struct code_block *block);
+
 #endif

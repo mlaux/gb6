@@ -29,12 +29,16 @@
 
 #define FILE_OPEN 1
 #define FILE_SCREENSHOT 2
-#define FILE_QUIT 4
+#define FILE_SOFT_RESET 3
+#define FILE_QUIT 5
 
 #define EDIT_PREFERENCES 1
 #define EDIT_KEY_MAPPINGS 2
 
+#define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
+
 int LoadRom(Str63, short);
+void CheckSoftResetRelease(void);
 
 void set_status_bar(const char *str);
 

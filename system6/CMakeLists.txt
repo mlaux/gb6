@@ -21,6 +21,7 @@ add_application(Emulator
     ../compiler/reg_loads.c
     ../compiler/alu.c
     ../compiler/instructions.c
+    ../compiler/stack.c
     dialogs.c
     debug.c
     dispatcher_asm.c
