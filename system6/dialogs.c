@@ -9,6 +9,137 @@
 #include "emulator.h"
 #include "dialogs.h"
 
+const char *keyNames[128] = {
+  "\pA",        // 0x00
+  "\pS",        // 0x01
+  "\pD",        // 0x02
+  "\pF",        // 0x03
+  "\pH",        // 0x04
+  "\pG",        // 0x05
+  "\pZ",        // 0x06
+  "\pX",        // 0x07
+  "\pC",        // 0x08
+  "\pV",        // 0x09
+  NULL,         // 0x0a
+  "\pB",        // 0x0b
+  "\pQ",        // 0x0c
+  "\pW",        // 0x0d
+  "\pE",        // 0x0e
+  "\pR",        // 0x0f
+  "\pY",        // 0x10
+  "\pT",        // 0x11
+  "\p1",        // 0x12
+  "\p2",        // 0x13
+  "\p3",        // 0x14
+  "\p4",        // 0x15
+  "\p6",        // 0x16
+  "\p5",        // 0x17
+  "\p=",        // 0x18
+  "\p9",        // 0x19
+  "\p7",        // 0x1a
+  "\p-",        // 0x1b
+  "\p8",        // 0x1c
+  "\p0",        // 0x1d
+  "\p]",        // 0x1e
+  "\pO",        // 0x1f
+  "\pU",        // 0x20
+  "\p[",        // 0x21
+  "\pI",        // 0x22
+  "\pP",        // 0x23
+  "\pReturn",   // 0x24
+  "\pL",        // 0x25
+  "\pJ",        // 0x26
+  "\p'",        // 0x27
+  "\pK",        // 0x28
+  "\p;",        // 0x29
+  "\p\\",       // 0x2a
+  "\p,",        // 0x2b
+  "\p/",        // 0x2c
+  "\pN",        // 0x2d
+  "\pM",        // 0x2e
+  "\p.",        // 0x2f
+  "\pTab",      // 0x30
+  "\pSpace",    // 0x31
+  "\p`",        // 0x32
+  "\pDelete",   // 0x33
+  NULL,         // 0x34
+  "\pEsc",      // 0x35
+  NULL,         // 0x36
+  "\pCmd",      // 0x37
+  "\pShift",    // 0x38
+  "\pCaps",     // 0x39
+  "\pOption",   // 0x3a
+  "\pCtrl",     // 0x3b
+  NULL,         // 0x3c
+  NULL,         // 0x3d
+  NULL,         // 0x3e
+  NULL,         // 0x3f
+  NULL,         // 0x40
+  "\pKp .",     // 0x41
+  NULL,         // 0x42
+  "\pKp *",     // 0x43
+  NULL,         // 0x44
+  "\pKp +",     // 0x45
+  NULL,         // 0x46
+  "\pClear",    // 0x47
+  NULL,         // 0x48
+  NULL,         // 0x49
+  NULL,         // 0x4a
+  "\pKp /",     // 0x4b
+  "\pEnter",    // 0x4c
+  NULL,         // 0x4d
+  "\pKp -",     // 0x4e
+  NULL,         // 0x4f
+  NULL,         // 0x50
+  "\pKp =",     // 0x51
+  "\pKp 0",     // 0x52
+  "\pKp 1",     // 0x53
+  "\pKp 2",     // 0x54
+  "\pKp 3",     // 0x55
+  "\pKp 4",     // 0x56
+  "\pKp 5",     // 0x57
+  "\pKp 6",     // 0x58
+  "\pKp 7",     // 0x59
+  NULL,         // 0x5a
+  "\pKp 8",     // 0x5b
+  "\pKp 9",     // 0x5c
+  NULL,         // 0x5d
+  NULL,         // 0x5e
+  NULL,         // 0x5f
+  "\pF5",       // 0x60
+  "\pF6",       // 0x61
+  "\pF7",       // 0x62
+  "\pF3",       // 0x63
+  "\pF8",       // 0x64
+  "\pF9",       // 0x65
+  NULL,         // 0x66
+  "\pF11",      // 0x67
+  NULL,         // 0x68
+  "\pF13",      // 0x69
+  NULL,         // 0x6a
+  "\pF14",      // 0x6b
+  NULL,         // 0x6c
+  "\pF10",      // 0x6d
+  NULL,         // 0x6e
+  "\pF12",      // 0x6f
+  NULL,         // 0x70
+  "\pF15",      // 0x71
+  "\pHelp",     // 0x72
+  "\pHome",     // 0x73
+  "\pPg Up",    // 0x74
+  "\pFwd Del",  // 0x75
+  "\pF4",       // 0x76
+  "\pEnd",      // 0x77
+  "\pF2",       // 0x78
+  "\pPg Dn",    // 0x79
+  "\pF1",       // 0x7a
+  "\pLeft",     // 0x7b
+  "\pRight",    // 0x7c
+  "\pDown",     // 0x7d
+  "\pUp",       // 0x7e
+  NULL          // 0x7f
+};
+
 // return true to hide, false to show
 static pascal Boolean RomFileFilter(CInfoPBRec *pb)
 {
@@ -61,6 +192,127 @@ void ShowAboutBox(void)
   dp = GetNewDialog(DLOG_ABOUT, 0L, (WindowPtr) -1L);
   
   ModalDialog(NULL, &hitItem);
+
+  DisposeDialog(dp);
+}
+
+static short gSelectedSlot = -1;
+int keyMappings[8];
+
+pascal Boolean KeyMapFilter(DialogPtr dlg, EventRecord *event, short *item) {
+  Point pt;
+  Rect r;
+  Handle h;
+  short type;
+  int k;
+
+  if (event->what == mouseDown) {
+    pt = event->where;
+    SetPort(dlg);
+    GlobalToLocal(&pt);
+
+    for (k = 3; k <= 10; k++) {
+      GetDialogItem(dlg, k, &type, &h, &r);
+      if (PtInRect(pt, &r)) {
+        gSelectedSlot = k;
+        *item = k;
+        return true;
+      }
+    }
+  }
+  else if (event->what == keyDown && gSelectedSlot != -1) {
+    int keyNum = (event->message & keyCodeMask) >> 8;
+    if (keyNum < 128 && keyNames[keyNum]) {
+      keyMappings[gSelectedSlot - 3] = keyNum;
+      *item = gSelectedSlot;
+      gSelectedSlot = -1;
+      return true;
+    }
+  }
+  return false;
+}
+
+pascal void DrawKeySlot(DialogPtr dlg, short item)
+{
+  Rect r;
+  Handle h;
+  short type;
+  FontInfo fi;
+  short oldFont, oldSize, oldMode;
+
+  SetPort(dlg);
+  GetDialogItem(dlg, item, &type, &h, &r);
+
+  oldFont = dlg->txFont;
+  oldSize = dlg->txSize;
+  oldMode = dlg->txMode;
+
+  TextFont(3);
+  TextSize(9);
+  TextMode(srcXor);
+  GetFontInfo(&fi);
+
+  if (gSelectedSlot == item) {
+    PaintRect(&r);
+
+    MoveTo(r.left + 3, r.top + fi.ascent + 1);
+    DrawString("\p<press>");
+  } else {
+    EraseRect(&r);
+    FrameRect(&r);
+
+    MoveTo(r.left + 3, r.top + fi.ascent + 1);
+    DrawString(keyNames[keyMappings[item - 3]]);
+  }
+
+  TextFont(oldFont);
+  TextSize(oldSize);
+  TextMode(oldMode);
+}
+
+pascal void FrameSaveButton(DialogPtr dlg, short item)
+{
+  Rect rect;
+  Handle handle;
+  short type;
+
+  GetDialogItem(dlg, 1, &type, &handle, &rect);
+  PenSize(3, 3);
+  InsetRect(&rect, -4, -4);
+  FrameRoundRect(&rect, 16, 16);
+  PenNormal();
+}
+
+void ShowKeyMappingsDialog(void)
+{
+  DialogPtr dp;
+  EventRecord e;
+  DialogItemIndex itemHit;
+  int k;
+
+  Rect rect;
+  Handle handle;
+  short type;
+  
+  dp = GetNewDialog(DLOG_KEY_MAPPINGS, 0L, (WindowPtr) -1L);
+  GetDialogItem(dp, 19, &type, &handle, &rect);
+  SetDialogItem(dp, 19, type, (Handle) FrameSaveButton, &rect);
+
+  for (k = 3; k <= 10; k++) {
+    GetDialogItem(dp, k, &type, &handle, &rect);
+    SetDialogItem(dp, k, type, (Handle) DrawKeySlot, &rect);
+  }
+  ShowWindow(dp);
+
+  do {
+      ModalDialog(KeyMapFilter, &itemHit);
+
+      if (itemHit >= 3 && itemHit <= 10) {
+        for (k = 3; k <= 10; k++) {
+          DrawKeySlot(dp, k);
+        }
+      }
+  } while (itemHit != ok && itemHit != cancel);
 
   DisposeDialog(dp);
 }

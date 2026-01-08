@@ -18,6 +18,7 @@
 #define ALRT_4_LINE 129
 
 #define DLOG_ABOUT 128
+#define DLOG_KEY_MAPPINGS 129
 
 #define MBAR_DEFAULT 128
 

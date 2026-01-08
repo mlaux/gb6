@@ -9,6 +9,7 @@
 int ShowOpenBox(void);
 
 void ShowAboutBox(void);
+void ShowKeyMappingsDialog(void);
 
 typedef short (*AlertProc)(short alertID);
 
