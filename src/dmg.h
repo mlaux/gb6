@@ -27,13 +27,13 @@ struct rom;
 struct lcd;
 
 struct dmg {
-    struct cpu *cpu;
-    struct rom *rom;
-    struct lcd *lcd;
-
     // page table for fast memory access (256 pages of 256 bytes each)
     u8 *read_page[256];
     u8 *write_page[256];
+
+    struct cpu *cpu;
+    struct rom *rom;
+    struct lcd *lcd;
 
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];

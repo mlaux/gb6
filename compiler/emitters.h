@@ -122,6 +122,11 @@ void emit_addq_l_disp_an(struct code_block *block, uint8_t data, int16_t disp, u
 void emit_addi_l_disp_an(struct code_block *block, uint32_t imm, int16_t disp, uint8_t areg);
 void emit_cmpi_l_imm32_disp_an(struct code_block *block, uint32_t imm, int16_t disp, uint8_t areg);
 void emit_cmpi_l_imm_dn(struct code_block *block, uint32_t imm, uint8_t dreg);
+void emit_cmpi_w_imm_dn(struct code_block *block, uint16_t imm, uint8_t dreg);
+void emit_cmpa_w_imm_an(struct code_block *block, uint16_t imm, uint8_t areg);
+void emit_bcs_b(struct code_block *block, int8_t disp);
+void emit_bne_b(struct code_block *block, int8_t disp);
+void emit_subi_w_dn(struct code_block *block, uint16_t imm, uint8_t dreg);
 void emit_add_cycles(struct code_block *block, int cycles);
 
 #endif

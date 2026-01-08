@@ -25,6 +25,7 @@ typedef struct {
     /* 2c */ u32 cycles_accumulated;  // GB cycles accumulated by compiled code
     /* 30 */ void *patch_helper;  // patch_helper routine for lazy block patching
     /* 34 */ u32 patch_count;     // number of patches applied (for debugging)
+    /* 38 */ void *hram_base;     // dmg->zero_page for inline high RAM access
 } jit_context;
 
 extern jit_context jit_ctx;

@@ -1013,6 +1013,44 @@ void emit_cmpi_l_imm_dn(struct code_block *block, uint32_t imm, uint8_t dreg)
     emit_long(block, imm);
 }
 
+// cmpi.w #imm16, Dn - compare immediate word with data register
+void emit_cmpi_w_imm_dn(struct code_block *block, uint16_t imm, uint8_t dreg)
+{
+    // 0000 1100 01 000 rrr
+    emit_word(block, 0x0c40 | dreg);
+    emit_word(block, imm);
+}
+
+// cmpa.w #imm16, An - compare immediate word with address register
+void emit_cmpa_w_imm_an(struct code_block *block, uint16_t imm, uint8_t areg)
+{
+    // cmpa.w #imm, An: 1011 aaa 011 111 100
+    emit_word(block, 0xb0fc | (areg << 9));
+    emit_word(block, imm);
+}
+
+// bcs.b - branch if carry set with 8-bit displacement
+void emit_bcs_b(struct code_block *block, int8_t disp)
+{
+    // 0110 0101 dddd dddd
+    emit_word(block, 0x6500 | ((uint8_t) disp));
+}
+
+// bne.b - branch if not equal with 8-bit displacement
+void emit_bne_b(struct code_block *block, int8_t disp)
+{
+    // 0110 0110 dddd dddd
+    emit_word(block, 0x6600 | ((uint8_t) disp));
+}
+
+// subi.w #imm16, Dn - subtract immediate word from data register
+void emit_subi_w_dn(struct code_block *block, uint16_t imm, uint8_t dreg)
+{
+    // 0000 0100 01 000 rrr
+    emit_word(block, 0x0440 | dreg);
+    emit_word(block, imm);
+}
+
 // emit_add_cycles - add GB cycles to context, picks optimal instruction
 void emit_add_cycles(struct code_block *block, int cycles)
 {

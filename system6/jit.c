@@ -21,6 +21,8 @@ static u32 time_in_lookup = 0;
 static u32 call_count = 0;
 static u32 last_report_tick = 0;
 
+int dmg_reads, dmg_writes;
+
 // register state that persists between block executions
 struct {
   u32 d2; // accumulated cycles, output
@@ -99,6 +101,7 @@ void jit_init(struct dmg *dmg)
     jit_ctx.dispatcher_return = (void *) dispatcher_code;
     jit_ctx.patch_helper = (void *) patch_helper_code;
     jit_ctx.patch_count = 0;
+    jit_ctx.hram_base = dmg->zero_page;
 
     jit_regs.d2 = 0;
     jit_regs.d3 = 0x100;
@@ -132,9 +135,9 @@ int jit_step(struct dmg *dmg)
         u32 free_heap;
         lru_ensure_memory();
         free_heap = (u32) FreeMem();
-        // sprintf(buf, "Compiling $%02x:%04x free=%u",
-        //         jit_ctx.current_rom_bank, jit_regs.d3, free_heap);
-        // set_status_bar(buf);
+        sprintf(buf, "Compiling $%02x:%04x free=%u",
+                jit_ctx.current_rom_bank, jit_regs.d3, free_heap);
+        set_status_bar(buf);
         block = compile_block(jit_regs.d3, &compile_ctx);
         if (!block) {
             u32 unused;
@@ -228,7 +231,8 @@ int jit_step(struct dmg *dmg)
       u32 elapsed = now - last_report_tick;
       u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
       last_report_tick = now;
-      sprintf(buf, "E/s:%lu P:%lu C:%lu (%lu-%lu)", exits_per_sec, jit_ctx.patch_count, cycles, cycles_min, cycles_max);
+      sprintf(buf, "E/s:%lu C:%lu R:%lu W:%lu", exits_per_sec, 
+          cycles, dmg_reads, dmg_writes);
       set_status_bar(buf);
     }
 

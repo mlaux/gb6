@@ -8,6 +8,8 @@
 #include "mbc.h"
 #include "types.h"
 
+extern int dmg_reads, dmg_writes;
+
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {
     dmg->cpu = cpu;
@@ -220,6 +222,7 @@ u8 dmg_read(void *_dmg, u16 address)
 {
     u8 val;
     struct dmg *dmg = (struct dmg *) _dmg;
+    dmg_reads++;
     u8 *page = dmg->read_page[address >> 8];
     if (page) {
         val = page[address & 0xff];
@@ -305,6 +308,7 @@ void dmg_write(void *_dmg, u16 address, u8 data)
 {
     struct dmg *dmg = (struct dmg *) _dmg;
     u8 *page = dmg->write_page[address >> 8];
+    dmg_writes++;
     if (page) {
         page[address & 0xff] = data;
         return;
