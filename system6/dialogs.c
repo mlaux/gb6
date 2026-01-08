@@ -196,8 +196,53 @@ void ShowAboutBox(void)
   DisposeDialog(dp);
 }
 
+#define RES_KEYS_TYPE 'KEYS'
+#define RES_KEYS_ID 128
+
+/* default mappings: up=W, down=S, left=A, right=D, a=L, b=K, select=N, start=M */
+static unsigned char defaultMappings[8] = { 0x0d, 0x01, 0x00, 0x02, 0x25, 0x28, 0x2d, 0x2e };
+
 static short gSelectedSlot = -1;
 int keyMappings[8];
+
+void LoadKeyMappings(void)
+{
+  Handle h;
+  int k;
+
+  h = GetResource(RES_KEYS_TYPE, RES_KEYS_ID);
+  if (h != nil && GetHandleSize(h) >= 8) {
+    for (k = 0; k < 8; k++) {
+      keyMappings[k] = ((unsigned char *)*h)[k];
+    }
+  } else {
+    for (k = 0; k < 8; k++) {
+      keyMappings[k] = defaultMappings[k];
+    }
+  }
+}
+
+void SaveKeyMappings(void)
+{
+  Handle h;
+  int k;
+
+  h = GetResource(RES_KEYS_TYPE, RES_KEYS_ID);
+  if (h == nil) {
+    h = NewHandle(8);
+    if (h == nil) return;
+    for (k = 0; k < 8; k++) {
+      ((unsigned char *)*h)[k] = keyMappings[k];
+    }
+    AddResource(h, RES_KEYS_TYPE, RES_KEYS_ID, "\pKey Mappings");
+  } else {
+    for (k = 0; k < 8; k++) {
+      ((unsigned char *)*h)[k] = keyMappings[k];
+    }
+    ChangedResource(h);
+  }
+  WriteResource(h);
+}
 
 pascal Boolean KeyMapFilter(DialogPtr dlg, EventRecord *event, short *item) {
   Point pt;
@@ -290,10 +335,34 @@ void ShowKeyMappingsDialog(void)
   DialogItemIndex itemHit;
   int k;
 
+  Handle dlog;
+  Rect *bounds;
+  Rect screen;
+  short width, height, dh, dv;
+
   Rect rect;
   Handle handle;
   short type;
-  
+
+  // this can be left over from previous invocations if the user closed
+  // the dialog box while a key mapping control is active
+  gSelectedSlot = -1;
+
+  dlog = GetResource('DLOG', DLOG_KEY_MAPPINGS);
+  if (dlog != nil) {
+    bounds = (Rect *) *dlog;
+    screen = qd.screenBits.bounds;
+    screen.top += GetMBarHeight();
+
+    width = bounds->right - bounds->left;
+    height = bounds->bottom - bounds->top;
+
+    dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
+    dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
+
+    OffsetRect(bounds, dh, dv);
+  }
+
   dp = GetNewDialog(DLOG_KEY_MAPPINGS, 0L, (WindowPtr) -1L);
   GetDialogItem(dp, 19, &type, &handle, &rect);
   SetDialogItem(dp, 19, type, (Handle) FrameSaveButton, &rect);
@@ -313,6 +382,10 @@ void ShowKeyMappingsDialog(void)
         }
       }
   } while (itemHit != ok && itemHit != cancel);
+
+  if (itemHit == ok) {
+    SaveKeyMappings();
+  }
 
   DisposeDialog(dp);
 }
@@ -350,7 +423,7 @@ short ShowCenteredAlert(
   width = bounds->right - bounds->left;
   height = bounds->bottom - bounds->top;
 
-  /* center horizontally, position 1/4 down vertically */
+  // center horizontally, position 1/4 down vertically
   dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
   dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
 

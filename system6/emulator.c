@@ -329,12 +329,14 @@ static int ProcessEvents(void)
         if (evt.modifiers & cmdKey) {
           OnMenuAction(MenuKey(evt.message & charCodeMask));
         } else if (emulation_on) {
-          HandleKeyEvent(evt.message & charCodeMask, 1);
+          int key = (evt.message & keyCodeMask) >> 8;
+          HandleKeyEvent(key, 1);
         }
         break;
       case keyUp:
         if (emulation_on) {
-          HandleKeyEvent(evt.message & charCodeMask, 0);
+          int key = (evt.message & keyCodeMask) >> 8;
+          HandleKeyEvent(key, 0);
         }
         break;
     }
@@ -388,6 +390,7 @@ int main(int argc, char *argv[])
   int finderResult;
 
   InitEverything();
+  LoadKeyMappings();
   init_dither_lut();
 
   finderResult = CheckFinderFiles();

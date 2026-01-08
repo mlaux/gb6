@@ -1,37 +1,34 @@
 #include "../src/dmg.h"
 #include "input.h"
+#include "dialogs.h"
 
 extern struct dmg dmg;
+extern int keyMappings[8];
 
-// key input mapping for game controls
-// using ASCII character codes (case-insensitive handled in code)
-struct key_input {
-    char key;
-    int button;
-    int field;
+// indices match keyMappings order
+// (up, down, left, right, a, b, select, start)
+static struct {
+  int button;
+  int field;
+} buttonMap[8] = {
+  { BUTTON_UP, FIELD_JOY },
+  { BUTTON_DOWN, FIELD_JOY },
+  { BUTTON_LEFT, FIELD_JOY },
+  { BUTTON_RIGHT, FIELD_JOY },
+  { BUTTON_A, FIELD_ACTION },
+  { BUTTON_B, FIELD_ACTION },
+  { BUTTON_SELECT, FIELD_ACTION },
+  { BUTTON_START, FIELD_ACTION }
 };
 
-static struct key_input key_inputs[] = {
-    { 'd', BUTTON_RIGHT, FIELD_JOY },
-    { 'a', BUTTON_LEFT, FIELD_JOY },
-    { 'w', BUTTON_UP, FIELD_JOY },
-    { 's', BUTTON_DOWN, FIELD_JOY },
-    { 'l', BUTTON_A, FIELD_ACTION },
-    { 'k', BUTTON_B, FIELD_ACTION },
-    { 'n', BUTTON_SELECT, FIELD_ACTION },
-    { 'm', BUTTON_START, FIELD_ACTION },
-    { 0, 0, 0 }
-};
-
-void HandleKeyEvent(int ch, int down)
+void HandleKeyEvent(int keyCode, int down)
 {
-  if (ch >= 'A' && ch <= 'Z') ch += 32; // tolower
-  struct key_input *key = key_inputs;
-  while (key->key) {
-    if (key->key == ch) {
-      dmg_set_button(&dmg, key->field, key->button, down);
+  int k;
+
+  for (k = 0; k < 8; k++) {
+    if (keyMappings[k] == keyCode) {
+      dmg_set_button(&dmg, buttonMap[k].field, buttonMap[k].button, down);
       break;
     }
-    key++;
   }
 }

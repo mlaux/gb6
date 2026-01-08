@@ -11,6 +11,9 @@ int ShowOpenBox(void);
 void ShowAboutBox(void);
 void ShowKeyMappingsDialog(void);
 
+void LoadKeyMappings(void);
+void SaveKeyMappings(void);
+
 typedef short (*AlertProc)(short alertID);
 
 short ShowCenteredAlert(
