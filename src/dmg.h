@@ -59,6 +59,9 @@ struct dmg {
 
     // cycle accumulator for timing - only sync LCD when >= CYCLES_PER_FRAME
     u32 cycles_since_render;
+    u8 ly_hack;
+    u8 sent_ly_interrupt;
+    u8 sent_vblank_start;
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);

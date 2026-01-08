@@ -7,7 +7,7 @@
 // 4. Otherwise -> RTS to C to compile the block
 // context offsets in jit.h
 const unsigned char dispatcher_code[] = {
-    0x0c, 0x82, 0x00, 0x01, 0x12, 0x50,  // 0: cmpi.l #456, d2
+    0x0c, 0x82, 0x00, 0x00, 0x1c, 0x80,  // 0: cmpi.l #70224, d2
     0x64, 0x68,                   // 6: bcc.s -> exit
 
     // cmpi.w #$4000, d3; bcs.s .bank0

@@ -255,6 +255,11 @@ void OnMenuAction(long action)
       if(ShowOpenBox())
         StartEmulation();
     }
+    else if(item == FILE_SCREENSHOT) {
+      if (emulation_on) {
+        SaveScreenshot();
+      }
+    }
     else if(item == FILE_SOFT_RESET) {
       if (emulation_on) {
         dmg_set_button(&dmg, FIELD_ACTION,

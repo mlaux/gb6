@@ -1,5 +1,5 @@
-/* Game Boy emulator for 68k Macs
-   alerts.c - centered alert dialogs */
+// Game Boy emulator for 68k Macs
+// dialogs.c - open ROM, alerts, key mappings, about
 
 #include <Dialogs.h>
 #include <Files.h>
@@ -430,4 +430,75 @@ short ShowCenteredAlert(
   OffsetRect(bounds, dh, dv);
 
   return funcs[alertType](alertID);
+}
+
+extern Rect offscreen_rect;
+extern BitMap offscreen_bmp;
+extern WindowPtr g_wp;
+
+int SaveScreenshot(void)
+{
+  SFReply reply;
+  Point pt = { 0, 0 };
+  short refNum;
+  long count;
+  PicHandle pic;
+  Rect picFrame;
+  RgnHandle oldClip;
+  char header[512];
+  int k;
+  OSErr err;
+
+  pt.h = qd.screenBits.bounds.right / 2 - 174;
+
+  SFPutFile(pt, "\pSave screenshot as:", "\pScreenshot", NULL, &reply);
+  if (!reply.good) {
+    return 0;
+  }
+
+  /* delete existing file if any, then create new one */
+  FSDelete(reply.fName, reply.vRefNum);
+  err = Create(reply.fName, reply.vRefNum, 'ttxt', 'PICT');
+  if (err != noErr) {
+    return 0;
+  }
+
+  err = FSOpen(reply.fName, reply.vRefNum, &refNum);
+  if (err != noErr) {
+    return 0;
+  }
+
+  /* write 512-byte header (all zeroes) */
+  for (k = 0; k < 512; k++) {
+    header[k] = 0;
+  }
+  count = 512;
+  FSWrite(refNum, &count, header);
+
+  /* create picture by drawing offscreen bitmap */
+  SetPort(g_wp);
+  picFrame = offscreen_rect;
+
+  /* save and set clip to picture bounds */
+  oldClip = NewRgn();
+  GetClip(oldClip);
+  ClipRect(&picFrame);
+
+  pic = OpenPicture(&picFrame);
+  CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+  ClosePicture();
+
+  SetClip(oldClip);
+  DisposeRgn(oldClip);
+
+  /* write picture data */
+  HLock((Handle) pic);
+  count = GetHandleSize((Handle) pic);
+  FSWrite(refNum, &count, *pic);
+  HUnlock((Handle) pic);
+
+  KillPicture(pic);
+  FSClose(refNum);
+
+  return 1;
 }

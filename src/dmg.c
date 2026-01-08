@@ -133,13 +133,11 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        int ly = lcd_read(dmg->lcd, REG_LY) + 1;
-        if (ly == 154) {
-            ly = 0;
+        dmg->ly_hack++;
+        if (dmg->ly_hack == 154) {
+            dmg->ly_hack = 0;
         }
-        lcd_write(dmg->lcd, REG_LY, ly);
-        return ly;
-        // return lcd_read(dmg->lcd, REG_LY);
+        return dmg->ly_hack;
     }
 
     if (address == REG_STAT) {
@@ -323,6 +321,7 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
 
 // sync hardware state - advance by given number of cycles
 #define CYCLES_PER_FRAME 70224
+#define CYCLES_PER_EXIT 7296
 
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
@@ -330,33 +329,37 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
     dmg->timer_div += cycles;
 
-    // new_ly = lcd_read(dmg->lcd, REG_LY) + 1;
-    // if (new_ly >= 154) { 
-    //     new_ly = 0;
-    // }
-    // lcd_write(dmg->lcd, REG_LY, new_ly);
+    new_ly = lcd_read(dmg->lcd, REG_LY) + (cycles / 456);
+    if (new_ly >= 154) { 
+        new_ly -= 154;
+    }
+    lcd_write(dmg->lcd, REG_LY, new_ly);
 
-    // lyc = lcd_read(dmg->lcd, REG_LYC);
-    // if (new_ly == lyc) {
-    //     lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-    //     if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
-    //         dmg_request_interrupt(dmg, INT_LCDSTAT);
-    //     }
-    // } else {
-    //     lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
-    // }
-
-    // if (new_ly == 144) {
-    //     dmg_request_interrupt(dmg, INT_VBLANK);
-    //     if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
-    //         dmg_request_interrupt(dmg, INT_LCDSTAT);
-    //     }
-    // }
+    lyc = lcd_read(dmg->lcd, REG_LYC);
+    if (new_ly >= lyc && !dmg->sent_ly_interrupt) {
+        lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
+            dmg_request_interrupt(dmg, INT_LCDSTAT);
+        }
+        dmg->sent_ly_interrupt = 1;
+    } else {
+        lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
+    }
 
     dmg->cycles_since_render += cycles;
     if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
+        dmg->cycles_since_render -= CYCLES_PER_FRAME;
+        // reset LY to start of frame
+        lcd_write(dmg->lcd, REG_LY, 0);
+        dmg->sent_vblank_start = 0;
+        dmg->sent_ly_interrupt = 0;
+        dmg->ly_hack = 0;
+    } else if (dmg->cycles_since_render >= CYCLES_PER_FRAME - 4560 && !dmg->sent_vblank_start) {
         // fire VBLANK once per frame
         dmg_request_interrupt(dmg, INT_VBLANK);
+        if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
+            dmg_request_interrupt(dmg, INT_LCDSTAT);
+        }
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE_BG) {
@@ -369,9 +372,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         }
 
         dmg->frames_rendered++;
-        dmg->cycles_since_render -= CYCLES_PER_FRAME;
-        // reset LY to start of frame
-        lcd_write(dmg->lcd, REG_LY, 0);
+        dmg->sent_vblank_start = 1;
     }
 }
 

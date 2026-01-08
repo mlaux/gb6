@@ -7,6 +7,7 @@
 #define ALERT_STOP 3
 
 int ShowOpenBox(void);
+int SaveScreenshot(void);
 
 void ShowAboutBox(void);
 void ShowKeyMappingsDialog(void);
