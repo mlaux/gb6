@@ -6,11 +6,16 @@
 #define ALERT_CAUTION 2
 #define ALERT_STOP 3
 
+#define DLOG_ABOUT 128
+#define DLOG_KEY_MAPPINGS 129
+#define DLOG_PREFERENCES 130
+
 int ShowOpenBox(void);
 int SaveScreenshot(void);
 
 void ShowAboutBox(void);
 void ShowKeyMappingsDialog(void);
+void ShowPreferencesDialog(void);
 
 void LoadKeyMappings(void);
 void SaveKeyMappings(void);

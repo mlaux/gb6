@@ -328,17 +328,31 @@ pascal void FrameSaveButton(DialogPtr dlg, short item)
   PenNormal();
 }
 
+static void CenterDialog(Handle dlog)
+{
+  Rect *bounds;
+  Rect screen;
+  short width, height, dh, dv;
+
+  bounds = (Rect *) *dlog;
+  screen = qd.screenBits.bounds;
+  screen.top += GetMBarHeight();
+
+  width = bounds->right - bounds->left;
+  height = bounds->bottom - bounds->top;
+
+  dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
+  dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
+
+  OffsetRect(bounds, dh, dv);
+}
+
 void ShowKeyMappingsDialog(void)
 {
   DialogPtr dp;
   EventRecord e;
   DialogItemIndex itemHit;
   int k;
-
-  Handle dlog;
-  Rect *bounds;
-  Rect screen;
-  short width, height, dh, dv;
 
   Rect rect;
   Handle handle;
@@ -348,20 +362,7 @@ void ShowKeyMappingsDialog(void)
   // the dialog box while a key mapping control is active
   gSelectedSlot = -1;
 
-  dlog = GetResource('DLOG', DLOG_KEY_MAPPINGS);
-  if (dlog != nil) {
-    bounds = (Rect *) *dlog;
-    screen = qd.screenBits.bounds;
-    screen.top += GetMBarHeight();
-
-    width = bounds->right - bounds->left;
-    height = bounds->bottom - bounds->top;
-
-    dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
-    dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
-
-    OffsetRect(bounds, dh, dv);
-  }
+  CenterDialog(GetResource('DLOG', DLOG_KEY_MAPPINGS));
 
   dp = GetNewDialog(DLOG_KEY_MAPPINGS, 0L, (WindowPtr) -1L);
   GetDialogItem(dp, 19, &type, &handle, &rect);
@@ -374,18 +375,43 @@ void ShowKeyMappingsDialog(void)
   ShowWindow(dp);
 
   do {
-      ModalDialog(KeyMapFilter, &itemHit);
+    ModalDialog(KeyMapFilter, &itemHit);
 
-      if (itemHit >= 3 && itemHit <= 10) {
-        for (k = 3; k <= 10; k++) {
-          DrawKeySlot(dp, k);
-        }
+    if (itemHit >= 3 && itemHit <= 10) {
+      for (k = 3; k <= 10; k++) {
+        DrawKeySlot(dp, k);
       }
+    }
   } while (itemHit != ok && itemHit != cancel);
 
   if (itemHit == ok) {
     SaveKeyMappings();
   }
+
+  DisposeDialog(dp);
+}
+
+void ShowPreferencesDialog(void)
+{
+  Handle dlog;
+  DialogPtr dp;
+  EventRecord e;
+  DialogItemIndex itemHit;
+
+  Rect rect;
+  Handle handle;
+  short type;
+
+  CenterDialog(GetResource('DLOG', DLOG_PREFERENCES));
+
+  dp = GetNewDialog(DLOG_PREFERENCES, 0L, (WindowPtr) -1L);
+  GetDialogItem(dp, 14, &type, &handle, &rect);
+  SetDialogItem(dp, 14, type, (Handle) FrameSaveButton, &rect);
+
+  do {
+      ModalDialog(NULL, &itemHit);
+
+  } while (itemHit != ok && itemHit != cancel);
 
   DisposeDialog(dp);
 }

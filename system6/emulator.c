@@ -276,11 +276,7 @@ void OnMenuAction(long action)
     if (item == EDIT_KEY_MAPPINGS) {
       ShowKeyMappingsDialog();
     } else if (item == EDIT_PREFERENCES) {
-      ShowCenteredAlert(
-          ALRT_4_LINE,
-          "\pThis feature is not yet implemented.", "\p", "\p", "\p",
-          ALERT_NORMAL
-      );
+      ShowPreferencesDialog();
     }
   }
 }
