@@ -27,6 +27,7 @@ struct rom;
 struct lcd;
 
 struct dmg {
+    u8 zero_page[0x80];
     // page table for fast memory access (256 pages of 256 bytes each)
     u8 *read_page[256];
     u8 *write_page[256];
@@ -37,13 +38,11 @@ struct dmg {
 
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
-    u8 zero_page[0x80];
     u32 frames_rendered;
     u32 frame_skip;
     int joypad_selected;
     int action_selected;
     u8 interrupt_enable;
-    u8 interrupt_enable_mask;
     u8 interrupt_request_mask;
     void (*rom_bank_switch_hook)(int new_bank);
 

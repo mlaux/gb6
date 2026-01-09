@@ -193,7 +193,7 @@ int jit_step(struct dmg *dmg)
     jit_regs.d2 = 0;
 
     if (dmg->interrupt_enable) {
-      u8 pending = dmg->interrupt_enable_mask & dmg->interrupt_request_mask & 0x1f;
+      u8 pending = dmg->zero_page[0x7f] & dmg->interrupt_request_mask & 0x1f;
       if (pending) {
         static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
         int k;

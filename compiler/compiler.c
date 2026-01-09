@@ -38,6 +38,31 @@ void compile_de_to_addr(struct code_block *block)
     emit_move_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);  // D1 = 0x0000DDEE
 }
 
+static void compile_ldh_a_u8(struct code_block *block, uint8_t addr)
+{
+    if (addr >= 0x80) {
+        // movea.l (a4), a0
+        emit_movea_l_ind_an_an(block, 4, 0);
+        // move.b addr(a0), d4
+        emit_move_b_disp_an_dn(block, addr - 0x80, 0, 4);
+    } else {
+        emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00 + addr);
+        emit_slow_dmg_read(block);
+        emit_move_b_dn_dn(block, 0, REG_68K_D_A);
+    }
+}
+
+static void compile_ldh_u8_a(struct code_block *block, uint8_t addr)
+{
+    if (addr >= 0x80) {
+        emit_movea_l_ind_an_an(block, 4, 0);
+        emit_move_b_dn_disp_an(block, 4, addr - 0x80, 0);
+    } else {
+        emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00 + addr);
+        emit_slow_dmg_write(block, REG_68K_D_A);
+    }
+}
+
 static void compile_ld_imm16_split(
     struct code_block *block,
     uint8_t reg,
@@ -122,7 +147,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x0a: // ld a, (bc)
             compile_bc_to_addr(block);  // BC -> D1.w
-            compile_call_dmg_read(block);  // A = dmg_read(dmg, D1.w)
+            compile_call_dmg_read_a(block);  // A = dmg_read(dmg, D1.w)
             break;
 
         case 0x12: // ld (de), a
@@ -132,7 +157,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x1a: // ld a, (de)
             compile_de_to_addr(block);  // DE -> D1.w
-            compile_call_dmg_read(block);  // A = dmg_read(dmg, D1.w)
+            compile_call_dmg_read_a(block);  // A = dmg_read(dmg, D1.w)
             break;
 
         case 0x01: // ld bc, imm16
@@ -160,13 +185,13 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x2a: // ld a, (hl+)
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1); // D1.w = HL
-            compile_call_dmg_read(block); // dmg_read(dmg, D1.w) into A
+            compile_call_dmg_read_a(block); // dmg_read(dmg, D1.w) into A
             emit_addq_w_an(block, REG_68K_A_HL, 1); // HL++
             break;
 
         case 0x3a: // ld a, (hl-)
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1); // D1.w = HL
-            compile_call_dmg_read(block); // dmg_read(dmg, D1.w) into A
+            compile_call_dmg_read_a(block); // dmg_read(dmg, D1.w) into A
             emit_subq_w_an(block, REG_68K_A_HL, 1); // HL--
             break;
 
@@ -399,11 +424,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0xe0: // ld ($ff00 + u8), a
-            {
-                uint16_t addr = 0xff00 + READ_BYTE(src_ptr++);
-                emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_write(block);
-            }
+            compile_ldh_u8_a(block, READ_BYTE(src_ptr++));
             break;
 
         case 0xe9: // jp (hl)
@@ -475,11 +496,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0xf0: // ld a, ($ff00 + u8)
-            {
-                uint16_t addr = 0xff00 + READ_BYTE(src_ptr++);
-                emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_read(block);
-            }
+            compile_ldh_a_u8(block, READ_BYTE(src_ptr++));
             break;
 
         case 0xd9: // reti
@@ -519,7 +536,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 uint16_t addr = READ_BYTE(src_ptr) | (READ_BYTE(src_ptr + 1) << 8);
                 src_ptr += 2;
                 emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_read(block);
+                compile_call_dmg_read_a(block);
             }
             break;
 
@@ -552,10 +569,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
         }
 
-        size_t emitted = block->length - before;
-        if (emitted > 80) {
-            printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
-        }
+        // size_t emitted = block->length - before;
+        // if (emitted > 80) {
+        //     printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
+        // }
 
         if (ctx->single_instruction && !done) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);

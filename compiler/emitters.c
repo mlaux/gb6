@@ -552,6 +552,13 @@ void emit_push_l_disp_an(struct code_block *block, int16_t disp, uint8_t areg)
     emit_word(block, disp);
 }
 
+// movea.l (An), Ad - load address from memory
+void emit_movea_l_ind_an_an(struct code_block *block, uint8_t src_areg, uint8_t dest_areg)
+{
+    // 00 10 ddd 001 010 sss
+    emit_word(block, 0x2050 | (dest_areg << 9) | src_areg);
+}
+
 // movea.l d(An), Ad - load address from memory with displacement
 void emit_movea_l_disp_an_an(struct code_block *block, int16_t disp, uint8_t src_areg, uint8_t dest_areg)
 {

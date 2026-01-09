@@ -187,7 +187,7 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
     }
 
     // high RAM
-    if (address >= 0xff80 && address <= 0xfffe) {
+    if (address >= 0xff80) {
         return dmg->zero_page[address - 0xff80];
     }
 
@@ -212,9 +212,6 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
     }
     if (address == 0xff0f) {
         return dmg->interrupt_request_mask;
-    }
-    if (address == 0xffff) {
-        return dmg->interrupt_enable_mask;
     }
 
     // external RAM not enabled, or RTC register selected
@@ -275,7 +272,7 @@ void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
     }
 
     // high RAM
-    if (address >= 0xff80 && address <= 0xfffe) {
+    if (address >= 0xff80) {
         dmg->zero_page[address - 0xff80] = data;
         return;
     }
@@ -308,10 +305,6 @@ void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
     }
     if (address == 0xff0f) {
         dmg->interrupt_request_mask = data;
-        return;
-    }
-    if (address == 0xffff) {
-        dmg->interrupt_enable_mask = data;
         return;
     }
 }

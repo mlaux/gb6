@@ -1301,8 +1301,8 @@ TEST(test_exec_ldh_imm8_a)
         0x10              // 0x0008: stop
     };
     run_program(rom, 0);
-    ASSERT_EQ(get_mem_byte(0xff80), 0x42);
-    ASSERT_EQ(get_mem_byte(0xff81), 0x99);
+    ASSERT_EQ(get_mem_byte(0x4000), 0x42);
+    ASSERT_EQ(get_mem_byte(0x4001), 0x99);
 }
 
 TEST(test_exec_ldh_c_a)
@@ -1671,7 +1671,7 @@ TEST(test_ldh_dec_preserves_value)
     };
     run_program(rom, 0);
     ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x04);
-    ASSERT_EQ(get_mem_byte(0xff91), 0x04);
+    ASSERT_EQ(get_mem_byte(0x4011), 0x04);
 }
 
 // Slow path pop tests - SP set to address outside WRAM/HRAM (simulates Pokemon VBlankCopy)

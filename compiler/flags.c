@@ -5,6 +5,9 @@
 // have them in the same order as the 68k flags register, then `move ccr, d7`
 // then don't need seq, scs, and when testing a condition, can just move d7 back into ccr
 
+/*move.w sr, d0; move.b d0, d7*/
+
+
 // Set Z and C flags in D7 based on current 68k CCR, N=0 (for add)
 void compile_set_zc_flags(struct code_block *block)
 {
