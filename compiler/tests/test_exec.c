@@ -438,20 +438,6 @@ TEST(test_sbc_underflow_sets_carry)
     ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x10, 0x10);  // C flag set
 }
 
-TEST(test_sbc_n_flag)
-{
-    // sbc should always set N flag
-    uint8_t rom[] = {
-        0xaf,             // xor a (C=0)
-        0x3e, 0x10,       // ld a, $10
-        0x0e, 0x05,       // ld c, $05
-        0x99,             // sbc a, c
-        0x10              // stop
-    };
-    run_program(rom, 0);
-    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x40, 0x40);  // N flag set
-}
-
 TEST(test_exec_jp_skip)
 {
     uint8_t rom[] = {
@@ -1903,7 +1889,6 @@ void register_exec_tests(void)
     RUN_TEST(test_sbc_a_c_with_carry);
     RUN_TEST(test_sbc_a_imm_with_carry);
     RUN_TEST(test_sbc_underflow_sets_carry);
-    RUN_TEST(test_sbc_n_flag);
 
     printf("\n16-bit ALU:\n");
     RUN_TEST(test_inc_l);

@@ -47,9 +47,6 @@ static void compile_bit_flags(struct code_block *block)
     // Keep only C flag (bit 4)
     emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);
 
-    // Set H flag (bit 5)
-    emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x20);
-
     // OR in the Z flag
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
 }
