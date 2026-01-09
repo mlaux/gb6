@@ -10,6 +10,12 @@
 #define DLOG_KEY_MAPPINGS 129
 #define DLOG_PREFERENCES 130
 
+#define RES_KEYS_TYPE 'KEYS'
+#define RES_KEYS_ID 128
+
+#define RES_PREFS_TYPE 'PREF'
+#define RES_PREFS_ID 128
+
 int ShowOpenBox(void);
 int SaveScreenshot(void);
 
@@ -19,6 +25,9 @@ void ShowPreferencesDialog(void);
 
 void LoadKeyMappings(void);
 void SaveKeyMappings(void);
+
+void LoadPreferences(void);
+void SavePreferences(void);
 
 typedef short (*AlertProc)(short alertID);
 

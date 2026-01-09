@@ -8,6 +8,20 @@
 #include <Menus.h>
 #include "emulator.h"
 #include "dialogs.h"
+#include "settings.h"
+
+/* default mappings: up=W, down=S, left=A, right=D, a=L, b=K, select=N, start=M */
+static unsigned char defaultMappings[8] = { 0x0d, 0x01, 0x00, 0x02, 0x25, 0x28, 0x2d, 0x2e };
+
+static short gSelectedSlot = -1;
+int keyMappings[8];
+
+// compiler needs this so it's defined in there...
+// int cycles_per_exit;
+
+int frame_skip;
+
+static int cyclesValues[3] = { 456, 7296, 70224 };
 
 const char *keyNames[128] = {
   "\pA",        // 0x00
@@ -140,6 +154,25 @@ const char *keyNames[128] = {
   NULL          // 0x7f
 };
 
+static void CenterDialog(Handle dlog)
+{
+  Rect *bounds;
+  Rect screen;
+  short width, height, dh, dv;
+
+  bounds = (Rect *) *dlog;
+  screen = qd.screenBits.bounds;
+  screen.top += GetMBarHeight();
+
+  width = bounds->right - bounds->left;
+  height = bounds->bottom - bounds->top;
+
+  dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
+  dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
+
+  OffsetRect(bounds, dh, dv);
+}
+
 // return true to hide, false to show
 static pascal Boolean RomFileFilter(CInfoPBRec *pb)
 {
@@ -183,27 +216,50 @@ int ShowOpenBox(void)
   return false;
 }
 
+pascal Boolean AboutFilter(DialogPtr dlg, EventRecord *event, short *item)
+{
+  Point pt;
+  short type;
+  Handle h;
+  Rect r;
+
+  if (event->what == mouseDown) {
+    pt = event->where;
+    SetPort(dlg);
+    GlobalToLocal(&pt);
+    GetDialogItem(dlg, 2, &type, &h, &r);
+    if (PtInRect(pt, &r)) {
+      *item = 2;
+      return true;
+    }
+  }
+  return false;
+}
+
 void ShowAboutBox(void)
 {
   DialogPtr dp;
   EventRecord e;
-  DialogItemIndex hitItem;
+  DialogItemIndex itemHit;
   
+  CenterDialog(GetResource('DLOG', DLOG_ABOUT));
   dp = GetNewDialog(DLOG_ABOUT, 0L, (WindowPtr) -1L);
   
-  ModalDialog(NULL, &hitItem);
+  do {
+    ModalDialog(AboutFilter, &itemHit);
+    if (itemHit == 2) {
+      Rect rect;
+      Handle handle;
+      short type;
+
+      GetDialogItem(dp, 2, &type, &handle, &rect);
+      SetDialogItem(dp, 2, type, GetIcon(132), &rect);
+      DrawDialog(dp);
+    }
+  } while (itemHit != ok);
 
   DisposeDialog(dp);
 }
-
-#define RES_KEYS_TYPE 'KEYS'
-#define RES_KEYS_ID 128
-
-/* default mappings: up=W, down=S, left=A, right=D, a=L, b=K, select=N, start=M */
-static unsigned char defaultMappings[8] = { 0x0d, 0x01, 0x00, 0x02, 0x25, 0x28, 0x2d, 0x2e };
-
-static short gSelectedSlot = -1;
-int keyMappings[8];
 
 void LoadKeyMappings(void)
 {
@@ -244,7 +300,46 @@ void SaveKeyMappings(void)
   WriteResource(h);
 }
 
-pascal Boolean KeyMapFilter(DialogPtr dlg, EventRecord *event, short *item) {
+void LoadPreferences(void)
+{
+  Handle h;
+  int *prefs;
+
+  h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
+  if (h != nil && GetHandleSize(h) >= sizeof(int) * 2) {
+    prefs = (int *)*h;
+    cycles_per_exit = prefs[0];
+    frame_skip = prefs[1];
+  } else {
+    cycles_per_exit = 7296;
+    frame_skip = 2;
+  }
+}
+
+void SavePreferences(void)
+{
+  Handle h;
+  int *prefs;
+
+  h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
+  if (h == nil) {
+    h = NewHandle(sizeof(int) * 2);
+    if (h == nil) return;
+    prefs = (int *)*h;
+    prefs[0] = cycles_per_exit;
+    prefs[1] = frame_skip;
+    AddResource(h, RES_PREFS_TYPE, RES_PREFS_ID, "\pPreferences");
+  } else {
+    prefs = (int *)*h;
+    prefs[0] = cycles_per_exit;
+    prefs[1] = frame_skip;
+    ChangedResource(h);
+  }
+  WriteResource(h);
+}
+
+pascal Boolean KeyMapFilter(DialogPtr dlg, EventRecord *event, short *item)
+{
   Point pt;
   Rect r;
   Handle h;
@@ -328,25 +423,6 @@ pascal void FrameSaveButton(DialogPtr dlg, short item)
   PenNormal();
 }
 
-static void CenterDialog(Handle dlog)
-{
-  Rect *bounds;
-  Rect screen;
-  short width, height, dh, dv;
-
-  bounds = (Rect *) *dlog;
-  screen = qd.screenBits.bounds;
-  screen.top += GetMBarHeight();
-
-  width = bounds->right - bounds->left;
-  height = bounds->bottom - bounds->top;
-
-  dh = ((screen.right - screen.left) - width) / 2 - bounds->left;
-  dv = ((screen.bottom - screen.top) - height) / 4 - bounds->top + screen.top;
-
-  OffsetRect(bounds, dh, dv);
-}
-
 void ShowKeyMappingsDialog(void)
 {
   DialogPtr dp;
@@ -391,16 +467,39 @@ void ShowKeyMappingsDialog(void)
   DisposeDialog(dp);
 }
 
+static void SetRadioGroup(DialogPtr dp, int first, int last, int selected)
+{
+  int k;
+  Rect rect;
+  Handle handle;
+  short type;
+
+  for (k = first; k <= last; k++) {
+    GetDialogItem(dp, k, &type, &handle, &rect);
+    SetControlValue((ControlHandle) handle, k == selected ? 1 : 0);
+  }
+}
+
 void ShowPreferencesDialog(void)
 {
-  Handle dlog;
   DialogPtr dp;
-  EventRecord e;
   DialogItemIndex itemHit;
+  int cyclesItem, frameSkipItem;
+  int k;
 
   Rect rect;
   Handle handle;
   short type;
+
+  /* map current settings to dialog items */
+  cyclesItem = 4;  /* default */
+  for (k = 0; k < 3; k++) {
+    if (cycles_per_exit == cyclesValues[k]) {
+      cyclesItem = 3 + k;
+      break;
+    }
+  }
+  frameSkipItem = 6 + frame_skip;
 
   CenterDialog(GetResource('DLOG', DLOG_PREFERENCES));
 
@@ -408,10 +507,29 @@ void ShowPreferencesDialog(void)
   GetDialogItem(dp, 14, &type, &handle, &rect);
   SetDialogItem(dp, 14, type, (Handle) FrameSaveButton, &rect);
 
-  do {
-      ModalDialog(NULL, &itemHit);
+  /* set initial radio button states */
+  SetRadioGroup(dp, 3, 5, cyclesItem);
+  SetRadioGroup(dp, 6, 9, frameSkipItem);
 
+  ShowWindow(dp);
+
+  do {
+    ModalDialog(NULL, &itemHit);
+
+    if (itemHit >= 3 && itemHit <= 5) {
+      cyclesItem = itemHit;
+      SetRadioGroup(dp, 3, 5, cyclesItem);
+    } else if (itemHit >= 6 && itemHit <= 9) {
+      frameSkipItem = itemHit;
+      SetRadioGroup(dp, 6, 9, frameSkipItem);
+    }
   } while (itemHit != ok && itemHit != cancel);
+
+  if (itemHit == ok) {
+    cycles_per_exit = cyclesValues[cyclesItem - 3];
+    frame_skip = frameSkipItem - 6;
+    SavePreferences();
+  }
 
   DisposeDialog(dp);
 }
@@ -474,8 +592,9 @@ int SaveScreenshot(void)
   char header[512];
   int k;
   OSErr err;
+  const int stdWidth = 348;
 
-  pt.h = qd.screenBits.bounds.right / 2 - 174;
+  pt.h = qd.screenBits.bounds.right / 2 - stdWidth / 2;
 
   SFPutFile(pt, "\pSave screenshot as:", "\pScreenshot", NULL, &reply);
   if (!reply.good) {

@@ -106,4 +106,6 @@ void emit_word(struct code_block *block, uint16_t word);
 void compile_bc_to_addr(struct code_block *block);
 void compile_de_to_addr(struct code_block *block);
 
+extern int cycles_per_exit;
+
 #endif

@@ -1074,8 +1074,8 @@ void emit_add_cycles(struct code_block *block, int cycles)
 // 16 bytes total
 void emit_patchable_exit(struct code_block *block)
 {
-    // cmpi.l #456, d2 (6 bytes)
-    emit_cmpi_l_imm_dn(block, 7296, REG_68K_D_SCRATCH_2);
+    // cmpi.l #cycles_per_exit, d2 (6 bytes)
+    emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
 
     // bcc.s +6 = skip over movea.l + jsr to rts (2 bytes)
     emit_bcc_s(block, 6);

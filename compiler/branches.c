@@ -78,11 +78,11 @@ int compile_jr(
         }
 
         // Larger loop - check cycle count, exit to dispatcher if >= scanline
-        // cmpi.l #7296, d2
-        emit_cmpi_l_imm_dn(block, 7296, REG_68K_D_SCRATCH_2);
+        // cmpi.l #cycles_per_exit, d2
+        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
 
         // bcs.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + patchable_exit(16) = 22, plus 2 = 24)
-        // bcs = branch if carry set = branch if cycles < 7296
+        // bcs = branch if carry set = branch if cycles < cycles_per_exit
         emit_bcs_w(block, 24);
         // Exit to dispatcher with target PC
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
@@ -154,9 +154,9 @@ void compile_jr_cond(
         //   bne/beq .check_cycles        ; if condition met, check cycles
         //   bra.w .fall_through          ; condition not met, skip all
         // .check_cycles:
-        //   cmpi.l #7296, d2
-        //   bcs.w loop_target            ; cycles < 7296, do native branch
-        //   moveq #0, d0                 ; cycles >= 7296, exit
+        //   cmpi.l #cycles_per_exit, d2
+        //   bcs.w loop_target            ; cycles < cycles_per_exit, do native branch
+        //   moveq #0, d0                 ; cycles >= cycles_per_exit, exit
         //   move.w #target, d0
         //   patchable_exit
         // .fall_through:
@@ -177,13 +177,13 @@ void compile_jr_cond(
         emit_bra_w(block, 34);
 
         // .check_cycles:
-        emit_cmpi_l_imm_dn(block, 7296, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
 
-        // bcs.w to native loop target (cycles < 7296)
+        // bcs.w to native loop target (cycles < cycles_per_exit)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bcs_w(block, m68k_disp);
 
-        // Exit to dispatcher (cycles >= 7296)
+        // Exit to dispatcher (cycles >= cycles_per_exit)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
         emit_patchable_exit(block);
@@ -415,8 +415,8 @@ int compile_jr_cond_fused(
         //   bcc.w .check_cycles      ; if condition met
         //   bra.w .fall_through      ; condition not met
         // .check_cycles:
-        //   cmpi.l #7296, d2
-        //   bcs.w loop_target        ; cycles < 7296
+        //   cmpi.l #cycles_per_exit, d2
+        //   bcs.w loop_target        ; cycles < cycles_per_exit
         //   <exit via patchable_exit>
         // .fall_through:
 
@@ -427,13 +427,13 @@ int compile_jr_cond_fused(
         emit_bra_w(block, 34);
 
         // .check_cycles:
-        emit_cmpi_l_imm_dn(block, 7296, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
 
-        // bcs.w to native loop target (cycles < 7296)
+        // bcs.w to native loop target (cycles < cycles_per_exit)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
         emit_bcs_w(block, m68k_disp);
 
-        // Exit via patchable exit (cycles >= 7296)
+        // Exit via patchable exit (cycles >= cycles_per_exit)
         emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
         emit_move_w_dn(block, REG_68K_D_NEXT_PC, target_gb_pc);
         emit_patchable_exit(block);

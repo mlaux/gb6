@@ -192,7 +192,7 @@ static void invalidate_patches_to(void *evicted_code)
                 continue;
             }
 
-            // Read the target address (big-endian)
+            // Read the target address
             jmp_target = ((u32)p[2] << 24) | ((u32)p[3] << 16) |
                          ((u32)p[4] << 8) | p[5];
 

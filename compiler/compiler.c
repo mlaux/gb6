@@ -15,6 +15,8 @@
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
 
+int cycles_per_exit;
+
 void compiler_init(void)
 {
     // nothing for now
@@ -550,10 +552,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
         }
 
-        // size_t emitted = block->length - before;
-        // if (emitted > 80) {
-        //     printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
-        // }
+        size_t emitted = block->length - before;
+        if (emitted > 80) {
+            printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
+        }
 
         if (ctx->single_instruction && !done) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);

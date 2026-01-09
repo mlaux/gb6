@@ -7,6 +7,7 @@
 #include "dmg.h"
 #include "mbc.h"
 #include "types.h"
+#include "../system6/settings.h"
 
 extern int dmg_reads, dmg_writes;
 
@@ -133,37 +134,50 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        dmg->ly_hack++;
-        if (dmg->ly_hack == 154) {
-            dmg->ly_hack = 0;
+        if (cycles_per_exit == 456) {
+            // config dialog is set to per-scanline updates, so can use the 
+            // actual value because it's updated often enough
+            return lcd_read(dmg->lcd, REG_LY);
+        } else {
+            // need increment-on-read
+            dmg->ly_hack++;
+            if (dmg->ly_hack == 154) {
+                dmg->ly_hack = 0;
+            }
+            return dmg->ly_hack;
         }
-        return dmg->ly_hack;
     }
 
     if (address == REG_STAT) {
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
-        // int ly = lcd_read(dmg->lcd, REG_LY);
-        // int mode;
+        if (cycles_per_exit == 456) {
+            int ly = lcd_read(dmg->lcd, REG_LY);
+            int mode;
 
-        // if (ly >= 144) {
-        //     // vblank
-        //     mode = 1;
-        // } else {
-        //     int cycle_in_line = dmg->cycles_since_render % 456;
-        //     if (cycle_in_line < 80) {
-        //         // OAM scan
-        //         mode = 2;
-        //     } else if (cycle_in_line < 252) {
-        //         // active area, 160 visible pixels + 12 extra
-        //         // https://gbdev.io/pandocs/Rendering.html#first12
-        //         mode = 3;
-        //     } else {
-        //         // hblank
-        //         mode = 0;
-        //     }
-        // }
-        stat = (stat & 0xfc) + (((stat & 3) + 1) & 3);
-        lcd_write(dmg->lcd, REG_STAT, stat);
+            if (ly >= 144) {
+                // vblank
+                mode = 1;
+            } else {
+                int cycle_in_line = dmg->cycles_since_render % 456;
+                if (cycle_in_line < 80) {
+                    // OAM scan
+                    mode = 2;
+                } else if (cycle_in_line < 252) {
+                    // active area, 160 visible pixels + 12 extra
+                    // https://gbdev.io/pandocs/Rendering.html#first12
+                    mode = 3;
+                } else {
+                    // hblank
+                    mode = 0;
+                }
+            }
+            stat = (stat & 0xfc) | mode;
+        } else {
+            // increment-per-read
+            stat = (stat & 0xfc) + (((stat & 3) + 1) & 3);
+            lcd_write(dmg->lcd, REG_STAT, stat);
+        }
+
         return stat;
     }
 
@@ -319,10 +333,9 @@ void dmg_request_interrupt(struct dmg *dmg, int nr)
     dmg->interrupt_request_mask |= nr;
 }
 
-// sync hardware state - advance by given number of cycles
 #define CYCLES_PER_FRAME 70224
-#define CYCLES_PER_EXIT 7296
 
+// not accurate at all, but not going for accuracy
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
     int new_ly, lyc;
@@ -347,14 +360,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     }
 
     dmg->cycles_since_render += cycles;
-    if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
-        dmg->cycles_since_render -= CYCLES_PER_FRAME;
-        // reset LY to start of frame
-        lcd_write(dmg->lcd, REG_LY, 0);
-        dmg->sent_vblank_start = 0;
-        dmg->sent_ly_interrupt = 0;
-        dmg->ly_hack = 0;
-    } else if (dmg->cycles_since_render >= CYCLES_PER_FRAME - 4560 && !dmg->sent_vblank_start) {
+    if (dmg->cycles_since_render >= CYCLES_PER_FRAME - 4560 && !dmg->sent_vblank_start) {
         // fire VBLANK once per frame
         dmg_request_interrupt(dmg, INT_VBLANK);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
@@ -373,6 +379,18 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
         dmg->frames_rendered++;
         dmg->sent_vblank_start = 1;
+    }
+
+    // need as a separate check for the case where cycles = 70224. in that case,
+    // it needs to execute both the previous block and this one
+    if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
+        dmg->cycles_since_render -= CYCLES_PER_FRAME;
+        // reset LY to start of frame. pointless for when cycles is 456 but
+        // doesn't hurt
+        lcd_write(dmg->lcd, REG_LY, 0);
+        dmg->sent_vblank_start = 0;
+        dmg->sent_ly_interrupt = 0;
+        dmg->ly_hack = 0;
     }
 }
 

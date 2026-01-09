@@ -32,6 +32,7 @@
 #include "dispatcher_asm.h"
 #include "lru.h"
 #include "jit.h"
+#include "settings.h"
 
 #include "compiler.h"
 
@@ -153,7 +154,8 @@ void StartEmulation(void)
   lcd_new(&lcd);
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
-  dmg.frame_skip = 3;
+  // +1 because it's actually (frames % skip == 0)
+  dmg.frame_skip = frame_skip + 1;
   dmg.rom_bank_switch_hook = on_rom_bank_switch;
   mbc_load_ram(dmg.rom->mbc, save_filename);
 
@@ -163,9 +165,9 @@ void StartEmulation(void)
   offscreen_bmp.bounds = offscreen_rect;
   offscreen_bmp.rowBytes = 40;
 
-  // Initialize JIT
   jit_init(&dmg);
   emulation_on = 1;
+  DisableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
 }
 
 void CheckSoftResetRelease(void)
@@ -296,6 +298,7 @@ void OnMouseDown(EventRecord *pEvt)
     case inGoAway:
       if(TrackGoAway(clicked, pEvt->where)) {
         emulation_on = 0;
+        EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
         DisposeWindow(clicked);
         g_wp = NULL;
       }
@@ -392,6 +395,7 @@ int main(int argc, char *argv[])
 
   InitEverything();
   LoadKeyMappings();
+  LoadPreferences();
   init_dither_lut();
 
   finderResult = CheckFinderFiles();

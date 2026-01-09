@@ -1,4 +1,5 @@
 #include "dispatcher_asm.h"
+#include "settings.h"
 
 // compiled blocks JMP here instead of RTS. This routine:
 // 1. Checks interrupt_check, if set -> RTS to C
@@ -6,8 +7,8 @@
 // 3. Looks up block in appropriate cache, if found -> JMP to it
 // 4. Otherwise -> RTS to C to compile the block
 // context offsets in jit.h
-const unsigned char dispatcher_code[] = {
-    0x0c, 0x82, 0x00, 0x00, 0x1c, 0x80,  // 0: cmpi.l #70224, d2
+static unsigned char dispatcher_code[] = {
+    0x0c, 0x82, 0x00, 0x00, 0x1c, 0x80,  // 0: cmpi.l #cycles_per_exit, d2
     0x64, 0x68,                   // 6: bcc.s -> exit
 
     // cmpi.w #$4000, d3; bcs.s .bank0
@@ -128,3 +129,12 @@ const unsigned char patch_helper_code[] = {
     // .no_patch: (offset 108)
     0x4e, 0xd1                    // 108: jmp (a1)
 };
+
+unsigned char *get_dispatcher_code(void)
+{
+    dispatcher_code[2] = (cycles_per_exit >> 24) & 0xff;
+    dispatcher_code[3] = (cycles_per_exit >> 16) & 0xff;
+    dispatcher_code[4] = (cycles_per_exit >>  8) & 0xff;
+    dispatcher_code[5] = (cycles_per_exit      ) & 0xff;
+    return dispatcher_code;
+}

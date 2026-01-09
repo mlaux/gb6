@@ -74,13 +74,11 @@ static void execute_block(void *code)
 // Initialize JIT state for a new emulation session
 void jit_init(struct dmg *dmg)
 {
-    int k;
-
     // can just remove this...
     compiler_init();
 
-    // also clears old blocks
     lru_init();
+    lru_clear_all();
 
     memset(&jit_regs, 0, sizeof jit_regs);
 
@@ -98,7 +96,7 @@ void jit_init(struct dmg *dmg)
     jit_ctx.bank0_cache = bank0_cache;
     jit_ctx.banked_cache = banked_cache;
     jit_ctx.upper_cache = upper_cache;
-    jit_ctx.dispatcher_return = (void *) dispatcher_code;
+    jit_ctx.dispatcher_return = (void *) get_dispatcher_code();
     jit_ctx.patch_helper = (void *) patch_helper_code;
     jit_ctx.patch_count = 0;
     jit_ctx.hram_base = dmg->zero_page;
