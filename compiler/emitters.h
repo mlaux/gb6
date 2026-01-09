@@ -129,5 +129,7 @@ void emit_bcs_b(struct code_block *block, int8_t disp);
 void emit_bne_b(struct code_block *block, int8_t disp);
 void emit_subi_w_dn(struct code_block *block, uint16_t imm, uint8_t dreg);
 void emit_add_cycles(struct code_block *block, int cycles);
+void emit_move_sr_dn(struct code_block *block, uint8_t dreg);
+void emit_move_dn_ccr(struct code_block *block, uint8_t dreg);
 
 #endif

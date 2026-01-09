@@ -127,7 +127,7 @@ void compile_jr_cond(
 
     // Test the flag bit in D7
     // btst sets 68k Z=1 if tested bit is 0, Z=0 if tested bit is 1
-    emit_btst_imm_dn(block, flag_bit, 7);
+    emit_btst_imm_dn(block, flag_bit, REG_68K_D_FLAGS);
 
     // Check if this is a backward jump within block
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
@@ -224,7 +224,7 @@ void compile_jp_cond(
     *src_ptr += 2;
 
     // Test the flag bit in D7
-    emit_btst_imm_dn(block, flag_bit, 7);
+    emit_btst_imm_dn(block, flag_bit, REG_68K_D_FLAGS);
 
     // If condition NOT met, skip the exit sequence
     if (branch_if_set) {
@@ -288,7 +288,7 @@ void compile_call_cond(
     *src_ptr += 2;
 
     // Test the flag bit in D7
-    emit_btst_imm_dn(block, flag_bit, 7);
+    emit_btst_imm_dn(block, flag_bit, REG_68K_D_FLAGS);
 
     // If condition NOT met, skip the call sequence
     // Call sequence is 44 bytes: moveq(2) + move.w(4) + subq.w(2) + subi.w(6) + move.b(2) +
@@ -302,7 +302,7 @@ void compile_call_cond(
         emit_bne_w(block, 46);
     }
 
-    // Push return address (same as compile_call_imm16)
+    // Push return address
     emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, ret_addr);
     emit_subq_w_an(block, REG_68K_A_SP, 2);
@@ -340,7 +340,7 @@ void compile_ret(struct code_block *block)
 void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_set)
 {
     // Test the flag bit in D7
-    emit_btst_imm_dn(block, flag_bit, 7);
+    emit_btst_imm_dn(block, flag_bit, REG_68K_D_FLAGS);
 
     // If condition NOT met, skip the return sequence
     // Return sequence is 24 bytes: moveq(2) + move.b d(An),Dn(4) + rol.w(2) +

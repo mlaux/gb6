@@ -213,17 +213,13 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x07: // rlca - rotate A left, old bit 7 to carry and bit 0
             emit_rol_b_imm(block, 1, REG_68K_D_A);
-            // Capture 68k carry into scratch, mask to GB C position
-            emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: set if carry
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // mask to bit 4
-            emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // Z=N=H=0, C=result
+            emit_move_sr_dn(block, REG_68K_D_FLAGS);
             break;
-        
+
         case 0x0b: // dec bc
             emit_ext_w_dn(block, REG_68K_D_BC);
             emit_subq_l_dn(block, REG_68K_D_BC, 1);
             break;
-
 
         case 0x0e: // ld c, imm8
             emit_move_b_dn(block, REG_68K_D_BC, READ_BYTE(src_ptr++));
@@ -231,9 +227,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x0f: // rrca - rotate A right, old bit 0 to carry and bit 7
             emit_ror_b_imm(block, 1, REG_68K_D_A);
-            emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: set if carry
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);
-            emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
+            emit_move_sr_dn(block, REG_68K_D_FLAGS);
             break;
 
         case 0x13: // inc de
@@ -263,22 +257,14 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             }
             emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D3 += D1, sets C
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
-            // capture C, keep Z, clear N
-            emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: D1 = 0xff if C
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // D1 = 0x10 if C
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep only Z
-            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // D7 = Z | C
+            emit_move_sr_dn(block, REG_68K_D_FLAGS);
             break;
 
         case 0x29: // add hl, hl
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);  // D3.w = HL
             emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);  // D3 += D3, sets C
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
-            // capture C, keep Z, clear N
-            emit_scc(block, 0x05, REG_68K_D_SCRATCH_1);  // scs: D1 = 0xff if C
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // D1 = 0x10 if C
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x80);  // keep only Z
-            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // D7 = Z | C
+            emit_move_sr_dn(block, REG_68K_D_FLAGS);
             break;
 
 
@@ -320,16 +306,16 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0x20: // jr nz, disp8
-            compile_jr_cond(block, ctx, &src_ptr, src_address, 7, 0);
+            compile_jr_cond(block, ctx, &src_ptr, src_address, 2, 0);
             break;
         case 0x28: // jr z, disp8
-            compile_jr_cond(block, ctx, &src_ptr, src_address, 7, 1);
+            compile_jr_cond(block, ctx, &src_ptr, src_address, 2, 1);
             break;
         case 0x30: // jr nc, disp8
-            compile_jr_cond(block, ctx, &src_ptr, src_address, 4, 0);
+            compile_jr_cond(block, ctx, &src_ptr, src_address, 0, 0);
             break;
         case 0x38: // jr c, disp8
-            compile_jr_cond(block, ctx, &src_ptr, src_address, 4, 1);
+            compile_jr_cond(block, ctx, &src_ptr, src_address, 0, 1);
             break;
 
         case 0x22: // ld (hl+), a
@@ -354,11 +340,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0xc0: // ret nz
-            compile_ret_cond(block, 7, 0);
+            compile_ret_cond(block, 2, 0);
             break;
 
         case 0xc2: // jp nz, imm16
-            compile_jp_cond(block, ctx, &src_ptr, src_address, 7, 0);
+            compile_jp_cond(block, ctx, &src_ptr, src_address, 2, 0);
             break;
 
         case 0xc3: // jp imm16
@@ -374,11 +360,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
 
         case 0xca: // jp z, imm16
-            compile_jp_cond(block, ctx, &src_ptr, src_address, 7, 1);
+            compile_jp_cond(block, ctx, &src_ptr, src_address, 2, 1);
             break;
 
         case 0xc8: // ret z
-            compile_ret_cond(block, 7, 1);
+            compile_ret_cond(block, 2, 1);
             break;
 
         case 0xc9: // ret
@@ -387,11 +373,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0xc4: // call nz, imm16
-            compile_call_cond(block, ctx, &src_ptr, src_address, 7, 0);
+            compile_call_cond(block, ctx, &src_ptr, src_address, 2, 0);
             break;
 
         case 0xcc: // call z, imm16
-            compile_call_cond(block, ctx, &src_ptr, src_address, 7, 1);
+            compile_call_cond(block, ctx, &src_ptr, src_address, 2, 1);
             break;
 
         case 0xcd: // call imm16
@@ -400,27 +386,27 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0xd4: // call nc, imm16
-            compile_call_cond(block, ctx, &src_ptr, src_address, 4, 0);
+            compile_call_cond(block, ctx, &src_ptr, src_address, 0, 0);
             break;
 
         case 0xd0: // ret nc
-            compile_ret_cond(block, 4, 0);
+            compile_ret_cond(block, 0, 0);
             break;
 
         case 0xd2: // jp nc, imm16
-            compile_jp_cond(block, ctx, &src_ptr, src_address, 4, 0);
+            compile_jp_cond(block, ctx, &src_ptr, src_address, 0, 0);
             break;
 
         case 0xd8: // ret c
-            compile_ret_cond(block, 4, 1);
+            compile_ret_cond(block, 0, 1);
             break;
 
         case 0xda: // jp c, imm16
-            compile_jp_cond(block, ctx, &src_ptr, src_address, 4, 1);
+            compile_jp_cond(block, ctx, &src_ptr, src_address, 0, 1);
             break;
 
         case 0xdc: // call c, imm16
-            compile_call_cond(block, ctx, &src_ptr, src_address, 4, 1);
+            compile_call_cond(block, ctx, &src_ptr, src_address, 0, 1);
             break;
 
         case 0xe0: // ld ($ff00 + u8), a
@@ -435,19 +421,16 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x17: // rla - rotate A left through carry
         {
-            // Save old carry (bit 4 of D7) to D1
+            // Save old carry (bit 0 of D7) - already in position for bit 0 of A
             emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_1);
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // isolate C flag
+            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x01);  // isolate C flag
 
             // Shift left - bit 7 goes to 68k C flag, 0 goes to bit 0
             emit_lsl_b_imm_dn(block, 1, REG_68K_D_A);
 
-            // Capture the new C flag (old bit 7)
-            emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set, Z=N=H=0
+            emit_move_sr_dn(block, REG_68K_D_FLAGS);
 
-            // If old carry was set (D1 = 0x10), OR in bit 0
-            emit_lsr_b_imm_dn(block, 4, REG_68K_D_SCRATCH_1);  // 0x10 -> 0x01
+            // OR old carry into bit 0
             emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
 
             break;
@@ -455,25 +438,18 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x1f: // rra
         {
-            // Save old carry (bit 4 of D7) to D2
+            // Save old carry (bit 0 of D7), shift to bit 7 position
             emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_1);
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x10);  // isolate C flag
+            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x01);  // isolate C flag
+            emit_ror_b_imm(block, 1, REG_68K_D_SCRATCH_1);  // 0x01 -> 0x80
 
             // Shift right - bit 0 goes to 68k C flag, 0 goes to bit 7
             emit_lsr_b_imm_dn(block, 1, REG_68K_D_A);
 
-            // Capture the new C flag before modifying
-            emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
+            emit_move_sr_dn(block, REG_68K_D_FLAGS);
 
-            // If old carry was set (D2 != 0), OR in bit 7
-            emit_lsl_b_imm_dn(block, 3, REG_68K_D_SCRATCH_1);  // 0x10 -> 0x80
+            // OR old carry into bit 7
             emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-
-            emit_tst_b_dn(block, REG_68K_D_A);
-            emit_scc(block, 0x07, REG_68K_D_SCRATCH_1);  // seq for Z
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);
-            emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
 
             break;
         }

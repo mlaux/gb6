@@ -155,7 +155,7 @@ void StartEmulation(void)
 
   dmg_new(&dmg, &cpu, &rom, &lcd);
   // +1 because it's actually (frames % skip == 0)
-  dmg.frame_skip = frame_skip + 1;
+  dmg.frame_skip = 9 + 1;
   dmg.rom_bank_switch_hook = on_rom_bank_switch;
   mbc_load_ram(dmg.rom->mbc, save_filename);
 

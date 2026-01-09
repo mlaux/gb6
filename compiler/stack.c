@@ -262,12 +262,12 @@ int compile_stack_op(
             // Store result in HL
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);
 
-            // Compute flags: C flag set if (SP.low + offset) overflows byte
-            // Need original gb_sp for this, reload it
-            emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_1);
-            emit_addi_b_dn(block, REG_68K_D_SCRATCH_1, uoffset);  // D1.b += offset, sets C
-            emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C (C position)
+            // C flag set if (SP.low + offset) overflows byte
+            // nothing depends on this
+            // emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_1);
+            // emit_addi_b_dn(block, REG_68K_D_SCRATCH_1, uoffset);  // D1.b += offset, sets C
+            // emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C
+            // emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C (C position)
         }
         return 1;
 

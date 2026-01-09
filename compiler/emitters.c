@@ -1058,6 +1058,18 @@ void emit_subi_w_dn(struct code_block *block, uint16_t imm, uint8_t dreg)
     emit_word(block, imm);
 }
 
+void emit_move_sr_dn(struct code_block *block, uint8_t dreg)
+{
+    // 0100 0000 11 000 rrr
+    emit_word(block, 0x40c0 | dreg);
+}
+
+void emit_move_dn_ccr(struct code_block *block, uint8_t dreg)
+{
+    // 0100 0100 11 000 rrr
+    emit_word(block, 0x44c0 | dreg);
+}
+
 // emit_add_cycles - add GB cycles to context, picks optimal instruction
 void emit_add_cycles(struct code_block *block, int cycles)
 {

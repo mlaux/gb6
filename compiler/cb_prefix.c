@@ -6,49 +6,25 @@
 #include "flags.h"
 #include "interop.h"
 
-// Set GB flags for shift/rotate: Z from result, N=0, H=0, C from 68k C flag
+// Set flags for shift/rotate: Z and C from 68k CCR
 // Call this after a shift/rotate operation while 68k CCR still has the result
-// Uses D3 for Z capture to avoid clobbering D1 which may hold the result
 static void compile_shift_flags(struct code_block *block)
 {
     // After shift/rotate, 68k Z flag is set if result is 0, C has bit shifted out
-    // GB needs: Z (bit 7), N=0 (bit 6), H=0 (bit 5), C (bit 4)
-
-    // Capture both flags with scc (doesn't affect CCR)
-    // Use D3 for Z to avoid clobbering D1 which holds result for non-A registers
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq: D3 = 0xff if Z=1
-    emit_scc(block, 0x05, REG_68K_D_FLAGS);      // scs: D7 = 0xff if C=1
-
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);  // D3 = 0x80 if Z was set
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);      // D7 = 0x10 if C was set
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);  // D7 = Z | C
+    // Native format: Z at bit 2, C at bit 0 - matches 68k CCR
+    emit_move_sr_dn(block, REG_68K_D_FLAGS);
 }
 
-// Set GB flags for SWAP: Z from result, N=0, H=0, C=0
-// Uses D3 for Z capture to avoid clobbering D1 which may hold the result
+// Set flags for SWAP: Z from result, C=0
 static void compile_swap_flags(struct code_block *block)
 {
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq: D3 = 0xff if Z=1
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);  // mask to Z position
-    emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
+    emit_move_sr_dn(block, REG_68K_D_FLAGS);
 }
 
-// Set GB flags for BIT instruction: Z from 68k Z flag, N=0, H=1, C unchanged
+// Set flags for BIT instruction: Z from 68k Z flag, C unchanged
 static void compile_bit_flags(struct code_block *block)
 {
-    // After btst, 68k Z flag is set if bit was 0
-    // GB Z flag is bit 7, H flag is bit 5
-    // We need: Z set if tested bit was 0, N=0, H=1, C unchanged (bit 4)
-
-    // Capture 68k Z flag before other instructions clobber it
-    emit_scc(block, 0x07, REG_68K_D_SCRATCH_1);  // seq: set if Z=1
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x80);  // mask to just Z position
-
-    // Keep only C flag (bit 4)
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);
-
-    // OR in the Z flag
-    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
+    emit_move_sr_dn(block, REG_68K_D_FLAGS);
 }
 
 // Get a GB register's value into D1 for modification
@@ -160,25 +136,23 @@ static void compile_rl_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
 
-    // Save old carry (bit 4 of D7) to D0
+    // Save old carry (bit 0 of D7) - already in position for OR into bit 0
     emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_0);
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x10);  // isolate C flag
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x01);
 
     // Shift left - bit 7 goes to 68k C flag, 0 goes to bit 0
     emit_lsl_b_imm_dn(block, 1, op_reg);
 
-    // Capture the new C flag before modifying
-    emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
+    // Capture the new C flag (bit 0 of CCR)
+    emit_move_sr_dn(block, REG_68K_D_FLAGS);
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x01);  // keep only C
 
-    // If old carry was set, OR in bit 0
-    emit_lsr_b_imm_dn(block, 4, REG_68K_D_SCRATCH_0);  // 0x10 -> 0x01
+    // OR old carry into bit 0 of result
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, op_reg);
 
-    // Set Z flag based on result (D0 is now free to reuse)
-    emit_tst_b_dn(block, op_reg);
+    // Set Z flag based on final result
     emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq for Z
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x04);  // mask to bit 2
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
 
     put_reg_result(block, gb_reg);
@@ -189,25 +163,24 @@ static void compile_rr_reg(struct code_block *block, int gb_reg)
 {
     int op_reg = get_reg_for_op(block, gb_reg);
 
-    // Save old carry (bit 4 of D7) to D0
+    // Save old carry (bit 0 of D7), shift to bit 7 position
     emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_0);
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x10);  // isolate C flag
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x01);
+    emit_ror_b_imm(block, 1, REG_68K_D_SCRATCH_0);  // 0x01 -> 0x80
 
     // Shift right - bit 0 goes to 68k C flag, 0 goes to bit 7
     emit_lsr_b_imm_dn(block, 1, op_reg);
 
-    // Capture the new C flag before modifying
-    emit_scc(block, 0x05, REG_68K_D_FLAGS);  // scs: D7 = 0xff if C=1
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x10);  // D7 = 0x10 if C was set
+    // Capture the new C flag (bit 0 of CCR)
+    emit_move_sr_dn(block, REG_68K_D_FLAGS);
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x01);  // keep only C
 
-    // If old carry was set, OR in bit 7
-    emit_lsl_b_imm_dn(block, 3, REG_68K_D_SCRATCH_0);  // 0x10 -> 0x80
+    // OR old carry into bit 7 of result
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, op_reg);
 
-    // Set Z flag based on result (D0 is now free to reuse)
-    emit_tst_b_dn(block, op_reg);
+    // Set Z flag based on final result
     emit_scc(block, 0x07, REG_68K_D_SCRATCH_0);  // seq for Z
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x80);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x04);  // mask to bit 2
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
 
     put_reg_result(block, gb_reg);
