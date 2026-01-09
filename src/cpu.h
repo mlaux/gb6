@@ -52,6 +52,8 @@ struct cpu
     u32 cycle_count;
     u8 interrupt_enable;
 
+    u32 counts[512];
+
     u8 halted;
 
     struct dmg *dmg;

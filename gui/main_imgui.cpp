@@ -52,6 +52,20 @@ struct key_input key_inputs[] = {
 
 static MemoryEditor editor;
 
+struct insn_profile {
+    int index;
+    unsigned long long total_cycles;
+};
+
+static int compare_profile(const void *a, const void *b)
+{
+    const struct insn_profile *pa = (const struct insn_profile *)a;
+    const struct insn_profile *pb = (const struct insn_profile *)b;
+    if (pb->total_cycles > pa->total_cycles) return 1;
+    if (pb->total_cycles < pa->total_cycles) return -1;
+    return 0;
+}
+
 GLuint make_output_texture() {
     GLuint image_texture;
     glGenTextures(1, &image_texture);
@@ -98,6 +112,7 @@ int main(int argc, char *argv[])
 
     dmg_new(&dmg, &cpu, &rom, &lcd);
     cpu.dmg = &dmg;
+    dmg.frame_skip = 1;
     rom_get_title(&rom, save_filename);
     mbc_load_ram(dmg.rom->mbc, save_filename);
 
@@ -309,6 +324,34 @@ int main(int argc, char *argv[])
 
             lastDrawTime = currentTime;
         }
+    }
+
+    // Print instruction profile
+    {
+        struct insn_profile profile[512];
+        unsigned long long total = 0;
+        for (int k = 0; k < 512; k++) {
+            profile[k].index = k;
+            profile[k].total_cycles = (unsigned long long)cpu.counts[k] * instructions[k].cycles;
+            total += profile[k].total_cycles;
+        }
+        qsort(profile, 512, sizeof(struct insn_profile), compare_profile);
+
+        printf("\n=== Instruction Profile (sorted by total cycles) ===\n");
+        printf("%-6s %-20s %12s %12s %10s\n", "Opcode", "Instruction", "Count", "Cycles", "% Total");
+        printf("--------------------------------------------------------------\n");
+        for (int k = 0; k < 512; k++) {
+            int idx = profile[k].index;
+            if (cpu.counts[idx] == 0) continue;
+            const char *prefix = (idx >= 0x100) ? "CB " : "   ";
+            int opc = (idx >= 0x100) ? idx - 0x100 : idx;
+            printf("%s%02x    %-20s %12u %12llu %9.2f%%\n",
+                prefix, opc, instructions[idx].format,
+                cpu.counts[idx], profile[k].total_cycles,
+                total ? (100.0 * profile[k].total_cycles / total) : 0.0);
+        }
+        printf("--------------------------------------------------------------\n");
+        printf("%-6s %-20s %12s %12llu\n", "", "TOTAL", "", total);
     }
 
     // Cleanup

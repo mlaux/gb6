@@ -397,6 +397,7 @@ static void extended_insn(struct cpu *cpu, u8 insn)
     printf("       %s\n", instructions[insn + 0x100].format);
 #endif
     cpu->cycle_count += instructions[insn + 0x100].cycles;
+    cpu->counts[insn + 0x100]++;
 
     switch (op) {
         case 0:
@@ -529,6 +530,9 @@ void cpu_step(struct cpu *cpu)
 
     cpu->pc++;
     cpu->cycle_count += instructions[opc].cycles;
+    if (opc != 0xcb) {
+        cpu->counts[opc]++;
+    }
     switch (opc) {
         case 0: // NOP
             break;
