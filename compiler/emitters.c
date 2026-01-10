@@ -986,6 +986,20 @@ void emit_addq_l_disp_an(
     emit_word(block, disp);
 }
 
+// addq.b #data, d(An) - add quick (1-8) to memory byte
+void emit_addq_b_disp_an(
+    struct code_block *block,
+    uint8_t data,
+    int16_t disp,
+    uint8_t areg
+) {
+    // 0101 ddd 0 00 101 aaa (ddd: 1-7 = 1-7, 0 = 8)
+    uint8_t ddd = (data == 8) ? 0 : data;
+    emit_word(block, 0x5000 | (ddd << 9) | 0x28 | areg);
+    emit_word(block, disp);
+}
+
+
 // addi.l #imm32, d(An) - add immediate long to memory
 void emit_addi_l_disp_an(
     struct code_block *block,

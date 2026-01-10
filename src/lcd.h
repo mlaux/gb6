@@ -51,6 +51,8 @@ struct lcd {
 };
 
 void lcd_new(struct lcd *lcd);
+void lcd_init_lut(void);
+void lcd_update_palette_lut(u8 palette);
 u8 lcd_is_valid_addr(u16 addr);
 
 static inline u8 lcd_read(struct lcd *lcd, u16 addr)

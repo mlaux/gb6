@@ -225,12 +225,26 @@ int jit_step(struct dmg *dmg)
     time_in_sync += t3 - t2;
     call_count++;
     if (call_count % 100 == 0) {
+      static u32 last_lookup = 0, last_jit = 0, last_sync = 0;
       u32 now = TickCount();
       u32 elapsed = now - last_report_tick;
       u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
+
+      u32 d_lookup = time_in_lookup - last_lookup;
+      u32 d_jit = time_in_jit - last_jit;
+      u32 d_sync = time_in_sync - last_sync;
+
+      u32 pct_lookup = elapsed > 0 ? (d_lookup * 100) / elapsed : 0;
+      u32 pct_jit = elapsed > 0 ? (d_jit * 100) / elapsed : 0;
+      u32 pct_sync = elapsed > 0 ? (d_sync * 100) / elapsed : 0;
+
+      last_lookup = time_in_lookup;
+      last_jit = time_in_jit;
+      last_sync = time_in_sync;
       last_report_tick = now;
-      sprintf(buf, "E/s:%lu C:%lu R:%lu W:%lu", exits_per_sec, 
-          cycles, dmg_reads, dmg_writes);
+
+      sprintf(buf, "E/s:%lu L:%lu%% J:%lu%% S:%lu%%", exits_per_sec,
+          pct_lookup, pct_jit, pct_sync);
       set_status_bar(buf);
     }
 

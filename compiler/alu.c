@@ -178,18 +178,18 @@ int compile_alu_op(
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_addq_b_dn(block, REG_68K_D_SCRATCH_1, 1);
+        compile_set_z_flag(block);
         emit_ror_w_8(block, REG_68K_D_SCRATCH_1);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
-        compile_set_z_flag(block);
         return 1;
 
     case 0x25: // dec h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_subq_b_dn(block, REG_68K_D_SCRATCH_1, 1);
+        compile_set_z_flag(block);
         emit_ror_w_8(block, REG_68K_D_SCRATCH_1);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
-        compile_set_z_flag(block);
         return 1;
 
     case 0x2c: // inc l
@@ -547,6 +547,7 @@ int compile_alu_op(
 
     case 0xaf: // xor a, a - always results in 0, Z=1
         emit_moveq_dn(block, REG_68K_D_A, 0);
+        compile_set_z_flag(block);
         return 1;
 
     case 0xb0: // or a, b

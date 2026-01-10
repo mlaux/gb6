@@ -40,6 +40,19 @@ void compile_de_to_addr(struct code_block *block)
 
 static void compile_ldh_a_u8(struct code_block *block, uint8_t addr)
 {
+    // this actually doesn't give any speed boost vs going through dmg_read
+    // if (addr >= 0x40 && addr < 0x4c) {
+    //     // dmg = ctx[0]
+    //     emit_movea_l_ind_an_an(block, 4, 0);
+    //     // dmg->lcd = dmg[0x888]
+    //     emit_movea_l_disp_an_an(block, 0x888, 0, 0);
+    //     if (addr == 0x44) {
+    //         // increment on read hack, will eventually get reset to 0
+    //         emit_addq_b_disp_an(block, 1, 0xa0 + (addr - 0x40), 0);
+    //     }
+    //     // lcd->regs = lcd[0xa0]
+    //     emit_move_b_disp_an_dn(block, 0xa0 + (addr - 0x40), 0, 4);
+    // } else 
     if (addr >= 0x80) {
         // movea.l (a4), a0
         emit_movea_l_ind_an_an(block, 4, 0);
@@ -511,8 +524,13 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             {
                 uint16_t addr = READ_BYTE(src_ptr) | (READ_BYTE(src_ptr + 1) << 8);
                 src_ptr += 2;
-                emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_read_a(block);
+                if (addr < 0x8000) {
+                    uint8_t val = ctx->read(ctx->dmg, addr);
+                    emit_moveq_dn(block, REG_68K_D_A, val);
+                } else {
+                    emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
+                    compile_call_dmg_read_a(block);
+                }
             }
             break;
 

@@ -6,6 +6,49 @@
 #include "lcd.h"
 #include "dmg.h"
 
+// LUT for decoding 4 pixels at once from tile data
+// Index = (data1_nibble << 4) | data2_nibble
+// Output = 4 palette-mapped pixel values (ready to write to framebuffer)
+static u8 tile_decode_lut[256][4];
+
+// Base LUT with color indices 0-3 (palette-independent)
+static u8 tile_decode_base[256][4];
+
+void lcd_init_lut(void)
+{
+    int n1, n2;
+    for (n1 = 0; n1 < 16; n1++) {
+        for (n2 = 0; n2 < 16; n2++) {
+            int idx = (n1 << 4) | n2;
+            // Bit 3 -> pixel 0, bit 2 -> pixel 1, etc. (MSB first)
+            tile_decode_base[idx][0] = ((n1 >> 3) & 1) | (((n2 >> 3) & 1) << 1);
+            tile_decode_base[idx][1] = ((n1 >> 2) & 1) | (((n2 >> 2) & 1) << 1);
+            tile_decode_base[idx][2] = ((n1 >> 1) & 1) | (((n2 >> 1) & 1) << 1);
+            tile_decode_base[idx][3] = (n1 & 1) | ((n2 & 1) << 1);
+        }
+    }
+    // Initialize with identity palette (no mapping)
+    lcd_update_palette_lut(0xe4); // default: 3,2,1,0
+}
+
+void lcd_update_palette_lut(u8 palette)
+{
+    u8 pal[4];
+    int k;
+
+    pal[0] = palette & 3;
+    pal[1] = (palette >> 2) & 3;
+    pal[2] = (palette >> 4) & 3;
+    pal[3] = (palette >> 6) & 3;
+
+    for (k = 0; k < 256; k++) {
+        tile_decode_lut[k][0] = pal[tile_decode_base[k][0]];
+        tile_decode_lut[k][1] = pal[tile_decode_base[k][1]];
+        tile_decode_lut[k][2] = pal[tile_decode_base[k][2]];
+        tile_decode_lut[k][3] = pal[tile_decode_base[k][3]];
+    }
+}
+
 struct oam_entry {
     u8 pos_y;
     u8 pos_x;
@@ -49,15 +92,36 @@ static void render_tile_row(
     u8 *p,
     u8 data1,
     u8 data2,
-    u8 *pal,
     int count
 ) {
-    int k;
-    for (k = 0; k < count; k++) {
-        int col_index = ((data1 >> 7) & 1) | (((data2 >> 7) & 1) << 1);
-        data1 <<= 1;
-        data2 <<= 1;
-        *p++ = pal[col_index];
+    u8 *dec;
+    int idx_hi = (data1 & 0xf0) | (data2 >> 4);
+    int idx_lo = ((data1 & 0x0f) << 4) | (data2 & 0x0f);
+
+    dec = tile_decode_lut[idx_hi];
+    if (count >= 4) {
+        p[0] = dec[0];
+        p[1] = dec[1];
+        p[2] = dec[2];
+        p[3] = dec[3];
+
+        dec = tile_decode_lut[idx_lo];
+        if (count >= 8) {
+            p[4] = dec[0];
+            p[5] = dec[1];
+            p[6] = dec[2];
+            p[7] = dec[3];
+        } else {
+            int k;
+            for (k = 4; k < count; k++) {
+                p[k] = dec[k - 4];
+            }
+        }
+    } else {
+        int k;
+        for (k = 0; k < count; k++) {
+            p[k] = dec[k];
+        }
     }
 }
 
@@ -76,13 +140,7 @@ void lcd_render_background(struct dmg *dmg, int lcdc, int window_enabled)
     int unsigned_mode = lcdc & LCDC_BG_TILE_DATA;
     int tile_base_off = unsigned_mode ? 0 : 0x1000;
 
-    u8 palette = lcd_read(dmg->lcd, REG_BGP);
-    u8 pal[4] = {
-        palette & 3,
-        (palette >> 2) & 3,
-        (palette >> 4) & 3,
-        (palette >> 6) & 3
-    };
+    // palette is baked into tile_decode_lut, updated on BGP writes
 
     int sy;
     for (sy = 0; sy < 144; sy++) {
@@ -119,7 +177,7 @@ void lcd_render_background(struct dmg *dmg, int lcdc, int window_enabled)
                 data1 <<= start_bit;
                 data2 <<= start_bit;
 
-                render_tile_row(p, data1, data2, pal, pixels_in_tile);
+                render_tile_row(p, data1, data2, pixels_in_tile);
                 p += pixels_in_tile;
                 sx += pixels_in_tile;
                 bg_x = (bg_x + pixels_in_tile) & 0xff;
@@ -160,7 +218,7 @@ void lcd_render_background(struct dmg *dmg, int lcdc, int window_enabled)
                 data1 <<= start_bit;
                 data2 <<= start_bit;
 
-                render_tile_row(p, data1, data2, pal, pixels_in_tile);
+                render_tile_row(p, data1, data2, pixels_in_tile);
                 p += pixels_in_tile;
                 sx += pixels_in_tile;
                 win_x += pixels_in_tile;

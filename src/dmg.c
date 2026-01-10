@@ -265,6 +265,13 @@ void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
         return;
     }
 
+    // BGP write - update the palette LUT
+    if (address == REG_BGP) {
+        lcd_update_palette_lut(data);
+        lcd_write(dmg->lcd, address, data);
+        return;
+    }
+
     // OAM and LCD registers
     if (lcd_is_valid_addr(address)) {
         lcd_write(dmg->lcd, address, data);
