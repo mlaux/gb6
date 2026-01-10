@@ -9,7 +9,7 @@
 
 #define WINDOW_TITLE "\pgb6"
 
-#define WINDOW_X 3
+#define WINDOW_X 0
 #define WINDOW_Y 40
 #define WINDOW_WIDTH 320
 #define WINDOW_HEIGHT 299

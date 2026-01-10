@@ -1,21 +1,32 @@
 /* Game Boy emulator for 68k Macs
-   lcd_mac.c - LCD rendering with 2x dithering */
+   lcd_mac.c - LCD rendering with 2x scaling */
 
 #include <Quickdraw.h>
 #include <Windows.h>
 
 #include "../src/lcd.h"
 #include "lcd_mac.h"
+#include "settings.h"
 
 extern WindowPtr g_wp;
+extern int screen_depth;
+
+// for 1bpp dithered mode
 extern char offscreen_buf[];
 extern Rect offscreen_rect;
 extern BitMap offscreen_bmp;
+
+// for indexed color mode
+extern char offscreen_color_buf[];
+extern PixMap offscreen_pixmap;
 
 // lookup tables for 2x dithered rendering
 // index = 4 packed GB pixels (2 bits each), output = 8 screen pixels (1bpp)
 static unsigned char dither_row0[256];
 static unsigned char dither_row1[256];
+
+// pre-mapped color indices for current screen CLUT
+static unsigned char gray_index[4];
 
 void init_dither_lut(void)
 {
@@ -42,8 +53,60 @@ void init_dither_lut(void)
   }
 }
 
-// called by dmg_step at vblank
-void lcd_draw(struct lcd *lcd_ptr)
+void init_indexed_lut(void)
+{
+  // map our 4 grays to the best matching indices in screen's CLUT
+  static const unsigned short gray_rgb[4] = { 0xffff, 0xaaaa, 0x5555, 0x0000 };
+  int k;
+
+  for (k = 0; k < 4; k++) {
+    RGBColor rgb;
+    rgb.red = rgb.green = rgb.blue = gray_rgb[k];
+    gray_index[k] = Color2Index(&rgb);
+  }
+}
+
+static void lcd_draw_dither_direct(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst;
+  int screen_rb;
+  Point topLeft;
+
+  // get window's screen position
+  SetPort(g_wp);
+  topLeft.h = 0;
+  topLeft.v = 0;
+  LocalToGlobal(&topLeft);
+
+  // calculate screen destination (assumes byte-aligned X)
+  screen_rb = qd.screenBits.rowBytes;
+  dst = (unsigned char *) qd.screenBits.baseAddr
+      + (topLeft.v * screen_rb)
+      + (topLeft.h >> 3);
+
+  for (gy = 0; gy < 144; gy++) {
+    unsigned char *row0 = dst;
+    unsigned char *row1 = dst + screen_rb;
+    int gx;
+
+    for (gx = 0; gx < 160; gx += 4) {
+      // pack 4 GB pixels into LUT index
+      unsigned char idx = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
+      src += 4;
+
+      *row0++ = dither_row0[idx];
+      *row1++ = dither_row1[idx];
+    }
+
+    dst += screen_rb * 2; // advance 2 screen rows
+  }
+}
+
+// might work better for color Macs with more advanced video hardware.
+// direct rendering was slower than CopyBits on my IIfx
+static void lcd_draw_dither_copybits(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
@@ -63,9 +126,59 @@ void lcd_draw(struct lcd *lcd_ptr)
       *row1++ = dither_row1[idx];
     }
 
-    dst += 80; // advance 2 screen rows
+    // advance 2 screen rows at a time
+    dst += 80;
   }
 
   SetPort(g_wp);
   CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+}
+
+static void lcd_draw_indexed(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst = (unsigned char *) offscreen_color_buf;
+  CGrafPtr port;
+
+  for (gy = 0; gy < 144; gy++) {
+    unsigned char *row0 = dst;
+    unsigned char *row1 = dst + 320;
+    int gx;
+
+    for (gx = 0; gx < 160; gx++) {
+      unsigned char c = gray_index[*src++];
+      row0[0] = row0[1] = c;
+      row1[0] = row1[1] = c;
+      row0 += 2;
+      row1 += 2;
+    }
+
+    dst += 640;
+  }
+
+  SetPort(g_wp);
+  port = (CGrafPtr) g_wp;
+  CopyBits(
+      (BitMap *) &offscreen_pixmap,
+      (BitMap *) *port->portPixMap,
+      &offscreen_rect, &offscreen_rect, srcCopy, NULL
+  );
+}
+
+// called by dmg_step at vblank
+void lcd_draw(struct lcd *lcd_ptr)
+{
+  // would a function pointer be faster?
+  switch (video_mode) {
+    case VIDEO_DITHER_DIRECT:
+      lcd_draw_dither_direct(lcd_ptr);
+      break;
+    case VIDEO_DITHER_COPYBITS:
+      lcd_draw_dither_copybits(lcd_ptr);
+      break;
+    case VIDEO_INDEXED:
+      lcd_draw_indexed(lcd_ptr);
+      break;
+  }
 }

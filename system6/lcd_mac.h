@@ -2,6 +2,7 @@
 #define _LCD_MAC_H
 
 void init_dither_lut(void);
+void init_indexed_lut(void);
 
 void lcd_draw(struct lcd *lcd_ptr);
 

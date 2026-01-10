@@ -20,6 +20,7 @@ int keyMappings[8];
 // int cycles_per_exit;
 
 int frame_skip;
+int video_mode;
 
 static int cyclesValues[3] = { 456, 7296, 70224 };
 
@@ -310,9 +311,11 @@ void LoadPreferences(void)
     prefs = (int *)*h;
     cycles_per_exit = prefs[0];
     frame_skip = prefs[1];
+    video_mode = prefs[2];
   } else {
     cycles_per_exit = 7296;
     frame_skip = 2;
+    video_mode = VIDEO_DITHER_DIRECT;
   }
 }
 
@@ -323,16 +326,20 @@ void SavePreferences(void)
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
   if (h == nil) {
-    h = NewHandle(sizeof(int) * 2);
-    if (h == nil) return;
-    prefs = (int *)*h;
+    h = NewHandle(sizeof(int) * 3);
+    if (h == nil) {
+      return;
+    }
+    prefs = (int *) *h;
     prefs[0] = cycles_per_exit;
     prefs[1] = frame_skip;
+    prefs[2] = video_mode;
     AddResource(h, RES_PREFS_TYPE, RES_PREFS_ID, "\pPreferences");
   } else {
-    prefs = (int *)*h;
+    prefs = (int *) *h;
     prefs[0] = cycles_per_exit;
     prefs[1] = frame_skip;
+    prefs[2] = video_mode;
     ChangedResource(h);
   }
   WriteResource(h);
@@ -578,7 +585,9 @@ short ShowCenteredAlert(
 
 extern Rect offscreen_rect;
 extern BitMap offscreen_bmp;
+extern PixMap offscreen_pixmap;
 extern WindowPtr g_wp;
+extern int screen_depth;
 
 int SaveScreenshot(void)
 {
@@ -630,7 +639,16 @@ int SaveScreenshot(void)
   ClipRect(&picFrame);
 
   pic = OpenPicture(&picFrame);
-  CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+  if (screen_depth > 1) {
+    CGrafPtr port = (CGrafPtr) g_wp;
+    CopyBits(
+        (BitMap *) &offscreen_pixmap,
+        (BitMap *) *port->portPixMap,
+        &offscreen_rect, &offscreen_rect, srcCopy, NULL
+    );
+  } else {
+    CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+  }
   ClosePicture();
 
   SetClip(oldClip);

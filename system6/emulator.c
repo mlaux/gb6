@@ -55,6 +55,7 @@ struct dmg dmg;
 WindowPtr g_wp;
 unsigned char app_running;
 unsigned char emulation_on;
+int screen_depth;
 
 static unsigned long soft_reset_release_tick;
 
@@ -68,6 +69,11 @@ static Str63 save_filename_p;
 char offscreen_buf[40 * 288];
 Rect offscreen_rect = { 0, 0, 288, 320 };
 BitMap offscreen_bmp;
+
+// color/grayscale mode: 320x288 @ 8bpp
+char offscreen_color_buf[320 * 288];
+PixMap offscreen_pixmap;
+CTabHandle offscreen_ctab;
 
 // Status bar - if set, displayed instead of FPS
 char status_bar[64];
@@ -134,14 +140,62 @@ void set_status_bar(const char *str)
   DrawString(pstr);
 }
 
+void DetectScreenDepth(void)
+{
+  SysEnvRec env;
+  screen_depth = 1;
+
+  // check if Color QuickDraw is available
+  if (SysEnvirons(1, &env) == noErr && env.hasColorQD) {
+    GDHandle mainDev = GetMainDevice();
+    if (mainDev) {
+      PixMapHandle pm = (*mainDev)->gdPMap;
+      screen_depth = (*pm)->pixelSize;
+    }
+  }
+}
+
+void InitColorOffscreen(void)
+{
+  GDHandle mainDev;
+  PixMapHandle screenPM;
+
+  // use screen's color table so CopyBits skips color matching
+  mainDev = GetMainDevice();
+  screenPM = (*mainDev)->gdPMap;
+  offscreen_ctab = (*screenPM)->pmTable;
+
+  // PixMap setup - always 8bpp, CopyBits handles depth conversion
+  offscreen_pixmap.baseAddr = offscreen_color_buf;
+  offscreen_pixmap.rowBytes = 320 | 0x8000;  // high bit = PixMap flag
+  offscreen_pixmap.bounds = offscreen_rect;
+  offscreen_pixmap.pmVersion = 0;
+  offscreen_pixmap.packType = 0;
+  offscreen_pixmap.packSize = 0;
+  offscreen_pixmap.hRes = 0x00480000;  // 72 dpi
+  offscreen_pixmap.vRes = 0x00480000;
+  offscreen_pixmap.pixelType = 0;  // chunky
+  offscreen_pixmap.pixelSize = 8;
+  offscreen_pixmap.cmpCount = 1;
+  offscreen_pixmap.cmpSize = 8;
+  offscreen_pixmap.pmTable = offscreen_ctab;
+  offscreen_pixmap.pmReserved = 0;
+}
+
 void StartEmulation(void)
 {
   if (g_wp) {
     DisposeWindow(g_wp);
     g_wp = NULL;
   }
-  g_wp = NewWindow(0, &window_bounds, save_filename_p, true,
-        noGrowDocProc, (WindowPtr) -1, true, 0);
+
+  if (screen_depth > 1) {
+    g_wp = NewCWindow(0, &window_bounds, save_filename_p, true,
+          noGrowDocProc, (WindowPtr) -1, true, 0);
+  } else {
+    g_wp = NewWindow(0, &window_bounds, save_filename_p, true,
+          noGrowDocProc, (WindowPtr) -1, true, 0);
+  }
   SetPort(g_wp);
 
   memset(&dmg, 0, sizeof(dmg));
@@ -161,9 +215,13 @@ void StartEmulation(void)
 
   cpu.dmg = &dmg;
 
-  offscreen_bmp.baseAddr = offscreen_buf;
-  offscreen_bmp.bounds = offscreen_rect;
-  offscreen_bmp.rowBytes = 40;
+  if (screen_depth > 1) {
+    InitColorOffscreen();
+  } else {
+    offscreen_bmp.baseAddr = offscreen_buf;
+    offscreen_bmp.bounds = offscreen_rect;
+    offscreen_bmp.rowBytes = 40;
+  }
 
   jit_init(&dmg);
   emulation_on = 1;
@@ -394,9 +452,17 @@ int main(int argc, char *argv[])
   int finderResult;
 
   InitEverything();
+  DetectScreenDepth();
   LoadKeyMappings();
   LoadPreferences();
-  init_dither_lut();
+
+  // init LUTs based on video mode
+  if (video_mode == VIDEO_DITHER_DIRECT || video_mode == VIDEO_DITHER_COPYBITS) {
+    init_dither_lut();
+  }
+  if (video_mode == VIDEO_INDEXED && screen_depth > 1) {
+    init_indexed_lut();
+  }
   lcd_init_lut();
 
   finderResult = CheckFinderFiles();
