@@ -10,7 +10,7 @@
 #include "dialogs.h"
 #include "settings.h"
 
-/* default mappings: up=W, down=S, left=A, right=D, a=L, b=K, select=N, start=M */
+// default mappings: up=W, down=S, left=A, right=D, a=L, b=K, select=N, start=M
 static unsigned char defaultMappings[8] = { 0x0d, 0x01, 0x00, 0x02, 0x25, 0x28, 0x2d, 0x2e };
 
 static short gSelectedSlot = -1;
@@ -21,6 +21,8 @@ int keyMappings[8];
 
 int frame_skip;
 int video_mode;
+
+extern int screen_depth;
 
 static int cyclesValues[3] = { 456, 7296, 70224 };
 
@@ -313,9 +315,18 @@ void LoadPreferences(void)
     frame_skip = prefs[1];
     video_mode = prefs[2];
   } else {
-    cycles_per_exit = 7296;
+    cycles_per_exit = cyclesValues[1];
     frame_skip = 2;
-    video_mode = VIDEO_DITHER_DIRECT;
+    video_mode = VIDEO_DITHER_COPYBITS;
+  }
+
+  // validate video_mode for current screen depth
+  int incompatibleDirect = 
+    video_mode == VIDEO_DITHER_DIRECT && screen_depth > 1;
+  int incompatibleIndexed = 
+    video_mode == VIDEO_INDEXED && screen_depth == 1;
+  if (incompatibleDirect || incompatibleIndexed) {
+    video_mode = VIDEO_DITHER_COPYBITS;
   }
 }
 
@@ -491,32 +502,44 @@ void ShowPreferencesDialog(void)
 {
   DialogPtr dp;
   DialogItemIndex itemHit;
-  int cyclesItem, frameSkipItem;
+  int cyclesItem, videoModeItem, frameSkipItem;
   int k;
 
   Rect rect;
   Handle handle;
   short type;
 
-  /* map current settings to dialog items */
-  cyclesItem = 4;  /* default */
+  // map current settings to dialog items
+  cyclesItem = 4;
   for (k = 0; k < 3; k++) {
     if (cycles_per_exit == cyclesValues[k]) {
       cyclesItem = 3 + k;
       break;
     }
   }
-  frameSkipItem = 6 + frame_skip;
+  videoModeItem = 6 + video_mode;
+  frameSkipItem = 9 + frame_skip;
 
   CenterDialog(GetResource('DLOG', DLOG_PREFERENCES));
 
   dp = GetNewDialog(DLOG_PREFERENCES, 0L, (WindowPtr) -1L);
-  GetDialogItem(dp, 14, &type, &handle, &rect);
-  SetDialogItem(dp, 14, type, (Handle) FrameSaveButton, &rect);
+  GetDialogItem(dp, 19, &type, &handle, &rect);
+  SetDialogItem(dp, 19, type, (Handle) FrameSaveButton, &rect);
 
-  /* set initial radio button states */
+  // set initial radio button states
   SetRadioGroup(dp, 3, 5, cyclesItem);
-  SetRadioGroup(dp, 6, 9, frameSkipItem);
+  SetRadioGroup(dp, 6, 8, videoModeItem);
+  SetRadioGroup(dp, 9, 13, frameSkipItem);
+
+  // disable incompatible video modes
+  if (screen_depth > 1) {
+    GetDialogItem(dp, 7, &type, &handle, &rect);
+    HiliteControl((ControlHandle) handle, 255);
+  }
+  if (screen_depth == 1) {
+    GetDialogItem(dp, 8, &type, &handle, &rect);
+    HiliteControl((ControlHandle) handle, 255);
+  }
 
   ShowWindow(dp);
 
@@ -526,15 +549,19 @@ void ShowPreferencesDialog(void)
     if (itemHit >= 3 && itemHit <= 5) {
       cyclesItem = itemHit;
       SetRadioGroup(dp, 3, 5, cyclesItem);
-    } else if (itemHit >= 6 && itemHit <= 9) {
+    } else if (itemHit >= 6 && itemHit <= 8) {
+      videoModeItem = itemHit;
+      SetRadioGroup(dp, 6, 8, videoModeItem);
+    } else if (itemHit >= 9 && itemHit <= 13) {
       frameSkipItem = itemHit;
-      SetRadioGroup(dp, 6, 9, frameSkipItem);
+      SetRadioGroup(dp, 9, 13, frameSkipItem);
     }
   } while (itemHit != ok && itemHit != cancel);
 
   if (itemHit == ok) {
     cycles_per_exit = cyclesValues[cyclesItem - 3];
-    frame_skip = frameSkipItem - 6;
+    video_mode = videoModeItem - 6;
+    frame_skip = frameSkipItem - 9;
     SavePreferences();
   }
 
@@ -587,7 +614,6 @@ extern Rect offscreen_rect;
 extern BitMap offscreen_bmp;
 extern PixMap offscreen_pixmap;
 extern WindowPtr g_wp;
-extern int screen_depth;
 
 int SaveScreenshot(void)
 {

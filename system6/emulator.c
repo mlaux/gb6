@@ -456,11 +456,10 @@ int main(int argc, char *argv[])
   LoadKeyMappings();
   LoadPreferences();
 
-  // init LUTs based on video mode
-  if (video_mode == VIDEO_DITHER_DIRECT || video_mode == VIDEO_DITHER_COPYBITS) {
-    init_dither_lut();
-  }
-  if (video_mode == VIDEO_INDEXED && screen_depth > 1) {
+  init_dither_lut();
+  if (screen_depth > 1) {
+    // init even if indexed isn;t currently selected so it's correct
+    // if they change to indexed in settings
     init_indexed_lut();
   }
   lcd_init_lut();

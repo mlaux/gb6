@@ -55,7 +55,7 @@ void init_dither_lut(void)
 
 void init_indexed_lut(void)
 {
-  // map our 4 grays to the best matching indices in screen's CLUT
+  // map 4 grays to the best matching indices in screen's CLUT
   static const unsigned short gray_rgb[4] = { 0xffff, 0xaaaa, 0x5555, 0x0000 };
   int k;
 
@@ -63,44 +63,6 @@ void init_indexed_lut(void)
     RGBColor rgb;
     rgb.red = rgb.green = rgb.blue = gray_rgb[k];
     gray_index[k] = Color2Index(&rgb);
-  }
-}
-
-static void lcd_draw_dither_direct(struct lcd *lcd_ptr)
-{
-  int gy;
-  unsigned char *src = lcd_ptr->pixels;
-  unsigned char *dst;
-  int screen_rb;
-  Point topLeft;
-
-  // get window's screen position
-  SetPort(g_wp);
-  topLeft.h = 0;
-  topLeft.v = 0;
-  LocalToGlobal(&topLeft);
-
-  // calculate screen destination (assumes byte-aligned X)
-  screen_rb = qd.screenBits.rowBytes;
-  dst = (unsigned char *) qd.screenBits.baseAddr
-      + (topLeft.v * screen_rb)
-      + (topLeft.h >> 3);
-
-  for (gy = 0; gy < 144; gy++) {
-    unsigned char *row0 = dst;
-    unsigned char *row1 = dst + screen_rb;
-    int gx;
-
-    for (gx = 0; gx < 160; gx += 4) {
-      // pack 4 GB pixels into LUT index
-      unsigned char idx = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
-      src += 4;
-
-      *row0++ = dither_row0[idx];
-      *row1++ = dither_row1[idx];
-    }
-
-    dst += screen_rb * 2; // advance 2 screen rows
   }
 }
 
@@ -134,12 +96,55 @@ static void lcd_draw_dither_copybits(struct lcd *lcd_ptr)
   CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
 }
 
+static void lcd_draw_dither_direct(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst;
+  int screen_rb;
+  Point topLeft;
+
+  // get window's screen position
+  SetPort(g_wp);
+  topLeft.h = 0;
+  topLeft.v = 0;
+  LocalToGlobal(&topLeft);
+
+  // calculate screen destination, assumes byte-aligned X
+  // TODO prevent dragging window offscreen and snap to 8px when dropping
+  screen_rb = qd.screenBits.rowBytes;
+  dst = (unsigned char *) qd.screenBits.baseAddr
+      + (topLeft.v * screen_rb)
+      + (topLeft.h >> 3);
+
+  for (gy = 0; gy < 144; gy++) {
+    unsigned char *row0 = dst;
+    unsigned char *row1 = dst + screen_rb;
+    int gx;
+
+    for (gx = 0; gx < 160; gx += 4) {
+      // pack 4 GB pixels into LUT index
+      unsigned char idx = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
+      src += 4;
+
+      *row0++ = dither_row0[idx];
+      *row1++ = dither_row1[idx];
+    }
+
+    dst += screen_rb * 2; // advance 2 screen rows
+  }
+}
+
 static void lcd_draw_indexed(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
   unsigned char *dst = (unsigned char *) offscreen_color_buf;
   CGrafPtr port;
+
+  if (screen_depth == 1) {
+    return;
+  }
 
   for (gy = 0; gy < 144; gy++) {
     unsigned char *row0 = dst;
@@ -169,7 +174,7 @@ static void lcd_draw_indexed(struct lcd *lcd_ptr)
 // called by dmg_step at vblank
 void lcd_draw(struct lcd *lcd_ptr)
 {
-  // would a function pointer be faster?
+  // would a function pointer be faster? not called enough to matter
   switch (video_mode) {
     case VIDEO_DITHER_DIRECT:
       lcd_draw_dither_direct(lcd_ptr);
