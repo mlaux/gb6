@@ -1,3 +1,5 @@
+#include <OSUtils.h>
+
 #include "dispatcher_asm.h"
 #include "settings.h"
 
@@ -70,7 +72,7 @@ static unsigned char dispatcher_code[] = {
 // 2. Looks up target in cache
 // 3. If found: patches the JSR into JMP.L and jumps to target
 // 4. If not found: jumps to exit which RTSs to C
-const unsigned char patch_helper_code[] = {
+static unsigned char patch_helper_code[] = {
     0x22, 0x5f,                   // 0: move.l (sp)+, a1
 
     // Determine region
@@ -91,7 +93,7 @@ const unsigned char patch_helper_code[] = {
     0xe5, 0x89,                   // 24: lsl.l #2, d1
     0x20, 0x70, 0x18, 0x00,       // 26: movea.l (a0,d1.l), a0  [banked_cache[bank]]
     0xb0, 0xfc, 0x00, 0x00,       // 30: cmpa.w #0, a0
-    0x67, 0x48,                   // 34: beq.s .no_patch (+72) -> offset 108
+    0x67, 0x4a,                   // 34: beq.s .no_patch (+74) -> offset 110
     0x72, 0x00,                   // 36: moveq #0, d1
     0x32, 0x03,                   // 38: move.w d3, d1
     0x04, 0x41, 0x40, 0x00,       // 40: subi.w #$4000, d1
@@ -117,7 +119,7 @@ const unsigned char patch_helper_code[] = {
 
     // .check_found: (offset 86)
     0xb0, 0xfc, 0x00, 0x00,       // 86: cmpa.w #0, a0
-    0x67, 0x10,                   // 90: beq.s .no_patch (+16) -> offset 108
+    0x67, 0x12,                   // 90: beq.s .no_patch (+18) -> offset 110
 
     // nops to disable patching
     // 0x00, 0x00, 0x00, 0x00,
@@ -131,11 +133,49 @@ const unsigned char patch_helper_code[] = {
     0x43, 0xe9, 0xff, 0xfa,       // 96: lea -6(a1), a1
     0x32, 0xfc, 0x4e, 0xf9,       // 100: move.w #$4ef9, (a1)+  [JMP.L opcode]
     0x22, 0x88,                   // 104: move.l a0, (a1)
-    0x4e, 0xd0,                   // 106: jmp (a0)
+    // The trap dispatcher first saves registers D0, D1, D2, A1, and, if bit 8 is 0, A0.
+    // The Operating System routine may alter any of the registers D0-D2 and A0-A2,
+    // but it must preserve registers D3-D7 and A3-A6. The Operating System routine
+    // may return information in register D0 (and A0 if bit 8 is set). To return to
+    // the trap dispatcher, the Operating System routine executes the RTS
+    // (return from subroutine) instruction.
+    // When the trap dispatcher resumes control, first it restores the value of registers
+    // D1, D2, A1, A2, and, if bit 8 is 0, A0. The values in registers D0 and, 
+    // if bit 8 is 1, in A0 are not restored.
+    0xa0, 0xbd,                   // 106: FlushCodeCache()
+    0x4e, 0xd0,                   // 108: jmp (a0)
 
-    // .no_patch: (offset 108)
-    0x4e, 0xd1                    // 108: jmp (a1)
+    // .no_patch: (offset 110)
+    0x4e, 0xd1                    // 110: jmp (a1)
 };
+
+#define _Unimplemented 0xa89f
+#define _CacheFlush 0xa0bd
+
+// from Inside Macintosh: OS Utilities
+// "Determining If a System Software Routine is Available"
+Boolean TrapAvailable(short trapWord)
+{
+  TrapType trType;
+
+  /* determine whether it is an Operating System or Toolbox routine */
+  if ((trapWord & 0x0800) == 0) {
+    trType = OSTrap;
+  } else {
+    trType = ToolTrap;
+  }
+
+  /* filter cases where older systems mask with $1FF rather than $3FF */
+  if (
+    trType == ToolTrap
+      && (trapWord & 0x03ff) >= 0x200
+      && GetToolboxTrapAddress(0xa86e) == GetToolboxTrapAddress(0xaa6e)
+  ) {
+      return false;
+  }
+
+  return NGetTrapAddress(trapWord, trType) != GetToolboxTrapAddress(_Unimplemented);
+}
 
 unsigned char *get_dispatcher_code(void)
 {
@@ -144,4 +184,13 @@ unsigned char *get_dispatcher_code(void)
     dispatcher_code[4] = (cycles_per_exit >>  8) & 0xff;
     dispatcher_code[5] = (cycles_per_exit      ) & 0xff;
     return dispatcher_code;
+}
+
+unsigned char *get_patch_helper_code(void)
+{
+    if (!TrapAvailable(_CacheFlush)) {
+      patch_helper_code[106] = 0x4e;
+      patch_helper_code[107] = 0x71;
+    }
+    return patch_helper_code;
 }

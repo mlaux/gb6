@@ -109,6 +109,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     uint16_t src_ptr = 0;
     uint8_t op;
     int done = 0;
+    int k;
 
 #ifdef DEBUG_COMPILE
     printf("compile_block: src_address=0x%04x\n", src_address);
@@ -127,6 +128,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     block->error = 0;
     block->failed_opcode = 0;
     block->failed_address = 0;
+
+    for (k = 0; k < sizeof block->code; k += 2) {
+      block->code[k] = 0x4a;
+      block->code[k + 1] = 0xfc;
+    }
 
     while (!done) {
         size_t before = block->length;
