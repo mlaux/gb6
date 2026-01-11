@@ -368,13 +368,15 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         }
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE_BG) {
-                lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
+            if (lcdc & LCDC_ENABLE) {
+                if (lcdc & LCDC_ENABLE_BG) {
+                    lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
+                }
+                if (lcdc & LCDC_ENABLE_OBJ) {
+                    lcd_render_objs(dmg);
+                }
+                lcd_draw(dmg->lcd);
             }
-            if (lcdc & LCDC_ENABLE_OBJ) {
-                lcd_render_objs(dmg);
-            }
-            lcd_draw(dmg->lcd);
         }
 
         dmg->frames_rendered++;

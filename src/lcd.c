@@ -140,8 +140,6 @@ void lcd_render_background(struct dmg *dmg, int lcdc, int window_enabled)
     int unsigned_mode = lcdc & LCDC_BG_TILE_DATA;
     int tile_base_off = unsigned_mode ? 0 : 0x1000;
 
-    // palette is baked into tile_decode_lut, updated on BGP writes
-
     int sy;
     for (sy = 0; sy < 144; sy++) {
         u8 *p = pixels + sy * 160;
