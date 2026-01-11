@@ -3,6 +3,7 @@
 
 #include <Quickdraw.h>
 #include <Windows.h>
+#include <Palettes.h>
 
 #include "../src/lcd.h"
 #include "lcd_mac.h"
@@ -53,16 +54,34 @@ void init_dither_lut(void)
   }
 }
 
-void init_indexed_lut(void)
+static const RGBColor palettes[][4] = {
+  // blk-aqu4
+  { { 0x9f9f, 0xf4f4, 0xe5e5 }, { 0x0000, 0xb9b9, 0xbebe },
+    { 0x0000, 0x5f5f, 0x8c8c }, { 0x0000, 0x2b2b, 0x5959 } },
+  // bgb default
+  { { 0x7575, 0x9898, 0x3333 }, { 0x5959, 0x8e8e, 0x5050 },
+    { 0x3b3b, 0x7474, 0x6060 }, { 0x2e2e, 0x6161, 0x5a5a } },
+  // velvet-cherry-gb
+  { { 0x9797, 0x7575, 0xa6a6 }, { 0x6868, 0x3a3a, 0x6868 },
+    { 0x4141, 0x2727, 0x5252 }, { 0x2d2d, 0x1616, 0x2c2c } },
+};
+
+void init_indexed_lut(WindowPtr wp)
 {
-  // map 4 grays to the best matching indices in screen's CLUT
-  static const unsigned short gray_rgb[4] = { 0xffff, 0xaaaa, 0x5555, 0x0000 };
   int k;
+  PaletteHandle pal;
+
+  pal = NewPalette(4, nil, pmTolerant, 0);
 
   for (k = 0; k < 4; k++) {
-    RGBColor rgb;
-    rgb.red = rgb.green = rgb.blue = gray_rgb[k];
-    gray_index[k] = Color2Index(&rgb);
+    SetEntryColor(pal, k, &palettes[1][k]);
+  }
+
+  SetPalette(wp, pal, true);
+  ActivatePalette(wp);
+
+  for (k = 0; k < 4; k++) {
+    gray_index[k] = Entry2Index(k);
   }
 }
 

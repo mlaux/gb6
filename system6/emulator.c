@@ -16,6 +16,7 @@
 #include <Timer.h>
 #include <Files.h>
 #include <SegLoad.h>
+#include <Palettes.h>
 
 #include "emulator.h"
 
@@ -145,13 +146,13 @@ void DetectScreenDepth(void)
   SysEnvRec env;
   screen_depth = 1;
 
-  // check if Color QuickDraw is available
   if (SysEnvirons(1, &env) == noErr && env.hasColorQD) {
     GDHandle mainDev = GetMainDevice();
     if (mainDev) {
       PixMapHandle pm = (*mainDev)->gdPMap;
       screen_depth = (*pm)->pixelSize;
     }
+    InitPalettes();
   }
 }
 
@@ -215,12 +216,14 @@ void StartEmulation(void)
 
   cpu.dmg = &dmg;
 
+  offscreen_bmp.baseAddr = offscreen_buf;
+  offscreen_bmp.bounds = offscreen_rect;
+  offscreen_bmp.rowBytes = 40;
   if (screen_depth > 1) {
     InitColorOffscreen();
-  } else {
-    offscreen_bmp.baseAddr = offscreen_buf;
-    offscreen_bmp.bounds = offscreen_rect;
-    offscreen_bmp.rowBytes = 40;
+    // init even if indexed isn;t currently selected so it's correct
+    // if they change to indexed in settings
+    init_indexed_lut(g_wp);
   }
 
   jit_init(&dmg);
@@ -457,11 +460,6 @@ int main(int argc, char *argv[])
   LoadPreferences();
 
   init_dither_lut();
-  if (screen_depth > 1) {
-    // init even if indexed isn;t currently selected so it's correct
-    // if they change to indexed in settings
-    init_indexed_lut();
-  }
   lcd_init_lut();
 
   finderResult = CheckFinderFiles();
