@@ -38,7 +38,7 @@ struct audio {
     struct audio_channel ch4;   // noise
 
     u8 wave_ram[16];            // 32 4-bit samples
-    u16 lfsr;                   // noise shift register
+    u32 noise_pos;              // position in precomputed LFSR sequence
     u8 lfsr_width;              // 0 = 15-bit, 1 = 7-bit
     u8 noise_divisor;
     u8 noise_shift;
@@ -47,6 +47,8 @@ struct audio {
     u8 master_vol_left;
     u8 master_vol_right;
     u8 panning;                 // NR51
+
+    u16 env_counter;            // sample counter for 64 Hz envelope tick
 
     // raw register storage for reads
     u8 regs[0x30];

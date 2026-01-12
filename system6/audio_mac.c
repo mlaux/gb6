@@ -1,42 +1,35 @@
 /* Game Boy emulator for 68k Macs
-   audio_mac.c - Sound Manager integration */
-   
+   audio_mac.c - Sound Manager integration using SndPlayDoubleBuffer */
+
 #include <Sound.h>
 #include <Memory.h>
 #include <Gestalt.h>
-#include <Files.h>
 #include <string.h>
 
 #include "audio_mac.h"
 #include "../src/audio.h"
 
-// 2 frames worth of samples at 11127 Hz / 60 fps
-#define BUFFER_SAMPLES 371
+// 1 frame worth of samples at 11127 Hz / 60 fps
+#define BUFFER_SAMPLES 185
 #define SAMPLE_RATE_FIXED 0x2b7745d1
 
 static SndChannelPtr snd_channel;
 static struct audio *g_audio;
 static int audio_inited;
 
-static int write_idx;   // where audio_mac_pump writes (main loop)
-static int read_idx;    // where PlayNextBuffer reads (callback)
-static int num_ready;   // buffers ready to play
-
+// Double buffer structure - matches SndDoubleBuffer layout with our sample data
 typedef struct {
-    Ptr samplePtr;
-    unsigned long length;
-    Fixed sampleRate;
-    unsigned long loopStart;
-    unsigned long loopEnd;
-    unsigned char encode;
-    unsigned char baseFrequency;
-    unsigned char samples[BUFFER_SAMPLES];
-} SimpleSoundBuffer;
+    long dbNumFrames;
+    long dbFlags;
+    long dbUserInfo[2];
+    unsigned char dbSoundData[BUFFER_SAMPLES];
+} MyDoubleBuffer;
 
-static SimpleSoundBuffer sound_buffers[3];
+static SndDoubleBufferHeader dbl_header;
+static MyDoubleBuffer dbl_buffers[2];
 
 // forward declaration
-static pascal void SoundCallback(SndChannelPtr chan, SndCommand *cmd);
+static pascal void DoubleBackProc(SndChannelPtr chan, SndDoubleBufferPtr buf);
 
 static int HasASC(void)
 {
@@ -55,37 +48,31 @@ int audio_mac_available(void)
     return HasASC();
 }
 
-// play the next pre-generated buffer (called from callback)
-static void PlayNextBuffer(void)
+// generate audio into a buffer
+static void FillBuffer(unsigned char *p)
 {
-    SndCommand cmd;
+    int k;
 
-    if (!audio_inited || !snd_channel)
+    if (!g_audio) {
+        // silence if no audio context
+        memset(p, 0x80, BUFFER_SAMPLES);
         return;
+    }
 
-    if (num_ready == 0)
-        return;
+    audio_generate(g_audio, (s8 *)p, BUFFER_SAMPLES);
 
-    // play the ready buffer
-    cmd.cmd = bufferCmd;
-    cmd.param1 = 0;
-    cmd.param2 = (long) &sound_buffers[read_idx];
-    SndDoImmediate(snd_channel, &cmd);
-
-    read_idx = (read_idx + 1) % 3;
-    num_ready--;
-
-    // queue callback for when this buffer finishes
-    cmd.cmd = callBackCmd;
-    cmd.param1 = 0;
-    cmd.param2 = 0;
-    SndDoCommand(snd_channel, &cmd, true);
+    // convert signed to unsigned
+    for (k = 0; k < BUFFER_SAMPLES; k++) {
+        p[k] ^= 0x80;
+    }
 }
 
-// callback - called at interrupt time when buffer finishes playing
-static pascal void SoundCallback(SndChannelPtr chan, SndCommand *cmd)
+// doubleback procedure - called at interrupt time when a buffer is exhausted
+static pascal void DoubleBackProc(SndChannelPtr chan, SndDoubleBufferPtr buf)
 {
-    PlayNextBuffer();
+    FillBuffer(buf->dbSoundData);
+    buf->dbNumFrames = BUFFER_SAMPLES;
+    buf->dbFlags |= dbBufferReady;
 }
 
 int audio_mac_init(struct audio *audio)
@@ -96,30 +83,30 @@ int audio_mac_init(struct audio *audio)
     g_audio = audio;
 
     snd_channel = NULL;
-    err = SndNewChannel(&snd_channel, sampledSynth, initMono,
-                (SndCallBackProcPtr) SoundCallback);
+    err = SndNewChannel(&snd_channel, sampledSynth, initMono, NULL);
     if (err != noErr) {
         return 0;
     }
 
-    for (k = 0; k < 3; k++) {
-        memset(&sound_buffers[k], 0, sizeof(sound_buffers[k]));
-
-        sound_buffers[k].samplePtr = (Ptr)sound_buffers[k].samples;
-        sound_buffers[k].length = BUFFER_SAMPLES;
-        sound_buffers[k].sampleRate = SAMPLE_RATE_FIXED;
-        sound_buffers[k].loopStart = 0;
-        sound_buffers[k].loopEnd = 0;
-        sound_buffers[k].encode = stdSH;
-        sound_buffers[k].baseFrequency = 60;
-
-        // init samples to silence
-        memset(sound_buffers[k].samples, 0x80, BUFFER_SAMPLES);
+    // initialize double buffers
+    for (k = 0; k < 2; k++) {
+        memset(&dbl_buffers[k], 0, sizeof(dbl_buffers[k]));
+        memset(dbl_buffers[k].dbSoundData, 0x80, BUFFER_SAMPLES);
+        dbl_buffers[k].dbNumFrames = BUFFER_SAMPLES;
+        dbl_buffers[k].dbFlags = dbBufferReady;
     }
 
-    write_idx = 0;
-    read_idx = 0;
-    num_ready = 0;
+    // initialize double buffer header
+    memset(&dbl_header, 0, sizeof(dbl_header));
+    dbl_header.dbhNumChannels = 1;
+    dbl_header.dbhSampleSize = 8;
+    dbl_header.dbhCompressionID = 0;
+    dbl_header.dbhPacketSize = 0;
+    dbl_header.dbhSampleRate = SAMPLE_RATE_FIXED;
+    dbl_header.dbhBufferPtr[0] = (SndDoubleBufferPtr)&dbl_buffers[0];
+    dbl_header.dbhBufferPtr[1] = (SndDoubleBufferPtr)&dbl_buffers[1];
+    dbl_header.dbhDoubleBack = (SndDoubleBackProcPtr)DoubleBackProc;
+
     audio_inited = 1;
 
     return 1;
@@ -127,36 +114,19 @@ int audio_mac_init(struct audio *audio)
 
 void audio_mac_pump(void)
 {
-    unsigned char *p;
-    int k;
-
-    if (!audio_inited || !g_audio)
-        return;
-
-    // don't get too far ahead
-    if (num_ready >= 2)
-        return;
-
-    p = sound_buffers[write_idx].samples;
-    audio_generate(g_audio, (s8 *) p, BUFFER_SAMPLES);
-
-    // convert signed to unsigned
-    for (k = 0; k < BUFFER_SAMPLES; k++) {
-        p[k] ^= 0x80;
-    }
-
-    write_idx = (write_idx + 1) % 3;
-    num_ready++;
+    // audio is now generated in the doubleback procedure
 }
 
 void audio_mac_start(void)
 {
-    // pre-generate a couple buffers
-    audio_mac_pump();
-    audio_mac_pump();
+    if (!audio_inited || !snd_channel)
+        return;
 
-    // kick off playback - callbacks will keep it going
-    PlayNextBuffer();
+    // pre-fill both buffers
+    FillBuffer(dbl_buffers[0].dbSoundData);
+    FillBuffer(dbl_buffers[1].dbSoundData);
+
+    SndPlayDoubleBuffer(snd_channel, &dbl_header);
 }
 
 void audio_mac_stop(void)
