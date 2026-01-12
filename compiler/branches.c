@@ -105,7 +105,7 @@ int compile_jr(
 }
 
 // Compile conditional relative jump (jr nz, jr z, jr nc, jr c)
-// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// flag_bit: which bit in D7 to test (2=Z, 0=C)
 // branch_if_set: if true, branch when flag is set; if false, branch when clear
 void compile_jr_cond(
     struct code_block *block,

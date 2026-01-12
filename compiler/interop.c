@@ -130,11 +130,13 @@ void compile_call_dmg_write_d0(struct code_block *block)
 // Emit slow path call to dmg_read - expects address in D1, returns in D0
 void emit_slow_dmg_read(struct code_block *block)
 {
+    emit_push_l_dn(block, REG_68K_D_SCRATCH_2); // 2
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
     emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
     emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
     emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
     emit_addq_l_an(block, 7, 6);
+    emit_pop_l_dn(block, REG_68K_D_SCRATCH_2); // 2
 }
 
 // Call dmg_read(dmg, addr) - addr in D1, result stays in D0
@@ -166,8 +168,8 @@ void compile_call_dmg_read(struct code_block *block)
     emit_andi_w_dn(block, REG_68K_D_SCRATCH_0, 0x00ff);
     // move.b (a0,d0.w), d0              ; 4 bytes [30-33]
     emit_move_b_idx_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);
-    // bra.s done (+36)                  ; 2 bytes [34-35] -> offset 72
-    emit_bra_b(block, 36);
+    // bra.s done (+40)                  ; 2 bytes [34-35] -> offset 76
+    emit_bra_b(block, 40);
 
     // check_hram: (offset 36)
     // cmpi.w #$ff80, d1                 ; 4 bytes [36-39]
@@ -184,8 +186,8 @@ void compile_call_dmg_read(struct code_block *block)
     emit_subi_w_dn(block, 0xff80, REG_68K_D_SCRATCH_0);
     // move.b (a0,d0.w), d0              ; 4 bytes [52-55]
     emit_move_b_idx_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);
-    // bra.s done (+14)                  ; 2 bytes [56-57] -> offset 72
-    emit_bra_b(block, 14);
+    // bra.s done (+18)                  ; 2 bytes [56-57] -> offset 76
+    emit_bra_b(block, 18);
 
     // slow_path: (offset 58)
     emit_slow_dmg_read(block);
