@@ -11,11 +11,6 @@ int audio_mac_init(struct audio *audio)
     return 0;
 }
 
-void audio_mac_pump(void)
-{
-
-}
-
 void audio_mac_start(void)
 {
 

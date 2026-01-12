@@ -112,11 +112,6 @@ int audio_mac_init(struct audio *audio)
     return 1;
 }
 
-void audio_mac_pump(void)
-{
-    // audio is now generated in the doubleback procedure
-}
-
 void audio_mac_start(void)
 {
     if (!audio_inited || !snd_channel)

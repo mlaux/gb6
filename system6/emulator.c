@@ -490,7 +490,6 @@ int main(int argc, char *argv[])
     if (emulation_on) {
       CheckSoftResetRelease();
       jit_step(&dmg);
-      audio_mac_pump();
     }
   }
   audio_mac_shutdown();
