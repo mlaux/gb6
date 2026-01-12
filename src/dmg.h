@@ -25,6 +25,7 @@
 struct cpu;
 struct rom;
 struct lcd;
+struct audio;
 
 struct dmg {
     u8 zero_page[0x80];
@@ -35,6 +36,7 @@ struct dmg {
     struct cpu *cpu;
     struct rom *rom;
     struct lcd *lcd;
+    struct audio *audio;
 
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
@@ -52,9 +54,6 @@ struct dmg {
     u8 timer_count;
     u8 timer_mod;
     u8 timer_control;
-
-    // audio registers $ff10-$ff3f, no-op, just stores values
-    u8 audio_regs[0x30];
 
     // cycle accumulator for timing - only sync LCD when >= CYCLES_PER_FRAME
     u32 cycles_since_render;

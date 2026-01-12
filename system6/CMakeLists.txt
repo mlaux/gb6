@@ -10,6 +10,7 @@ add_application(Emulator
     CREATOR MGBE
     ../src/dmg.c
     ../src/lcd.c
+    ../src/audio.c
     ../src/rom.c
     ../src/mbc.c
     ../compiler/compiler.c
@@ -29,6 +30,7 @@ add_application(Emulator
     input.c
     lcd_mac.c
     lru.c
+    audio_mac.c
     emulator.c
     resources.r
 )

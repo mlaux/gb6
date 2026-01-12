@@ -127,6 +127,7 @@ static unsigned char patch_helper_code[] = {
     // 0x00, 0x00, 0x00, 0x00,
     // 0x00, 0x00,
     // 0x00, 0x00,
+    // 0x00, 0x00,
 
     // .do_patch: (offset 92)
     0x52, 0xac, 0x00, 0x34,       // 92: addq.l #1, 52(a4)  [increment patch_count]
@@ -189,6 +190,7 @@ unsigned char *get_dispatcher_code(void)
 unsigned char *get_patch_helper_code(void)
 {
     if (!TrapAvailable(_CacheFlush)) {
+      // replace _CacheFlush with a nop
       patch_helper_code[106] = 0x4e;
       patch_helper_code[107] = 0x71;
     }

@@ -7,6 +7,7 @@
 #include "dmg.h"
 #include "mbc.h"
 #include "types.h"
+#include "audio.h"
 #include "../system6/settings.h"
 
 extern int dmg_reads, dmg_writes;
@@ -208,7 +209,7 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
         return dmg->timer_control;
     }
     if (address >= 0xff10 && address <= 0xff3f) {
-        return dmg->audio_regs[address - 0xff10];
+        return audio_read(dmg->audio, address);
     }
     if (address == 0xff0f) {
         return dmg->interrupt_request_mask;
@@ -307,7 +308,7 @@ void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
         return;
     }
     if (address >= 0xff10 && address <= 0xff3f) {
-        dmg->audio_regs[address - 0xff10] = data;
+        audio_write(dmg->audio, address, data);
         return;
     }
     if (address == 0xff0f) {

@@ -243,8 +243,8 @@ int jit_step(struct dmg *dmg)
       last_sync = time_in_sync;
       last_report_tick = now;
 
-      sprintf(buf, "E/s:%lu L:%lu%% J:%lu%% S:%lu%%", exits_per_sec,
-          pct_lookup, pct_jit, pct_sync);
+      sprintf(buf, "E/s:%lu J:%lu%% S:%lu%% T:%lu", exits_per_sec,
+          pct_jit, pct_sync, dmg->timer_div);
       set_status_bar(buf);
     }
 

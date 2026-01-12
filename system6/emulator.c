@@ -25,6 +25,7 @@
 #include "lcd.h"
 #include "rom.h"
 #include "mbc.h"
+#include "audio.h"
 
 #include "debug.h"
 #include "dialogs.h"
@@ -34,6 +35,7 @@
 #include "lru.h"
 #include "jit.h"
 #include "settings.h"
+#include "audio_mac.h"
 
 #include "compiler.h"
 
@@ -51,6 +53,7 @@ static void on_rom_bank_switch(int new_bank)
 struct cpu cpu;
 struct rom rom;
 struct lcd lcd;
+struct audio audio;
 struct dmg dmg;
 
 WindowPtr g_wp;
@@ -213,6 +216,8 @@ void StartEmulation(void)
   dmg.frame_skip = frame_skip + 1;
   dmg.rom_bank_switch_hook = on_rom_bank_switch;
   mbc_load_ram(dmg.rom->mbc, save_filename);
+  audio_init(&audio);
+  dmg.audio = &audio;
 
   cpu.dmg = &dmg;
 
@@ -227,6 +232,11 @@ void StartEmulation(void)
   }
 
   jit_init(&dmg);
+
+  if (audio_mac_init(&audio)) {
+    audio_mac_start();
+  }
+
   emulation_on = 1;
   DisableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
 }
@@ -358,6 +368,7 @@ void OnMouseDown(EventRecord *pEvt)
       break;
     case inGoAway:
       if(TrackGoAway(clicked, pEvt->where)) {
+        audio_mac_stop();
         emulation_on = 0;
         EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
         DisposeWindow(clicked);
@@ -479,8 +490,11 @@ int main(int argc, char *argv[])
     if (emulation_on) {
       CheckSoftResetRelease();
       jit_step(&dmg);
+      audio_mac_pump();
     }
   }
+  audio_mac_shutdown();
+
   if (mbc_save_ram(dmg.rom->mbc, save_filename)) {
     FInfo fndrInfo;
     if (GetFInfo(save_filename_p, 0, &fndrInfo) == noErr) {
