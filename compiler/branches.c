@@ -210,7 +210,7 @@ void compile_jr_cond(
 }
 
 // Compile conditional absolute jump (jp nz, jp z, jp nc, jp c)
-// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// flag_bit: which bit in D7 to test (2=Z, 0=C)
 // branch_if_set: if true, branch when flag is set; if false, branch when clear
 void compile_jp_cond(
     struct code_block *block,
@@ -273,7 +273,7 @@ void compile_call_imm16(
 }
 
 // Compile conditional call (call nz, call z, call nc, call c)
-// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// flag_bit: which bit in D7 to test (2=Z, 0=C)
 // branch_if_set: if true, call when flag is set; if false, call when clear
 void compile_call_cond(
     struct code_block *block,
@@ -335,7 +335,7 @@ void compile_ret(struct code_block *block)
 }
 
 // Compile conditional return (ret nz, ret z, ret nc, ret c)
-// flag_bit: which bit in D7 to test (7=Z, 4=C)
+// flag_bit: which bit in D7 to test (2=Z, 0=C)
 // branch_if_set: if true, return when flag is set; if false, return when clear
 void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_set)
 {
@@ -355,13 +355,13 @@ void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_
     }
 
     // Pop return address and return (same as compile_ret)
-    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
-    emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC);
-    emit_rol_w_8(block, REG_68K_D_NEXT_PC);
-    emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC);
-    emit_addq_w_an(block, REG_68K_A_SP, 2);
-    emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
-    emit_dispatch_jump(block);
+    emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0); // 2
+    emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_NEXT_PC); // 4
+    emit_rol_w_8(block, REG_68K_D_NEXT_PC); // 2
+    emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_NEXT_PC); // 2
+    emit_addq_w_an(block, REG_68K_A_SP, 2); // 2
+    emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX); // 6
+    emit_dispatch_jump(block); // 6
 }
 
 void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)

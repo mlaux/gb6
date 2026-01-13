@@ -60,6 +60,10 @@ struct dmg {
     u8 ly_hack;
     u8 sent_ly_interrupt;
     u8 sent_vblank_start;
+
+    // for DIV evaluation, TODO do the same thing for LY/STAT
+    u32 total_cycles;
+    u32 div_reset_cycle;
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);

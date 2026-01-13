@@ -6,22 +6,17 @@
 #include "flags.h"
 #include "interop.h"
 
-// Set flags for shift/rotate: Z and C from 68k CCR
-// Call this after a shift/rotate operation while 68k CCR still has the result
+// todo remove these
 static void compile_shift_flags(struct code_block *block)
 {
-    // After shift/rotate, 68k Z flag is set if result is 0, C has bit shifted out
-    // Native format: Z at bit 2, C at bit 0 - matches 68k CCR
     emit_move_sr_dn(block, REG_68K_D_FLAGS);
 }
 
-// Set flags for SWAP: Z from result, C=0
 static void compile_swap_flags(struct code_block *block)
 {
     emit_move_sr_dn(block, REG_68K_D_FLAGS);
 }
 
-// Set flags for BIT instruction: Z from 68k Z flag, C unchanged
 static void compile_bit_flags(struct code_block *block)
 {
     emit_move_sr_dn(block, REG_68K_D_FLAGS);

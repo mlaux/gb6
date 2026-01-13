@@ -30,7 +30,7 @@ add_application(Emulator
     input.c
     lcd_mac.c
     lru.c
-    audio_mac.c
+    audio_noop.c
     emulator.c
     resources.r
 )

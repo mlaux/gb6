@@ -93,7 +93,7 @@ static unsigned char patch_helper_code[] = {
     0xe5, 0x89,                   // 24: lsl.l #2, d1
     0x20, 0x70, 0x18, 0x00,       // 26: movea.l (a0,d1.l), a0  [banked_cache[bank]]
     0xb0, 0xfc, 0x00, 0x00,       // 30: cmpa.w #0, a0
-    0x67, 0x4a,                   // 34: beq.s .no_patch (+74) -> offset 110
+    0x67, 0x46,                   // 34: beq.s .no_patch (+70) -> offset 106
     0x72, 0x00,                   // 36: moveq #0, d1
     0x32, 0x03,                   // 38: move.w d3, d1
     0x04, 0x41, 0x40, 0x00,       // 40: subi.w #$4000, d1
@@ -119,10 +119,9 @@ static unsigned char patch_helper_code[] = {
 
     // .check_found: (offset 86)
     0xb0, 0xfc, 0x00, 0x00,       // 86: cmpa.w #0, a0
-    0x67, 0x12,                   // 90: beq.s .no_patch (+18) -> offset 110
+    0x67, 0x0e,                   // 90: beq.s .no_patch (+14) -> offset 106
 
     // nops to disable patching
-    // 0x00, 0x00, 0x00, 0x00,
     // 0x00, 0x00, 0x00, 0x00,
     // 0x00, 0x00, 0x00, 0x00,
     // 0x00, 0x00,
@@ -130,10 +129,9 @@ static unsigned char patch_helper_code[] = {
     // 0x00, 0x00,
 
     // .do_patch: (offset 92)
-    0x52, 0xac, 0x00, 0x34,       // 92: addq.l #1, 52(a4)  [increment patch_count]
-    0x43, 0xe9, 0xff, 0xfa,       // 96: lea -6(a1), a1
-    0x32, 0xfc, 0x4e, 0xf9,       // 100: move.w #$4ef9, (a1)+  [JMP.L opcode]
-    0x22, 0x88,                   // 104: move.l a0, (a1)
+    0x43, 0xe9, 0xff, 0xfa,       // 92: lea -6(a1), a1
+    0x32, 0xfc, 0x4e, 0xf9,       // 96: move.w #$4ef9, (a1)+  [JMP.L opcode]
+    0x22, 0x88,                   // 100: move.l a0, (a1)
     // The trap dispatcher first saves registers D0, D1, D2, A1, and, if bit 8 is 0, A0.
     // The Operating System routine may alter any of the registers D0-D2 and A0-A2,
     // but it must preserve registers D3-D7 and A3-A6. The Operating System routine
@@ -143,11 +141,11 @@ static unsigned char patch_helper_code[] = {
     // When the trap dispatcher resumes control, first it restores the value of registers
     // D1, D2, A1, A2, and, if bit 8 is 0, A0. The values in registers D0 and, 
     // if bit 8 is 1, in A0 are not restored.
-    0xa0, 0xbd,                   // 106: FlushCodeCache()
-    0x4e, 0xd0,                   // 108: jmp (a0)
+    0xa0, 0xbd,                   // 102: FlushCodeCache()
+    0x4e, 0xd0,                   // 104: jmp (a0)
 
-    // .no_patch: (offset 110)
-    0x4e, 0xd1                    // 110: jmp (a1)
+    // .no_patch: (offset 106)
+    0x4e, 0xd1                    // 106: jmp (a1)
 };
 
 #define _Unimplemented 0xa89f
@@ -191,8 +189,8 @@ unsigned char *get_patch_helper_code(void)
 {
     if (!TrapAvailable(_CacheFlush)) {
       // replace _CacheFlush with a nop
-      patch_helper_code[106] = 0x4e;
-      patch_helper_code[107] = 0x71;
+      patch_helper_code[102] = 0x4e;
+      patch_helper_code[103] = 0x71;
     }
     return patch_helper_code;
 }

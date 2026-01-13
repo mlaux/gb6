@@ -60,7 +60,7 @@ static void compile_adc_core(struct code_block *block)
     emit_moveq_dn(block, REG_68K_D_SCRATCH_0, 0);
     emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_0);
 
-    // Test old carry (bit 0 in native CCR format) and conditionally add 1
+    // Test old carry and conditionally add 1
     emit_btst_imm_dn(block, 0, REG_68K_D_FLAGS);
     emit_beq_b(block, 2);
     emit_addq_w_dn(block, REG_68K_D_SCRATCH_0, 1);
@@ -71,7 +71,7 @@ static void compile_adc_core(struct code_block *block)
     // Store result: move.b D0, D4
     emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
 
-    // Set flags using native CCR format
+    // Set flags 
     // Z from 8-bit result, C from bit 8 of 16-bit result
     emit_tst_b_dn(block, REG_68K_D_A);
     emit_move_sr_dn(block, REG_68K_D_FLAGS);     // save Z
@@ -105,11 +105,11 @@ static void compile_sbc_core(struct code_block *block)
     // Store result: move.b D0, D4
     emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
 
-    // Set flags using native CCR format
+    // Set flags
     emit_tst_b_dn(block, REG_68K_D_A);
-    emit_move_sr_dn(block, REG_68K_D_FLAGS);     // save Z
-    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xfe);  // clear C
-    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x01);  // D1 = 0 or 1
+    emit_move_sr_dn(block, REG_68K_D_FLAGS); // save Z
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xfe); // clear C
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x01); // D1 = 0 or 1
     emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);
 }
 
@@ -143,9 +143,8 @@ int compile_alu_op(
 
     case 0x0d: // dec c
         emit_subq_b_dn(block, REG_68K_D_BC, 1);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
-            compile_set_z_flag(block);
-        }
+        compile_set_z_flag(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0x14: // inc d
@@ -169,9 +168,8 @@ int compile_alu_op(
 
     case 0x1d: // dec e
         emit_subq_b_dn(block, REG_68K_D_DE, 1);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
-            compile_set_z_flag(block);
-        }
+        compile_set_z_flag(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0x24: // inc h
@@ -203,9 +201,8 @@ int compile_alu_op(
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_subq_b_dn(block, REG_68K_D_SCRATCH_1, 1);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
-            compile_set_z_flag(block);
-        }
+        compile_set_z_flag(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0x34: // inc (hl)
@@ -229,13 +226,13 @@ int compile_alu_op(
     case 0x3c: // inc a
         emit_addq_b_dn(block, REG_68K_D_A, 1);
         compile_set_z_flag(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0x3d: // dec a
         emit_subq_b_dn(block, REG_68K_D_A, 1);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
-            compile_set_z_flag(block);
-        }
+        compile_set_z_flag(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     // misc ALU ops
@@ -399,7 +396,7 @@ int compile_alu_op(
 
     case 0x97: // sub a, a - always results in 0
         emit_moveq_dn(block, REG_68K_D_A, 0);
-        emit_moveq_dn(block, REG_68K_D_FLAGS, 0x04);
+        compile_set_zc_flags(block);
         return 1;
 
     // sbc a, r (0x98-0x9f)
@@ -453,152 +450,150 @@ int compile_alu_op(
     case 0xa0: // and a, b
         emit_swap(block, REG_68K_D_BC);
         emit_and_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         emit_swap(block, REG_68K_D_BC);
         return 1;
 
     case 0xa1: // and a, c
         emit_and_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xa2: // and a, d
         emit_swap(block, REG_68K_D_DE);
         emit_and_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         emit_swap(block, REG_68K_D_DE);
         return 1;
 
     case 0xa3: // and a, e
         emit_and_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xa4: // and a, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_and_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xa5: // and a, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_and_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xa6: // and a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read(block);
         emit_and_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xa7: // and a, a - set flags based on A
         emit_tst_b_dn(block, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
-            compile_set_z_flag(block);
-        }
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0xa8: // xor a, b
         emit_swap(block, REG_68K_D_BC);
         emit_eor_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         emit_swap(block, REG_68K_D_BC);
         return 1;
 
     case 0xa9: // xor a, c
         emit_eor_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xaa: // xor a, d
         emit_swap(block, REG_68K_D_DE);
         emit_eor_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         emit_swap(block, REG_68K_D_DE);
         return 1;
 
     case 0xab: // xor a, e
         emit_eor_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xac: // xor a, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_eor_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xad: // xor a, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_eor_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xae: // xor a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read(block);
         emit_eor_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xaf: // xor a, a - always results in 0, Z=1
         emit_moveq_dn(block, REG_68K_D_A, 0);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xb0: // or a, b
         emit_swap(block, REG_68K_D_BC);
         emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         emit_swap(block, REG_68K_D_BC);
         return 1;
 
     case 0xb1: // or a, c
         emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xb2: // or a, d
         emit_swap(block, REG_68K_D_DE);
         emit_or_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         emit_swap(block, REG_68K_D_DE);
         return 1;
 
     case 0xb3: // or a, e
         emit_or_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xb4: // or a, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xb5: // or a, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xb6: // or a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read(block);
         emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
-        compile_set_z_flag(block);
+        compile_set_zc_flags(block);
         return 1;
 
     case 0xb7: // or a, a - set flags based on A
         emit_tst_b_dn(block, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 0)) {
-            compile_set_z_flag(block);
-        }
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0xb8: // cp a, b
@@ -611,8 +606,8 @@ int compile_alu_op(
 
     case 0xb9: // cp a, c
         emit_cmp_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
-            compile_set_zc_flags(block);
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 1);
         return 1;
 
     case 0xba: // cp a, d 
@@ -625,31 +620,31 @@ int compile_alu_op(
 
     case 0xbb: // cp a, e
         emit_cmp_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
-            compile_set_zc_flags(block);
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 1);
         return 1;
 
     case 0xbc: // cp a, h
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_rol_w_8(block, REG_68K_D_SCRATCH_1);
         emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
-            compile_set_zc_flags(block);
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 1);
         return 1;
 
     case 0xbd: // cp a, l
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
-            compile_set_zc_flags(block);
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 1);
         return 1;
 
     case 0xbe: // cp a, (hl)
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
         compile_call_dmg_read(block);
         emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
-            compile_set_zc_flags(block);
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 1);
         return 1;
 
     case 0xbf: // cp a, a - always Z=1, N=1, H=0, C=0
@@ -702,8 +697,8 @@ int compile_alu_op(
     case 0xfe: // cp a, imm8
         emit_cmp_b_imm_dn(block, REG_68K_D_A, READ_BYTE(*src_ptr));
         (*src_ptr)++;
-        if (!try_fuse_branch(block, ctx, src_ptr, src_address, 1))
-            compile_set_zc_flags(block);
+        compile_set_zc_flags(block);
+        try_fuse_branch(block, ctx, src_ptr, src_address, 1);
         return 1;
 
     default:

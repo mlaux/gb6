@@ -6,7 +6,7 @@
 
 // D0 = scratch/C interop return value
 // D1 = scratch
-// D2 = scratch
+// D2 = accumulated cycle count
 // D3 = dispatcher return value (next GB PC)
 // D4 = A (GB accumulator)
 // D5 = BC (split: 0x00BB00CC)
@@ -54,12 +54,8 @@
 // 2 bytes padding at 42
 #define JIT_CTX_CYCLES        44  // u32: accumulated GB cycles
 #define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
-#define JIT_CTX_PATCH_COUNT   52  // u32 patch count (debug)
+#define JIT_CTX_READ_CYCLES   52  // u32: in-flight cycles at dmg_read call
 #define JIT_CTX_HRAM_BASE     56  // void *hram_base (dmg->zero_page)
-
-// Offset of 'code' field in struct code_block (it's at the start)
-#define BLOCK_CODE_OFFSET 0
-
 
 struct code_block {
     uint8_t code[1024];

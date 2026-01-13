@@ -3,8 +3,6 @@
 
 #include "types.h"
 
-#define AUDIO_SAMPLE_RATE 11127  // Mac native rate (22254.54/2)
-
 // register base addresses
 #define REG_NR10 0xff10
 #define REG_NR52 0xff26

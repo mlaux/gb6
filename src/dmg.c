@@ -9,6 +9,7 @@
 #include "types.h"
 #include "audio.h"
 #include "../system6/settings.h"
+#include "../system6/jit.h"
 
 extern int dmg_reads, dmg_writes;
 
@@ -197,7 +198,10 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
         return get_button_state(dmg);
     }
     if (address == REG_TIMER_DIV) {
-        return (dmg->timer_div & 0xff00) >> 8;
+        // compute based on total cycles + in-flight cycles from JIT
+        u32 current = dmg->total_cycles + jit_ctx.read_cycles;
+        u32 div_val = current - dmg->div_reset_cycle;
+        return (div_val >> 8) & 0xff;
     }
     if (address == REG_TIMER_COUNT) {
         return dmg->timer_count;
@@ -292,7 +296,8 @@ void dmg_write_slow(struct dmg *dmg, u16 address, u8 data)
         return;
     }
     if (address == REG_TIMER_DIV) {
-        dmg->timer_div = 0;
+        // writing any value resets DIV to 0 at this cycle
+        dmg->div_reset_cycle = dmg->total_cycles + jit_ctx.read_cycles;
         return;
     }
     if (address == REG_TIMER_COUNT) {
@@ -341,7 +346,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
     int new_ly, lyc;
 
-    dmg->timer_div += cycles;
+    dmg->total_cycles += cycles;
 
     new_ly = lcd_read(dmg->lcd, REG_LY) + (cycles / 456);
     if (new_ly >= 154) { 

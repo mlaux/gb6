@@ -129,13 +129,14 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     block->failed_opcode = 0;
     block->failed_address = 0;
 
+    // set everything to illegal instruction so it's easy to catch weird branches
     for (k = 0; k < sizeof block->code; k += 2) {
       block->code[k] = 0x4a;
       block->code[k + 1] = 0xfc;
     }
 
     while (!done) {
-        size_t before = block->length;
+        // size_t before = block->length;
         // detect overflow of code block
         // could split loops across multiple blocks which is correct but slower
         // longest instruction is probably either adc or inc/dec (hl)
@@ -276,16 +277,15 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             }
             emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D3 += D1, sets C
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
-            emit_move_sr_dn(block, REG_68K_D_FLAGS);
+            compile_set_c_flag(block);
             break;
 
         case 0x29: // add hl, hl
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);  // D3.w = HL
-            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);  // D3 += D3, sets C
+            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
-            emit_move_sr_dn(block, REG_68K_D_FLAGS);
+            compile_set_c_flag(block);
             break;
-
 
         case 0x1e: // ld e, imm8
             emit_move_b_dn(block, REG_68K_D_DE, READ_BYTE(src_ptr++));
@@ -377,11 +377,6 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             }
             break;
 
-
-        case 0xca: // jp z, imm16
-            compile_jp_cond(block, ctx, &src_ptr, src_address, 2, 1);
-            break;
-
         case 0xc8: // ret z
             compile_ret_cond(block, 2, 1);
             break;
@@ -389,6 +384,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         case 0xc9: // ret
             compile_ret(block);
             done = 1;
+            break;
+
+        case 0xca: // jp z, imm16
+            compile_jp_cond(block, ctx, &src_ptr, src_address, 2, 1);
             break;
 
         case 0xc4: // call nz, imm16
@@ -524,7 +523,6 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 compile_call_dmg_write(block);
             }
             break;
-
 
         case 0xfa: // ld a, (u16)
             {

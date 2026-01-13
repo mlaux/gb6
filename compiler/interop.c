@@ -12,9 +12,12 @@ typedef enum {
     WRITE_VAL_IMM   // immediate value
 } write_val_src;
 
-// Emit slow path call to dmg_write - addr in D1, val_reg specifies value register
+// slow path call to dmg_write - addr in D1, val_reg specifies value register
 void emit_slow_dmg_write(struct code_block *block, uint8_t val_reg)
 {
+    // store current cycle count for lazy register evaluation, right now
+    // it's just DIV but want to add more like lcd
+    emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_2, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
     emit_push_l_dn(block, REG_68K_D_SCRATCH_2); // 2
     emit_push_b_dn(block, val_reg); // 2
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1); // 2
@@ -57,8 +60,8 @@ static void compile_inline_dmg_write(struct code_block *block, uint8_t val_reg)
     emit_andi_w_dn(block, REG_68K_D_SCRATCH_0, 0x00ff);
     // move.b val_reg, (a0,d0.w)         ; 4 bytes
     emit_move_b_dn_idx_an(block, val_reg, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
-    // bra.s done (+42)                  ; 2 bytes
-    emit_bra_b(block, 42);
+    // bra.s done (+46)                  ; 2 bytes
+    emit_bra_b(block, 46);
 
     // check_hram: (offset 36)
     // cmpi.w #$ff80, d1                 ; 4 bytes
@@ -75,12 +78,12 @@ static void compile_inline_dmg_write(struct code_block *block, uint8_t val_reg)
     emit_subi_w_dn(block, 0xff80, REG_68K_D_SCRATCH_0);
     // move.b val_reg, (a0,d0.w)         ; 4 bytes
     emit_move_b_dn_idx_an(block, val_reg, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
-    // bra.s done (+20)                  ; 2 bytes
-    emit_bra_b(block, 20);
+    // bra.s done (+24)                  ; 2 bytes
+    emit_bra_b(block, 24);
 
     // slow_path: (offset 58)
     emit_slow_dmg_write(block, val_reg);
-    // falls through to done (offset 78)
+    // falls through to done (offset 82)
 }
 
 static void compile_dmg_write_internal(
@@ -130,6 +133,8 @@ void compile_call_dmg_write_d0(struct code_block *block)
 // Emit slow path call to dmg_read - expects address in D1, returns in D0
 void emit_slow_dmg_read(struct code_block *block)
 {
+    // store current cycle count for lazy DIV evaluation
+    emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_2, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
     emit_push_l_dn(block, REG_68K_D_SCRATCH_2); // 2
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
     emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
@@ -168,8 +173,8 @@ void compile_call_dmg_read(struct code_block *block)
     emit_andi_w_dn(block, REG_68K_D_SCRATCH_0, 0x00ff);
     // move.b (a0,d0.w), d0              ; 4 bytes [30-33]
     emit_move_b_idx_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);
-    // bra.s done (+40)                  ; 2 bytes [34-35] -> offset 76
-    emit_bra_b(block, 40);
+    // bra.s done (+44)                  ; 2 bytes [34-35] -> offset 80
+    emit_bra_b(block, 44);
 
     // check_hram: (offset 36)
     // cmpi.w #$ff80, d1                 ; 4 bytes [36-39]
@@ -178,6 +183,7 @@ void compile_call_dmg_read(struct code_block *block)
     emit_bcs_b(block, 16);
 
     // hram access (offset 42):
+    // HRAM is now offset 0 in dmg, so this could be simplified a bit i think
     // movea.l JIT_CTX_HRAM_BASE(a4), a0 ; 4 bytes [42-45]
     emit_movea_l_disp_an_an(block, JIT_CTX_HRAM_BASE, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
     // move.w d1, d0                     ; 2 bytes [46-47]
@@ -186,12 +192,12 @@ void compile_call_dmg_read(struct code_block *block)
     emit_subi_w_dn(block, 0xff80, REG_68K_D_SCRATCH_0);
     // move.b (a0,d0.w), d0              ; 4 bytes [52-55]
     emit_move_b_idx_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);
-    // bra.s done (+18)                  ; 2 bytes [56-57] -> offset 76
-    emit_bra_b(block, 18);
+    // bra.s done (+22)                  ; 2 bytes [56-57] -> offset 80
+    emit_bra_b(block, 22);
 
     // slow_path: (offset 58)
     emit_slow_dmg_read(block);
-    // falls through to done (offset 72)
+    // falls through to done (offset 80)
 }
 
 // Call dmg_read(dmg, addr) - addr in D1, result goes to D4 (A register)

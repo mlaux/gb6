@@ -147,6 +147,7 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_ROM_BANK, 1);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, 0); // infinite loop at 0
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, 0);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ_CYCLES, 0);
     // sp_adjust must be non-zero for fast path (0 = slow mode)
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_SP_ADJUST, 1);
     m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_GB_SP, DEFAULT_GB_SP);
@@ -247,7 +248,7 @@ void run_program(uint8_t *gb_rom, uint16_t start_pc)
         m68k_set_reg(M68K_REG_SP, STACK_BASE - 4);
         m68k_set_reg(M68K_REG_PC, CODE_BASE);
 
-        int cycles = m68k_execute(5000);
+        m68k_execute(5000);
 
         // Check D0 for next PC or halt
         pc = get_dreg(REG_68K_D_NEXT_PC);

@@ -98,7 +98,6 @@ void jit_init(struct dmg *dmg)
     jit_ctx.upper_cache = upper_cache;
     jit_ctx.dispatcher_return = (void *) get_dispatcher_code();
     jit_ctx.patch_helper = (void *) get_patch_helper_code();
-    jit_ctx.patch_count = 0;
     jit_ctx.hram_base = dmg->zero_page;
 
     jit_regs.d2 = 0;

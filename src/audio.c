@@ -4,18 +4,18 @@
 // duty cycle patterns (8 steps each)
 // 0 = 12.5%, 1 = 25%, 2 = 50%, 3 = 75%
 static const u8 duty_table[4] = {
-    0x01,   // 00000001
-    0x03,   // 00000011
-    0x0f,   // 00001111
-    0xfc    // 11111100
+    0x01, // 00000001
+    0x03, // 00000011
+    0x0f, // 00001111
+    0xfc  // 11111100
 };
 
 // noise divisor table
 static const u8 divisor_table[8] = { 8, 16, 32, 48, 64, 80, 96, 112 };
 
 // precomputed LFSR output bits (generated at init)
-static u8 lfsr15_bits[4096];    // 32768 bits for 15-bit mode
-static u8 lfsr7_bits[16];       // 128 bits for 7-bit mode
+static u8 lfsr15_bits[4096]; // 32768 bits for 15-bit mode
+static u8 lfsr7_bits[16];    // 128 bits for 7-bit mode
 
 static void update_phase_inc(struct audio_channel *ch)
 {
@@ -274,7 +274,7 @@ static s8 generate_wave(struct audio *audio)
     int shift = ch->volume;
     if (shift == 0)
         return 0;
-    shift--;    // now 0=100%, 1=50%, 2=25%
+    shift--; // now 0=100%, 1=50%, 2=25%
 
     // center around 0 (nibble is 0-15, center at 7.5)
     return (s8)((nibble - 8) >> shift);
