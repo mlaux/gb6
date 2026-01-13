@@ -315,8 +315,8 @@ void LoadPreferences(void)
     frame_skip = prefs[1];
     video_mode = prefs[2];
   } else {
-    cycles_per_exit = cyclesValues[1];
-    frame_skip = 2;
+    cycles_per_exit = cyclesValues[2];
+    frame_skip = 4;
     video_mode = VIDEO_DITHER_COPYBITS;
   }
 
