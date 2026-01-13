@@ -58,7 +58,7 @@ struct dmg dmg;
 
 WindowPtr g_wp;
 unsigned char app_running;
-unsigned char emulation_on;
+unsigned char sound_enabled;
 int screen_depth;
 
 static unsigned long soft_reset_release_tick;
@@ -94,7 +94,7 @@ static void build_save_filename(void)
   memcpy(&save_filename_p[1], save_filename, len);
 }
 
-void InitEverything(void)
+void InitToolbox(void)
 {
   Handle mbar;
 
@@ -115,6 +115,9 @@ void InitEverything(void)
   SetMenuBar(mbar);
   AppendResMenu(GetMenuHandle(MENU_APPLE), 'DRVR');
   InsertMenuItem(GetMenuHandle(MENU_FILE), "\pSoft Reset", FILE_SCREENSHOT);
+  if (!audio_mac_available()) {
+    DisableItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND);
+  }
   DrawMenuBar();
 
   app_running = 1;
@@ -186,11 +189,18 @@ void InitColorOffscreen(void)
   offscreen_pixmap.pmReserved = 0;
 }
 
+void StopEmulation(void)
+{
+  audio_mac_shutdown();
+  EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
+  DisposeWindow(g_wp);
+  g_wp = NULL;
+}
+
 void StartEmulation(void)
 {
   if (g_wp) {
-    DisposeWindow(g_wp);
-    g_wp = NULL;
+    StopEmulation();
   }
 
   if (screen_depth > 1) {
@@ -233,11 +243,10 @@ void StartEmulation(void)
 
   jit_init(&dmg);
 
-  if (audio_mac_init(&audio)) {
+  if (audio_mac_init(&audio) && sound_enabled) {
     audio_mac_start();
   }
 
-  emulation_on = 1;
   DisableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
 }
 
@@ -329,12 +338,12 @@ void OnMenuAction(long action)
         StartEmulation();
     }
     else if(item == FILE_SCREENSHOT) {
-      if (emulation_on) {
+      if (g_wp) {
         SaveScreenshot();
       }
     }
     else if(item == FILE_SOFT_RESET) {
-      if (emulation_on) {
+      if (g_wp) {
         dmg_set_button(&dmg, FIELD_ACTION,
             BUTTON_A | BUTTON_B | BUTTON_SELECT | BUTTON_START, 1);
         soft_reset_release_tick = TickCount() + SOFT_RESET_TICKS;
@@ -346,7 +355,15 @@ void OnMenuAction(long action)
   }
 
   else if (menu == MENU_EDIT) {
-    if (item == EDIT_KEY_MAPPINGS) {
+    if (item == EDIT_SOUND) {
+      sound_enabled = !sound_enabled;
+      if (sound_enabled) {
+        audio_mac_start();
+      } else {
+        audio_mac_stop();
+      }
+      CheckItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND, sound_enabled);
+    } else if (item == EDIT_KEY_MAPPINGS) {
       ShowKeyMappingsDialog();
     } else if (item == EDIT_PREFERENCES) {
       ShowPreferencesDialog();
@@ -368,11 +385,7 @@ void OnMouseDown(EventRecord *pEvt)
       break;
     case inGoAway:
       if(TrackGoAway(clicked, pEvt->where)) {
-        audio_mac_stop();
-        emulation_on = 0;
-        EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
-        DisposeWindow(clicked);
-        g_wp = NULL;
+        StopEmulation();
       }
       break;
     case inContent:
@@ -404,13 +417,13 @@ static int ProcessEvents(void)
       case autoKey:
         if (evt.modifiers & cmdKey) {
           OnMenuAction(MenuKey(evt.message & charCodeMask));
-        } else if (emulation_on) {
+        } else if (g_wp) {
           int key = (evt.message & keyCodeMask) >> 8;
           HandleKeyEvent(key, 1);
         }
         break;
       case keyUp:
-        if (emulation_on) {
+        if (g_wp) {
           int key = (evt.message & keyCodeMask) >> 8;
           HandleKeyEvent(key, 0);
         }
@@ -465,7 +478,7 @@ int main(int argc, char *argv[])
 {
   int finderResult;
 
-  InitEverything();
+  InitToolbox();
   DetectScreenDepth();
   LoadKeyMappings();
   LoadPreferences();
@@ -487,7 +500,7 @@ int main(int argc, char *argv[])
       break;
     }
 
-    if (emulation_on) {
+    if (g_wp) {
       CheckSoftResetRelease();
       jit_step(&dmg);
     }

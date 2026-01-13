@@ -30,8 +30,9 @@
 #define FILE_SOFT_RESET 3
 #define FILE_QUIT 5
 
-#define EDIT_PREFERENCES 1
-#define EDIT_KEY_MAPPINGS 2
+#define EDIT_SOUND 1
+#define EDIT_PREFERENCES 3
+#define EDIT_KEY_MAPPINGS 4
 
 #define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
 

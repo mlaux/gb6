@@ -17,7 +17,6 @@ static SndChannelPtr snd_channel;
 static struct audio *g_audio;
 static int audio_inited;
 
-// Double buffer structure - matches SndDoubleBuffer layout with our sample data
 typedef struct {
     long dbNumFrames;
     long dbFlags;
@@ -27,6 +26,22 @@ typedef struct {
 
 static SndDoubleBufferHeader dbl_header;
 static MyDoubleBuffer dbl_buffers[2];
+
+// for Mac Plus/SE/Classic
+// #define VIA1_T1CL (*(volatile u8 *) 0xEFE9FE)
+// #define VIA1_T1CH (*(volatile u8 *) 0xEFEBFE)
+// for Mac II
+// #define VIA1_T1CL (*(volatile u8 *) 0x50f00800)
+// #define VIA1_T1CH (*(volatile u8 *) 0x50f00a00)
+// u32 audio_timer_accum;
+// u32 audio_calls;
+
+// static u16 read_via_t1(void)
+// {
+//     u8 lo = VIA1_T1CL;
+//     u8 hi = VIA1_T1CH;
+//     return (hi << 8) | lo;
+// }
 
 // forward declaration
 static pascal void DoubleBackProc(SndChannelPtr chan, SndDoubleBufferPtr buf);
@@ -48,13 +63,11 @@ int audio_mac_available(void)
     return HasASC();
 }
 
-// generate audio into a buffer
 static void FillBuffer(unsigned char *p)
 {
     int k;
 
     if (!g_audio) {
-        // silence if no audio context
         memset(p, 0x80, BUFFER_SAMPLES);
         return;
     }
@@ -67,18 +80,39 @@ static void FillBuffer(unsigned char *p)
     }
 }
 
-// doubleback procedure - called at interrupt time when a buffer is exhausted
+// called at interrupt time when a buffer is exhausted
 static pascal void DoubleBackProc(SndChannelPtr chan, SndDoubleBufferPtr buf)
 {
+    // u16 t0, t1, delta;
+
+    // t0 = read_via_t1();
     FillBuffer(buf->dbSoundData);
     buf->dbNumFrames = BUFFER_SAMPLES;
     buf->dbFlags |= dbBufferReady;
+    // t1 = read_via_t1();
+    // if (t0 >= t1) {
+    //     delta = t0 - t1;
+    // } else {
+    //     // wrapped - t0 was near 0, t1 is near latch value after reload
+    //     // latch is roughly 13050 for 60Hz tick rate
+    //     delta = t0 + (13050 - t1);
+    // }
+    // audio_timer_accum += delta;
+    // audio_calls++;
 }
 
 int audio_mac_init(struct audio *audio)
 {
     OSErr err;
     int k;
+
+    if (!audio_mac_available()) {
+        return 0;
+    } 
+
+    if (audio_inited) {
+        return 1;
+    }
 
     g_audio = audio;
 

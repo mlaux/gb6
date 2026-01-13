@@ -15,9 +15,9 @@
 #include "emulator.h"
 #include "debug.h"
 
+static u32 time_in_compile = 0;
 static u32 time_in_jit = 0;
 static u32 time_in_sync = 0;
-static u32 time_in_lookup = 0;
 static u32 call_count = 0;
 static u32 last_report_tick = 0;
 
@@ -112,13 +112,11 @@ void jit_init(struct dmg *dmg)
     jit_halted = 0;
 }
 
-static u32 cycles_min = 0xffffffff, cycles_max;
-
 int jit_step(struct dmg *dmg)
 {
     struct code_block *block;
     char buf[64];
-    u32 t0, t1, t2, t3, cycles;
+    u32 t0, t1, t2, t3;
     t0 = TickCount();
 
     if (jit_halted) {
@@ -167,13 +165,6 @@ int jit_step(struct dmg *dmg)
 
     // sync hardware with cycles accumulated by compiled code
     dmg_sync_hw(dmg, jit_regs.d2);
-    cycles = jit_regs.d2;
-    if (cycles < cycles_min) {
-      cycles_min = cycles;
-    }
-    if (cycles > cycles_max) {
-      cycles_max = cycles;
-    }
     jit_regs.d2 = 0;
 
     if (dmg->interrupt_enable) {
@@ -204,30 +195,30 @@ int jit_step(struct dmg *dmg)
     }
 
     t3 = TickCount();
-    time_in_lookup += t1 - t0;
+    time_in_compile += t1 - t0;
     time_in_jit += t2 - t1;
     time_in_sync += t3 - t2;
     call_count++;
     if (call_count % 100 == 0) {
-      static u32 last_lookup = 0, last_jit = 0, last_sync = 0;
+      static u32 last_compile = 0, last_jit = 0, last_sync = 0;
       u32 now = TickCount();
       u32 elapsed = now - last_report_tick;
       u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
 
-      u32 d_lookup = time_in_lookup - last_lookup;
+      u32 d_compile = time_in_compile - last_compile;
       u32 d_jit = time_in_jit - last_jit;
       u32 d_sync = time_in_sync - last_sync;
 
-      u32 pct_lookup = elapsed > 0 ? (d_lookup * 100) / elapsed : 0;
+      u32 pct_compile = elapsed > 0 ? (d_compile * 100) / elapsed : 0;
       u32 pct_jit = elapsed > 0 ? (d_jit * 100) / elapsed : 0;
       u32 pct_sync = elapsed > 0 ? (d_sync * 100) / elapsed : 0;
 
-      last_lookup = time_in_lookup;
+      last_compile = time_in_compile;
       last_jit = time_in_jit;
       last_sync = time_in_sync;
       last_report_tick = now;
 
-      sprintf(buf, "E/s:%lu J:%lu%% S:%lu%%", exits_per_sec, pct_jit, pct_sync);
+      sprintf(buf, "E/s:%lu J:%lu%% S:%lu%% O:%lu%%", exits_per_sec, pct_jit, pct_sync);
       set_status_bar(buf);
     }
 

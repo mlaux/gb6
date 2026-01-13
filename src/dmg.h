@@ -57,11 +57,10 @@ struct dmg {
 
     // cycle accumulator for timing - only sync LCD when >= CYCLES_PER_FRAME
     u32 cycles_since_render;
-    u8 ly_hack;
     u8 sent_ly_interrupt;
     u8 sent_vblank_start;
 
-    // for DIV evaluation, TODO do the same thing for LY/STAT
+    // for DIV/LY/STAT evaluation from cycles
     u32 total_cycles;
     u32 div_reset_cycle;
 };
@@ -76,7 +75,6 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address);
 void dmg_write_slow(struct dmg *dmg, u16 address, u8 data);
 
 void dmg_sync_hw(struct dmg *dmg, int cycles);
-void dmg_request_interrupt(struct dmg *dmg, int nr);
 
 // page table management
 void dmg_init_pages(struct dmg *dmg);

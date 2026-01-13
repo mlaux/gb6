@@ -8,10 +8,11 @@
 #include "mbc.h"
 #include "types.h"
 #include "audio.h"
-#include "../system6/settings.h"
 #include "../system6/jit.h"
 
 extern int dmg_reads, dmg_writes;
+
+#define CYCLES_PER_FRAME 70224
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {
@@ -102,6 +103,11 @@ void dmg_update_ram_bank(struct dmg *dmg, u8 *ram_base)
     }
 }
 
+static void dmg_request_interrupt(struct dmg *dmg, int nr)
+{
+    dmg->interrupt_request_mask |= nr;
+}
+
 void dmg_set_button(struct dmg *dmg, int field, int button, int pressed)
 {
     u8 *mod;
@@ -133,52 +139,48 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
+// calculate current frame cycle position including in-flight JIT cycles
+static u32 get_frame_cycles(struct dmg *dmg)
+{
+    u32 frame_cycles = dmg->cycles_since_render + jit_ctx.read_cycles;
+    // wrap at frame boundary
+    if (frame_cycles >= CYCLES_PER_FRAME) {
+        frame_cycles -= CYCLES_PER_FRAME;
+    }
+    return frame_cycles;
+}
+
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        if (cycles_per_exit == 456) {
-            // config dialog is set to per-scanline updates, so can use the 
-            // actual value because it's updated often enough
-            return lcd_read(dmg->lcd, REG_LY);
-        } else {
-            // need increment-on-read
-            dmg->ly_hack++;
-            if (dmg->ly_hack == 154) {
-                dmg->ly_hack = 0;
-            }
-            return dmg->ly_hack;
-        }
+        u32 frame_cycles = get_frame_cycles(dmg);
+        return (frame_cycles / 456);
     }
 
     if (address == REG_STAT) {
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
-        if (cycles_per_exit == 456) {
-            int ly = lcd_read(dmg->lcd, REG_LY);
-            int mode;
+        u32 frame_cycles = get_frame_cycles(dmg);
+        int ly = (frame_cycles / 456);
+        int mode;
 
-            if (ly >= 144) {
-                // vblank
-                mode = 1;
-            } else {
-                int cycle_in_line = dmg->cycles_since_render % 456;
-                if (cycle_in_line < 80) {
-                    // OAM scan
-                    mode = 2;
-                } else if (cycle_in_line < 252) {
-                    // active area, 160 visible pixels + 12 extra
-                    // https://gbdev.io/pandocs/Rendering.html#first12
-                    mode = 3;
-                } else {
-                    // hblank
-                    mode = 0;
-                }
-            }
-            stat = (stat & 0xfc) | mode;
+        if (ly >= 144) {
+            // vblank
+            mode = 1;
         } else {
-            // increment-per-read
-            stat = (stat & 0xfc) + (((stat & 3) + 1) & 3);
-            lcd_write(dmg->lcd, REG_STAT, stat);
+            int cycle_in_line = frame_cycles % 456;
+            if (cycle_in_line < 80) {
+                // OAM scan
+                mode = 2;
+            } else if (cycle_in_line < 252) {
+                // active area, 160 visible pixels + 12 extra
+                // https://gbdev.io/pandocs/Rendering.html#first12
+                mode = 3;
+            } else {
+                // hblank
+                mode = 0;
+            }
         }
+        stat = (stat & 0xfc) | mode;
 
         return stat;
     }
@@ -334,28 +336,18 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     dmg_write_slow(dmg, address, data);
 }
 
-void dmg_request_interrupt(struct dmg *dmg, int nr)
-{
-    dmg->interrupt_request_mask |= nr;
-}
-
-#define CYCLES_PER_FRAME 70224
-
 // not accurate at all, but not going for accuracy
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
-    int new_ly, lyc;
+    int ly, lyc;
 
     dmg->total_cycles += cycles;
+    dmg->cycles_since_render += cycles;
 
-    new_ly = lcd_read(dmg->lcd, REG_LY) + (cycles / 456);
-    if (new_ly >= 154) { 
-        new_ly -= 154;
-    }
-    lcd_write(dmg->lcd, REG_LY, new_ly);
+    ly = (dmg->cycles_since_render / 456) % 154;
 
     lyc = lcd_read(dmg->lcd, REG_LYC);
-    if (new_ly >= lyc && !dmg->sent_ly_interrupt) {
+    if (ly >= lyc && !dmg->sent_ly_interrupt) {
         lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);
@@ -365,7 +357,6 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
     }
 
-    dmg->cycles_since_render += cycles;
     if (dmg->cycles_since_render >= CYCLES_PER_FRAME - 4560 && !dmg->sent_vblank_start) {
         // fire VBLANK once per frame
         dmg_request_interrupt(dmg, INT_VBLANK);
@@ -393,12 +384,8 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     // it needs to execute both the previous block and this one
     if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
         dmg->cycles_since_render -= CYCLES_PER_FRAME;
-        // reset LY to start of frame. pointless for when cycles is 456 but
-        // doesn't hurt
-        lcd_write(dmg->lcd, REG_LY, 0);
         dmg->sent_vblank_start = 0;
         dmg->sent_ly_interrupt = 0;
-        dmg->ly_hack = 0;
     }
 }
 
