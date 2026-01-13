@@ -247,7 +247,8 @@ void ShowAboutBox(void)
   
   CenterDialog(GetResource('DLOG', DLOG_ABOUT));
   dp = GetNewDialog(DLOG_ABOUT, 0L, (WindowPtr) -1L);
-  
+  ShowWindow(dp);
+
   do {
     ModalDialog(AboutFilter, &itemHit);
     if (itemHit == 2) {

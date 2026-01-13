@@ -74,7 +74,7 @@ void init_indexed_lut(WindowPtr wp)
   pal = NewPalette(4, nil, pmTolerant, 0);
 
   for (k = 0; k < 4; k++) {
-    SetEntryColor(pal, k, &palettes[1][k]);
+    SetEntryColor(pal, k, &palettes[0][k]);
   }
 
   SetPalette(wp, pal, true);
