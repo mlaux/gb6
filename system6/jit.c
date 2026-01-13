@@ -74,11 +74,11 @@ static void execute_block(void *code)
 // Initialize JIT state for a new emulation session
 void jit_init(struct dmg *dmg)
 {
-    // can just remove this...
     compiler_init();
 
-    lru_init();
-    lru_clear_all();
+    // Clear any existing cache from previous session
+    cache_clear_all();
+    cache_free_bank_arrays();
 
     memset(&jit_regs, 0, sizeof jit_regs);
 
@@ -130,26 +130,17 @@ int jit_step(struct dmg *dmg)
 
     if (!block) {
         u32 free_heap;
-        lru_ensure_memory();
+        cache_ensure_memory();
         free_heap = (u32) FreeMem();
         sprintf(buf, "Compiling $%02x:%04x free=%u",
                 jit_ctx.current_rom_bank, jit_regs.d3, free_heap);
         set_status_bar(buf);
         block = compile_block(jit_regs.d3, &compile_ctx);
         if (!block) {
-            u32 unused;
-
-            // try to free memory by evicting LRU blocks
-            lru_clear_all();
-            MaxMem(&unused);
-            block = compile_block(jit_regs.d3, &compile_ctx);
-
-            if (!block) {
-              sprintf(buf, "JIT: alloc fail pc=%04x", jit_regs.d3);
-              set_status_bar(buf);
-              jit_halted = 1;
-              return 0;
-            }
+            sprintf(buf, "JIT: alloc fail pc=%04x", jit_regs.d3);
+            set_status_bar(buf);
+            jit_halted = 1;
+            return 0;
         }
 
         if (block->error) {
@@ -160,13 +151,7 @@ int jit_step(struct dmg *dmg)
             return 0;
         }
 
-        //debug_log_block(block);
-        lru_add_block(block, jit_regs.d3, jit_ctx.current_rom_bank);
-    } else {
-        if (block->lru_node) {
-            lru_promote((lru_node *) block->lru_node);
-        }
-        // set_status_bar("Running");
+        cache_store(jit_regs.d3, jit_ctx.current_rom_bank, block);
     }
 
     t1 = TickCount();
@@ -242,8 +227,7 @@ int jit_step(struct dmg *dmg)
       last_sync = time_in_sync;
       last_report_tick = now;
 
-      sprintf(buf, "E/s:%lu J:%lu%% S:%lu%% T:%lu", exits_per_sec,
-          pct_jit, pct_sync, dmg->timer_div);
+      sprintf(buf, "E/s:%lu J:%lu%% S:%lu%%", exits_per_sec, pct_jit, pct_sync);
       set_status_bar(buf);
     }
 

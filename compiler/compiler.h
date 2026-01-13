@@ -71,9 +71,6 @@ struct code_block {
     uint8_t error;
     uint16_t failed_opcode;
     uint16_t failed_address;
-
-    // LRU cache management (set by emulator, NULL in test harness)
-    void *lru_node;
 };
 
 // read function signature: u8 (*read)(void *dmg, u16 address)

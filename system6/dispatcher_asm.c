@@ -121,13 +121,6 @@ static unsigned char patch_helper_code[] = {
     0xb0, 0xfc, 0x00, 0x00,       // 86: cmpa.w #0, a0
     0x67, 0x0e,                   // 90: beq.s .no_patch (+14) -> offset 106
 
-    // nops to disable patching
-    // 0x00, 0x00, 0x00, 0x00,
-    // 0x00, 0x00, 0x00, 0x00,
-    // 0x00, 0x00,
-    // 0x00, 0x00,
-    // 0x00, 0x00,
-
     // .do_patch: (offset 92)
     0x43, 0xe9, 0xff, 0xfa,       // 92: lea -6(a1), a1
     0x32, 0xfc, 0x4e, 0xf9,       // 96: move.w #$4ef9, (a1)+  [JMP.L opcode]
@@ -139,7 +132,7 @@ static unsigned char patch_helper_code[] = {
     // the trap dispatcher, the Operating System routine executes the RTS
     // (return from subroutine) instruction.
     // When the trap dispatcher resumes control, first it restores the value of registers
-    // D1, D2, A1, A2, and, if bit 8 is 0, A0. The values in registers D0 and, 
+    // D1, D2, A1, A2, and, if bit 8 is 0, A0. The values in registers D0 and,
     // if bit 8 is 1, in A0 are not restored.
     0xa0, 0xbd,                   // 102: FlushCodeCache()
     0x4e, 0xd0,                   // 104: jmp (a0)
