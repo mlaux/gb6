@@ -83,15 +83,16 @@ void jit_init(struct dmg *dmg)
 
     memset(&jit_regs, 0, sizeof jit_regs);
 
-    // Initialize compile-time context
     compile_ctx.dmg = dmg;
     compile_ctx.read = dmg_read;
 
     jit_ctx.dmg = dmg;
     jit_ctx.read_func = dmg_read;
     jit_ctx.write_func = dmg_write;
+    jit_ctx.read16_func = dmg_read16;
+    jit_ctx.write16_func = dmg_write16;
     jit_ctx.ei_di_func = dmg_ei_di;
-    jit_ctx.current_rom_bank = 1;  // bank 1 is default after boot
+    jit_ctx.current_rom_bank = 1; // bank 1 is default after boot
     jit_ctx.bank0_cache = bank0_cache;
     jit_ctx.banked_cache = banked_cache;
     jit_ctx.upper_cache = upper_cache;
@@ -99,9 +100,8 @@ void jit_init(struct dmg *dmg)
     jit_ctx.patch_helper = (void *) get_patch_helper_code();
     jit_ctx.hram_base = dmg->zero_page;
 
-    jit_regs.d2 = 0;
     jit_regs.d3 = 0x100;
-    jit_regs.a3 = 0xfffe;  // A3 = GB SP value (not a pointer)
+    jit_regs.a3 = 0xfffe;
     jit_regs.a4 = (unsigned long) &jit_ctx;
 
     jit_halted = 0;

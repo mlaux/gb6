@@ -312,6 +312,18 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     dmg_write_slow(dmg, address, data);
 }
 
+u16 dmg_read16(void *_dmg, u16 address)
+{
+    return dmg_read(_dmg, address) | dmg_read(_dmg, address + 1) << 8;
+}
+
+void dmg_write16(void *_dmg, u16 address, u16 data)
+{
+    dmg_write(_dmg, address, data & 0xff);
+    dmg_write(_dmg, address + 1, (data >> 8) & 0xff);
+}
+
+
 // not accurate at all, but not going for accuracy
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {

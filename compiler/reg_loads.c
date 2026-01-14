@@ -362,7 +362,7 @@ int compile_reg_load(struct code_block *block, uint8_t op)
 
     case 0x77: // ld (hl), a
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
-        compile_call_dmg_write(block);
+        compile_call_dmg_write_a(block);
         break;
 
     case 0x78: // ld a, b

@@ -80,7 +80,7 @@ int compile_jr(
 
         // Larger loop - check cycle count, exit to dispatcher if >= scanline
         // cmpi.l #cycles_per_exit, d2
-        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_CYCLE_COUNT);
 
         // bcs.w over exit sequence to bra.w (skip moveq(2) + move.w(4) + patchable_exit(16) = 22, plus 2 = 24)
         // bcs = branch if carry set = branch if cycles < cycles_per_exit
@@ -178,7 +178,7 @@ void compile_jr_cond(
         emit_bra_w(block, 34);
 
         // .check_cycles:
-        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_CYCLE_COUNT);
 
         // bcs.w to native loop target (cycles < cycles_per_exit)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
@@ -452,7 +452,7 @@ int compile_jr_cond_fused(
         emit_bra_w(block, 34);
 
         // .check_cycles:
-        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
+        emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_CYCLE_COUNT);
 
         // bcs.w to native loop target (cycles < cycles_per_exit)
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);

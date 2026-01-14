@@ -1098,10 +1098,10 @@ void emit_add_cycles(struct code_block *block, int cycles)
         return;
     }
     if (cycles <= 8) {
-        emit_addq_l_dn(block, REG_68K_D_SCRATCH_2, cycles);
+        emit_addq_l_dn(block, REG_68K_D_CYCLE_COUNT, cycles);
         // emit_addq_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
     } else {
-        emit_addi_l_dn(block, REG_68K_D_SCRATCH_2, cycles);
+        emit_addi_l_dn(block, REG_68K_D_CYCLE_COUNT, cycles);
         // emit_addi_l_disp_an(block, cycles, JIT_CTX_CYCLES, REG_68K_A_CTX);
     }
 }
@@ -1115,7 +1115,7 @@ void emit_add_cycles(struct code_block *block, int cycles)
 void emit_patchable_exit(struct code_block *block)
 {
     // cmpi.l #cycles_per_exit, d2 (6 bytes)
-    emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_SCRATCH_2);
+    emit_cmpi_l_imm_dn(block, cycles_per_exit, REG_68K_D_CYCLE_COUNT);
 
     // bcc.s +6 = skip over movea.l + jsr to rts (2 bytes)
     emit_bcc_s(block, 6);

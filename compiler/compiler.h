@@ -24,7 +24,7 @@
 
 #define REG_68K_D_SCRATCH_0 0
 #define REG_68K_D_SCRATCH_1 1
-#define REG_68K_D_SCRATCH_2 2
+#define REG_68K_D_CYCLE_COUNT 2
 #define REG_68K_D_NEXT_PC 3
 #define REG_68K_D_A 4
 #define REG_68K_D_BC 5
@@ -49,9 +49,8 @@
 #define JIT_CTX_BANKED_CACHE  24  // struct code_block ***banked_cache
 #define JIT_CTX_UPPER_CACHE   28  // struct code_block **upper_cache
 #define JIT_CTX_DISPATCH      32  // void *dispatcher_return
-#define JIT_CTX_UNUSED_1      36  // was sp_adjust
-#define JIT_CTX_UNUSED_2      40  // was gb_sp
-// 2 bytes padding at 42
+#define JIT_CTX_READ16        36  // u16 (*dmg_read16)(void *_dmg, u16 address);
+#define JIT_CTX_WRITE16       40  // void (*dmg_write16)(void *_dmg, u16 address, u16 data);
 #define JIT_CTX_CYCLES        44  // u32: accumulated GB cycles
 #define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
 #define JIT_CTX_READ_CYCLES   52  // u32: in-flight cycles at dmg_read call

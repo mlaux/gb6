@@ -70,6 +70,8 @@ void dmg_set_button(struct dmg *dmg, int field, int button, int pressed);
 
 u8 dmg_read(void *dmg, u16 address);
 void dmg_write(void *dmg, u16 address, u8 data);
+u16 dmg_read16(void *_dmg, u16 address);
+void dmg_write16(void *_dmg, u16 address, u16 data);
 
 u8 dmg_read_slow(struct dmg *dmg, u16 address);
 void dmg_write_slow(struct dmg *dmg, u16 address, u8 data);

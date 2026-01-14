@@ -59,8 +59,9 @@ static void compile_ldh_a_u8(struct code_block *block, uint8_t addr)
         // move.b addr(a0), d4
         emit_move_b_disp_an_dn(block, addr - 0x80, 0, 4);
     } else {
+        // not hram so it has to be I/O, go directly to C
         emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00 + addr);
-        emit_slow_dmg_read(block);
+        compile_slow_dmg_read(block);
         emit_move_b_dn_dn(block, 0, REG_68K_D_A);
     }
 }
@@ -72,7 +73,7 @@ static void compile_ldh_u8_a(struct code_block *block, uint8_t addr)
         emit_move_b_dn_disp_an(block, 4, addr - 0x80, 0);
     } else {
         emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00 + addr);
-        emit_slow_dmg_write(block, REG_68K_D_A);
+        compile_slow_dmg_write(block, REG_68K_D_A);
     }
 }
 
@@ -140,7 +141,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         // detect overflow of code block
         // could split loops across multiple blocks which is correct but slower
         // longest instruction is probably either adc or inc/dec (hl)
-        if (block->length > sizeof(block->code) - 224) {
+        if (block->length > sizeof(block->code) - 240) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
             emit_patchable_exit(block);
@@ -162,7 +163,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x02: // ld (bc), a
             compile_bc_to_addr(block);  // BC -> D1.w
-            compile_call_dmg_write(block);  // dmg_write(dmg, D1.w, A)
+            compile_call_dmg_write_a(block);  // dmg_write(dmg, D1.w, A)
             break;
 
         case 0x0a: // ld a, (bc)
@@ -172,7 +173,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x12: // ld (de), a
             compile_de_to_addr(block);  // DE -> D1.w
-            compile_call_dmg_write(block);  // dmg_write(dmg, D1.w, A)
+            compile_call_dmg_write_a(block);  // dmg_write(dmg, D1.w, A)
             break;
 
         case 0x1a: // ld a, (de)
@@ -195,7 +196,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x32: // ld (hl-), a
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1); // D1.w = HL
-            compile_call_dmg_write(block); // dmg_write(dmg, D1.w, A)
+            compile_call_dmg_write_a(block); // dmg_write(dmg, D1.w, A)
             emit_subq_w_an(block, REG_68K_A_HL, 1); // HL--
             break;
 
@@ -347,7 +348,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
         case 0x22: // ld (hl+), a
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
-            compile_call_dmg_write(block);
+            compile_call_dmg_write_a(block);
             emit_addq_w_an(block, REG_68K_A_HL, 1);
             break;
 
@@ -516,7 +517,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
         case 0xe2: // ld ($ff00 + c), a
             emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00);
             emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);
-            compile_call_dmg_write(block);
+            compile_call_dmg_write_a(block);
             break;
 
         case 0xf0: // ld a, ($ff00 + u8)
@@ -556,7 +557,7 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 uint16_t addr = READ_BYTE(src_ptr) | (READ_BYTE(src_ptr + 1) << 8);
                 src_ptr += 2;
                 emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-                compile_call_dmg_write(block);
+                compile_call_dmg_write_a(block);
             }
             break;
 
