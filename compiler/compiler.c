@@ -40,19 +40,6 @@ void compile_de_to_addr(struct code_block *block)
 
 static void compile_ldh_a_u8(struct code_block *block, uint8_t addr)
 {
-    // this actually doesn't give any speed boost vs going through dmg_read
-    // if (addr >= 0x40 && addr < 0x4c) {
-    //     // dmg = ctx[0]
-    //     emit_movea_l_ind_an_an(block, 4, 0);
-    //     // dmg->lcd = dmg[0x888]
-    //     emit_movea_l_disp_an_an(block, 0x888, 0, 0);
-    //     if (addr == 0x44) {
-    //         // increment on read hack, will eventually get reset to 0
-    //         emit_addq_b_disp_an(block, 1, 0xa0 + (addr - 0x40), 0);
-    //     }
-    //     // lcd->regs = lcd[0xa0]
-    //     emit_move_b_disp_an_dn(block, 0xa0 + (addr - 0x40), 0, 4);
-    // } else 
     if (addr >= 0x80) {
         // movea.l (a4), a0
         emit_movea_l_ind_an_an(block, 4, 0);
@@ -104,6 +91,45 @@ static void compile_ld_imm16_contiguous(
     emit_movea_w_imm16(block, reg, hibyte << 8 | lobyte);
 }
 
+// only good for vblank interrupts for now...
+static void compile_halt(struct code_block *block, int next_pc)
+{
+    //   movea.l JIT_CTX_FRAME_CYCLES_PTR(a4), a0 ; 4 bytes
+    //   move.l (a0), d0                          ; 2 bytes
+    //   cmpi.l #65664, d0                        ; 6 bytes
+    //   bcc.s _frame_end                         ; 2 bytes
+    //   move.l #65664, d2                        ; 6 bytes
+    //   sub.l d0, d2                             ; 2 bytes
+    //   bra.s _exit                              ; 2 bytes
+    // _frame_end
+    //   move.l #70224, d2                        ; 6 bytes
+    //   sub.l d0, d2                             ; 2 bytes
+    // _exit
+    //   move.l #next_pc, d3                      ; 6 bytes
+    //   rts                                      ; 2 bytes
+
+    // load frame_cycles pointer
+    emit_movea_l_disp_an_an(block, JIT_CTX_FRAME_CYCLES_PTR, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+    emit_move_l_ind_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
+
+    // see if already in vblank
+    emit_cmpi_l_imm_dn(block, 65664, REG_68K_D_SCRATCH_0);
+    emit_bcc_s(block, 10);
+
+    // before vblank: d2 = 65664 - frame_cycles
+    emit_move_l_dn(block, REG_68K_D_CYCLE_COUNT, 65664);
+    emit_sub_l_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_CYCLE_COUNT);
+    emit_bra_b(block, 8);
+
+    // in vblank: d2 = 70224 - frame_cycles
+    emit_move_l_dn(block, REG_68K_D_CYCLE_COUNT, 70224);
+    emit_sub_l_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_CYCLE_COUNT);
+
+    // exit to C
+    emit_move_l_dn(block, REG_68K_D_NEXT_PC, next_pc);
+    emit_rts(block);
+}
+
 struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 {
     struct code_block *block;
@@ -125,7 +151,6 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
     block->length = 0;
     block->src_address = src_address;
-    block->gb_cycles = 0;
     block->error = 0;
     block->failed_opcode = 0;
     block->failed_address = 0;
@@ -139,8 +164,8 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     while (!done) {
         size_t before = block->length;
         // detect overflow of code block and chain to next block
-        // longest instruction is 94 bytes, exit sequence is 22 bytes
-        if (block->length > sizeof(block->code) - 116) {
+        // longest instruction is 178 bytes, exit sequence is 22 bytes
+        if (block->length > sizeof(block->code) - 200) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
             emit_patchable_exit(block);
@@ -575,7 +600,8 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0x76:
-            // HALT - no-op
+            compile_halt(block, src_address + src_ptr);
+            done = 1;
             break;
 
         default:

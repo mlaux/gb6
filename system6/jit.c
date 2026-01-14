@@ -99,6 +99,7 @@ void jit_init(struct dmg *dmg)
     jit_ctx.dispatcher_return = (void *) get_dispatcher_code();
     jit_ctx.patch_helper = (void *) get_patch_helper_code();
     jit_ctx.hram_base = dmg->zero_page;
+    jit_ctx.frame_cycles_ptr = &dmg->frame_cycles;
 
     jit_regs.d3 = 0x100;
     jit_regs.a3 = 0xfffe;
@@ -192,7 +193,7 @@ int jit_step(struct dmg *dmg)
     time_in_sync += t3 - t2;
     call_count++;
     if (call_count % 100 == 0) {
-      static u32 last_compile = 0, last_jit = 0, last_sync = 0;
+      static u32 last_compile = 0, last_jit = 0, last_sync = 0, last_frames_rendered = 0;
       u32 now = TickCount();
       u32 elapsed = now - last_report_tick;
       u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
@@ -205,12 +206,17 @@ int jit_step(struct dmg *dmg)
       u32 pct_jit = elapsed > 0 ? (d_jit * 100) / elapsed : 0;
       u32 pct_sync = elapsed > 0 ? (d_sync * 100) / elapsed : 0;
 
+      u32 frames_now = dmg->frames_rendered;
+      u32 frames_delta = frames_now - last_frames_rendered;
+      u32 fps = elapsed > 0 ? (frames_delta * 60) / elapsed : 0;
+      last_frames_rendered = frames_now;
+
       last_compile = time_in_compile;
       last_jit = time_in_jit;
       last_sync = time_in_sync;
       last_report_tick = now;
 
-      sprintf(buf, "E/s:%lu J:%lu%% S:%lu%%", exits_per_sec, pct_jit, pct_sync);
+      sprintf(buf, "%lu, E/s:%lu J:%lu%% S:%lu%%", fps, exits_per_sec, pct_jit, pct_sync);
       set_status_bar(buf);
     }
 

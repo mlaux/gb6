@@ -64,38 +64,30 @@ static void put_reg_result(struct code_block *block, int gb_reg)
 {
     switch (gb_reg) {
     case 0: // B - write back to high byte of D5
-        emit_swap(block, REG_68K_D_SCRATCH_1);  // put B back in high byte
-        emit_andi_l_dn(block, REG_68K_D_BC, 0x0000ffff);  // clear B
-        emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0x00ff0000);  // keep only B position
-        emit_or_l_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);  // combine
+        emit_swap(block, REG_68K_D_BC);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);
+        emit_swap(block, REG_68K_D_BC);
         break;
     case 1: // C - write back to low byte of D5
-        emit_andi_b_dn(block, REG_68K_D_BC, 0x00);  // clear C
-        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_BC);
         break;
     case 2: // D - write back to high byte of D6
-        emit_swap(block, REG_68K_D_SCRATCH_1);
-        emit_andi_l_dn(block, REG_68K_D_DE, 0x0000ffff);  // clear D
-        emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0x00ff0000);  // keep only D position
-        emit_or_l_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);
+        emit_swap(block, REG_68K_D_DE);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);
+        emit_swap(block, REG_68K_D_DE);
         break;
     case 3: // E - write back to low byte of D6
-        emit_andi_b_dn(block, REG_68K_D_DE, 0x00);
-        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_DE);
         break;
     case 4: // H - write back to high byte of A2
-        emit_ror_w_8(block, REG_68K_D_SCRATCH_1);  // H back to high byte
-        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
-        emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0xff);  // keep only L
-        emit_andi_l_dn(block, REG_68K_D_SCRATCH_1, 0xff00);  // keep only H
-        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);  // D0.w = HL
+        emit_ror_w_8(block, REG_68K_D_SCRATCH_1);  // D1.w = 0xHH00
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // D1.w = 0xHHLL
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_HL);
         break;
     case 5: // L - write back to low byte of A2
         emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
-        emit_andi_l_dn(block, REG_68K_D_SCRATCH_0, 0xff00);  // keep only H
-        emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0xff);  // keep only L
-        emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);
         break;
     case 6: // (HL) - write back to memory

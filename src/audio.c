@@ -1,9 +1,9 @@
 #include <string.h>
 #include "audio.h"
 
-// 2^33 / 11127.27
+// (131072 * 65536) / (divisor * 11127.27)
 #define PHASE_INC_SQUARE 771971
-// wave is half as fast
+// (65536 * 65536) / (divisor * 11127.27)
 #define PHASE_INC_WAVE 385986
 // (4194304 * 65536) / (divisor * 11127.27)
 #define PHASE_INC_NOISE 24703086

@@ -25,6 +25,7 @@ typedef struct {
     /* 30 */ void *patch_helper;  // patch_helper routine for lazy block patching
     /* 34 */ u32 read_cycles; // in-flight cycles at time of dmg_read call
     /* 38 */ void *hram_base; // dmg->zero_page for inline high RAM access
+    /* 3c */ u32 *frame_cycles_ptr; // pointer to dmg->frame_cycles for HALT optimization
 } jit_context;
 
 extern jit_context jit_ctx;

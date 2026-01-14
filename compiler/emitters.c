@@ -1091,6 +1091,20 @@ void emit_move_dn_ccr(struct code_block *block, uint8_t dreg)
     emit_word(block, 0x44c0 | dreg);
 }
 
+// move.l (An), Dn - load long from memory via address register
+void emit_move_l_ind_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg)
+{
+    // 00 10 ddd 000 010 aaa
+    emit_word(block, 0x2010 | (dreg << 9) | areg);
+}
+
+// sub.l Ds, Dd - subtract data registers (long, result to Dd)
+void emit_sub_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1001 ddd 0 10 000 sss
+    emit_word(block, 0x9080 | (dest << 9) | src);
+}
+
 // emit_add_cycles - add GB cycles to context, picks optimal instruction
 void emit_add_cycles(struct code_block *block, int cycles)
 {

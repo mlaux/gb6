@@ -7,16 +7,16 @@
 // D0 = scratch/C interop return value
 // D1 = scratch
 // D2 = accumulated cycle count
-// D3 = dispatcher return value (next GB PC)
+// D3 = dispatcher return value (next GB PC)/scratch
 // D4 = A (GB accumulator)
 // D5 = BC (split: 0x00BB00CC)
 // D6 = DE (split: 0x00DD00EE)
-// D7 = flags (ZNHC0000)
+// D7 = flags (00000Z0C)
 
 // A0 = scratch
 // A1 = scratch
 // A2 = HL (contiguous: 0xHHLL)
-// A3 = SP (base + SP, for direct stack access)
+// A3 = SP
 // A4 = runtime context pointer
 // A5 = reserved (Mac "A5 world")
 // A6 = reserved (Mac frame pointer)
@@ -42,7 +42,7 @@
 #define JIT_CTX_READ        4
 #define JIT_CTX_WRITE       8
 #define JIT_CTX_EI_DI       12
-#define JIT_CTX_INTCHECK    16  // 1 byte
+#define JIT_CTX_INTCHECK    16  // unused
 #define JIT_CTX_ROM_BANK    17  // 1 byte (current ROM bank for MBC)
 // 2 bytes padding to align to 4 bytes
 #define JIT_CTX_BANK0_CACHE   20  // struct code_block **bank0_cache
@@ -55,6 +55,7 @@
 #define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
 #define JIT_CTX_READ_CYCLES   52  // u32: in-flight cycles at dmg_read call
 #define JIT_CTX_HRAM_BASE     56  // void *hram_base (dmg->zero_page)
+#define JIT_CTX_FRAME_CYCLES_PTR 60  // u32 *frame_cycles_ptr (dmg->frame_cycles)
 
 struct code_block {
     uint8_t code[1024];
@@ -62,9 +63,6 @@ struct code_block {
     size_t length;
     uint16_t src_address;
     uint16_t end_address; // address after last instruction
-
-    // estimated GB cycles for this block (assumes no branches taken)
-    uint16_t gb_cycles;
 
     // set when compilation hits unknown opcode
     uint8_t error;
