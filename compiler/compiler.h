@@ -7,7 +7,7 @@
 // D0 = scratch/C interop return value
 // D1 = scratch
 // D2 = accumulated cycle count
-// D3 = dispatcher return value (next GB PC)/scratch
+// D3 = scratch/dispatcher return value (next GB PC)
 // D4 = A (GB accumulator)
 // D5 = BC (split: 0x00BB00CC)
 // D6 = DE (split: 0x00DD00EE)

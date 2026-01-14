@@ -23,8 +23,6 @@ int frame_skip;
 int video_mode;
 int screen_scale = 2;
 
-extern int screen_depth;
-
 static int cyclesValues[3] = { 456, 7296, 70224 };
 
 const char *keyNames[128] = {
@@ -611,11 +609,6 @@ short ShowCenteredAlert(
 
   return funcs[alertType](alertID);
 }
-
-extern Rect offscreen_rect;
-extern BitMap offscreen_bmp;
-extern PixMap offscreen_pixmap;
-extern WindowPtr g_wp;
 
 int SaveScreenshot(void)
 {

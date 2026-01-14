@@ -16,6 +16,8 @@
 #define RES_PREFS_TYPE 'PREF'
 #define RES_PREFS_ID 128
 
+extern int keyMappings[8];
+
 int ShowOpenBox(void);
 int SaveScreenshot(void);
 

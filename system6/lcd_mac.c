@@ -6,21 +6,9 @@
 #include <Palettes.h>
 
 #include "../src/lcd.h"
+#include "emulator.h"
 #include "lcd_mac.h"
 #include "settings.h"
-
-extern WindowPtr g_wp;
-extern int screen_depth;
-extern int screen_scale;
-
-// for 1bpp dithered mode
-extern char offscreen_buf[];
-extern Rect offscreen_rect;
-extern BitMap offscreen_bmp;
-
-// for indexed color mode
-extern char offscreen_color_buf[];
-extern PixMap offscreen_pixmap;
 
 // lookup tables for 2x dithered rendering
 // index = 4 packed GB pixels (2 bits each), output = 8 screen pixels (1bpp)

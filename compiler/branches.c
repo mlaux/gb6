@@ -12,22 +12,22 @@
 int get_branch_condition(uint8_t opcode)
 {
     switch (opcode) {
-    case 0x20: return COND_NE;  // jr nz
-    case 0x28: return COND_EQ;  // jr z
-    case 0x30: return COND_CC;  // jr nc
-    case 0x38: return COND_CS;  // jr c
-    case 0xc0: return COND_NE;  // ret nz
-    case 0xc2: return COND_NE;  // jp nz
-    case 0xc8: return COND_EQ;  // ret z
-    case 0xca: return COND_EQ;  // jp z
-    case 0xd0: return COND_CC;  // ret nc
-    case 0xd2: return COND_CC;  // jp nc
-    case 0xd8: return COND_CS;  // ret c
-    case 0xda: return COND_CS;  // jp c
-    case 0xc4: return COND_NE;  // call nz
-    case 0xcc: return COND_EQ;  // call z
-    case 0xd4: return COND_CC;  // call nc
-    case 0xdc: return COND_CS;  // call c
+    case 0x20: return COND_NE; // jr nz
+    case 0x28: return COND_EQ; // jr z
+    case 0x30: return COND_CC; // jr nc
+    case 0x38: return COND_CS; // jr c
+    case 0xc0: return COND_NE; // ret nz
+    case 0xc2: return COND_NE; // jp nz
+    case 0xc8: return COND_EQ; // ret z
+    case 0xca: return COND_EQ; // jp z
+    case 0xd0: return COND_CC; // ret nc
+    case 0xd2: return COND_CC; // jp nc
+    case 0xd8: return COND_CS; // ret c
+    case 0xda: return COND_CS; // jp c
+    case 0xc4: return COND_NE; // call nz
+    case 0xcc: return COND_EQ; // call z
+    case 0xd4: return COND_CC; // call nc
+    case 0xdc: return COND_CS; // call c
     default:   return COND_NONE;
     }
 }
@@ -367,6 +367,9 @@ void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, target);
     emit_patchable_exit(block);
 }
+
+// fused branches start here. all these avoid is a "btst", but it doesn't really
+// increase the complexity of the compiler, so i think they can stay...
 
 // Fused jr cond - uses live CCR flags from preceding ALU op
 // cond is 68k condition code (COND_EQ, COND_NE, COND_CS, COND_CC)

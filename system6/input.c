@@ -1,9 +1,7 @@
 #include "../src/dmg.h"
+#include "emulator.h"
 #include "input.h"
 #include "dialogs.h"
-
-extern struct dmg dmg;
-extern int keyMappings[8];
 
 // indices match keyMappings order
 // (up, down, left, right, a, b, select, start)

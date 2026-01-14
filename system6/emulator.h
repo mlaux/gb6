@@ -4,8 +4,31 @@
 #ifndef EMULATOR_H
 #define EMULATOR_H
 
+#include <Quickdraw.h>
+#include <Windows.h>
+
 #include "types.h"
 #include "dmg.h"
+#include "lcd.h"
+#include "rom.h"
+#include "cpu.h"
+#include "audio.h"
+
+extern WindowPtr g_wp;
+extern int screen_depth;
+
+extern struct cpu cpu;
+extern struct rom rom;
+extern struct lcd lcd;
+extern struct audio audio;
+extern struct dmg dmg;
+
+extern char offscreen_buf[];
+extern Rect offscreen_rect;
+extern BitMap offscreen_bmp;
+
+extern char offscreen_color_buf[];
+extern PixMap offscreen_pixmap;
 
 #define WINDOW_TITLE "\pgb6"
 

@@ -10,8 +10,6 @@
 #include "audio.h"
 #include "../system6/jit.h"
 
-extern int dmg_reads, dmg_writes;
-
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
 #define CYCLES_LINE_144 (CYCLES_PER_FRAME - (10 * CYCLES_PER_LINE))
@@ -155,6 +153,7 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
     }
 
     if (address == REG_STAT) {
+        // just cycle through the modes, the game gets the one it needs
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
         stat = (stat & 0xfc) | (((stat & 3) + 1) & 3);
         lcd_write(dmg->lcd, REG_STAT, stat);
@@ -208,7 +207,6 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
 
     return 0xff;
 }
-extern void debug_log_string(const char *str);
 
 u8 dmg_read(void *_dmg, u16 address)
 {
@@ -324,7 +322,9 @@ void dmg_write16(void *_dmg, u16 address, u16 data)
 }
 
 
-// not accurate at all, but not going for accuracy
+// not accurate at all, but not going for accuracy. i'm FINALLY happy with the
+// logic here. supports arbitrary cycles_per_exit, currently user configurable
+// between every line, every 16 lines, every 1 frame
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
     int ly, lyc;
@@ -350,9 +350,19 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);
         }
+        dmg->sent_vblank_start = 1;
+    }
 
-        // MAYBE todo: render per-tile-row? might be a good compromise - there
-        // is no "best" choice for where to do this, so just do it on line 144
+    // need as a separate check for the case where cycles = 70224. in that case,
+    // it needs to execute both the previous block and this one
+    if (dmg->frame_cycles >= CYCLES_PER_FRAME) {
+        dmg->frame_cycles -= CYCLES_PER_FRAME;
+        dmg->sent_vblank_start = 0;
+        dmg->sent_ly_interrupt = 0;
+
+        // MAYBE todo: render per-tile-row? might be a good compromise - when 
+        // drawing so inaccurately, there is no "best" choice for where to do
+        // this, so just do it at the end of the frame
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE) {
@@ -367,15 +377,6 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         }
 
         dmg->frames_rendered++;
-        dmg->sent_vblank_start = 1;
-    }
-
-    // need as a separate check for the case where cycles = 70224. in that case,
-    // it needs to execute both the previous block and this one
-    if (dmg->frame_cycles >= CYCLES_PER_FRAME) {
-        dmg->frame_cycles -= CYCLES_PER_FRAME;
-        dmg->sent_vblank_start = 0;
-        dmg->sent_ly_interrupt = 0;
     }
 }
 
