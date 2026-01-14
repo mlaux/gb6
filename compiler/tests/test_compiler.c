@@ -132,10 +132,39 @@ static void setup_runtime_stubs(void)
         0x4e, 0x75                          // rts
     };
 
+    // stub_read16: reads 16-bit word from address (little-endian), returns in d0.w
+    // Stack layout after jsr: ret(4), dmg(4), addr(2)
+    // Read high byte first into d0, shift, then OR with low byte
+    static const uint8_t stub_read16[] = {
+        0x70, 0x00,              // moveq #0, d0
+        0x30, 0x2f, 0x00, 0x08,  // move.w 8(sp), d0 (address)
+        0x20, 0x40,              // movea.l d0, a0
+        0x70, 0x00,              // moveq #0, d0
+        0x10, 0x28, 0x00, 0x01,  // move.b 1(a0), d0 (high byte)
+        0xe1, 0x48,              // lsl.w #8, d0 (shift high byte to bits 8-15)
+        0x10, 0x10,              // move.b (a0), d0 (OR in low byte - overwrites bits 0-7)
+        0x4e, 0x75               // rts
+    };
+
+    // stub_write16: writes 16-bit word to address (little-endian)
+    // Stack layout after jsr: ret(4), dmg(4), addr(2), data(2)
+    static const uint8_t stub_write16[] = {
+        0x70, 0x00,              // moveq #0, d0
+        0x30, 0x2f, 0x00, 0x08,  // move.w 8(sp), d0 (address)
+        0x20, 0x40,              // movea.l d0, a0
+        0x32, 0x2f, 0x00, 0x0a,  // move.w 10(sp), d1 (data)
+        0x10, 0x81,              // move.b d1, (a0) (low byte)
+        0xe0, 0x49,              // lsr.w #8, d1
+        0x11, 0x41, 0x00, 0x01,  // move.b d1, 1(a0) (high byte)
+        0x4e, 0x75               // rts
+    };
+
     // Copy stubs to memory
     memcpy(mem + STUB_BASE, stub_read, sizeof(stub_read));
     memcpy(mem + STUB_BASE + 0x20, stub_write, sizeof(stub_write));
     memcpy(mem + STUB_BASE + 0x40, stub_ei_di, sizeof(stub_ei_di));
+    memcpy(mem + STUB_BASE + 0x60, stub_read16, sizeof(stub_read16));
+    memcpy(mem + STUB_BASE + 0x80, stub_write16, sizeof(stub_write16));
 
     // Set up jit_runtime context structure at JIT_CTX_ADDR
     // See compiler.h for JIT_CTX_* offset definitions
@@ -146,6 +175,8 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_INTCHECK, 0);
     m68k_write_memory_8(JIT_CTX_ADDR + JIT_CTX_ROM_BANK, 1);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, 0); // infinite loop at 0
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ16, STUB_BASE + 0x60);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRITE16, STUB_BASE + 0x80);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, 0);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ_CYCLES, 0);
     // Unused fields (was sp_adjust and gb_sp)

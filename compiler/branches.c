@@ -254,17 +254,10 @@ void compile_call_imm16(
     // SP -= 2
     emit_subq_w_an(block, REG_68K_A_SP, 2);
 
-    // Push return address via dmg_write
-    // Write low byte: dmg_write(SP, ret_addr & 0xff)
+    // Push return address via dmg_write16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr & 0xff);
-    compile_call_dmg_write_d0(block);
-
-    // Write high byte: dmg_write(SP+1, ret_addr >> 8)
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr >> 8);
-    compile_call_dmg_write_d0(block);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_0, ret_addr);
+    compile_call_dmg_write16_d0(block);
 
     // jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
@@ -302,15 +295,10 @@ void compile_call_cond(
     // SP -= 2
     emit_subq_w_an(block, REG_68K_A_SP, 2);
 
-    // Push return address via dmg_write
+    // Push return address via dmg_write16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr & 0xff);
-    compile_call_dmg_write_d0(block);
-
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr >> 8);
-    compile_call_dmg_write_d0(block);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_0, ret_addr);
+    compile_call_dmg_write16_d0(block);
 
     // Jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
@@ -324,20 +312,9 @@ void compile_call_cond(
 
 void compile_ret(struct code_block *block)
 {
-    // Pop return address via dmg_read
-    // Read low byte from [SP]
+    // Pop return address via dmg_read16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    compile_call_dmg_read(block);
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);  // save low byte in D3
-
-    // Read high byte from [SP+1]
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    compile_call_dmg_read(block);  // D0 = high byte
-
-    // Combine: D3 = (high << 8) | low
-    emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_0);
+    compile_call_dmg_read16(block);  // D0.w = return address
     emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);
 
     // SP += 2
@@ -363,17 +340,9 @@ void compile_ret_cond(struct code_block *block, uint8_t flag_bit, int branch_if_
         emit_bne_w(block, 0);
     }
 
-    // Pop return address via dmg_read (same as compile_ret)
+    // Pop return address via dmg_read16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    compile_call_dmg_read(block);
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);
-
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    compile_call_dmg_read(block);
-
-    emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_0);
+    compile_call_dmg_read16(block);  // D0.w = return address
     emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);
 
     emit_addq_w_an(block, REG_68K_A_SP, 2);
@@ -389,15 +358,10 @@ void compile_rst_n(struct code_block *block, uint8_t target, uint16_t ret_addr)
     // SP -= 2
     emit_subq_w_an(block, REG_68K_A_SP, 2);
 
-    // Push return address via dmg_write
+    // Push return address via dmg_write16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr & 0xff);
-    compile_call_dmg_write_d0(block);
-
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr >> 8);
-    compile_call_dmg_write_d0(block);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_0, ret_addr);
+    compile_call_dmg_write16_d0(block);
 
     // jump to target (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, target);
@@ -506,17 +470,9 @@ void compile_ret_cond_fused(struct code_block *block, int cond)
     skip_branch = block->length;
     emit_bcc_opcode_w(block, invert_cond(cond), 0);
 
-    // Pop return address via dmg_read
+    // Pop return address via dmg_read16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    compile_call_dmg_read(block);
-    emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);
-
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    compile_call_dmg_read(block);
-
-    emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_0);
+    compile_call_dmg_read16(block);  // D0.w = return address
     emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);
 
     emit_addq_w_an(block, REG_68K_A_SP, 2);
@@ -547,15 +503,10 @@ void compile_call_cond_fused(
     // SP -= 2
     emit_subq_w_an(block, REG_68K_A_SP, 2);
 
-    // Push return address via dmg_write
+    // Push return address via dmg_write16
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr & 0xff);
-    compile_call_dmg_write_d0(block);
-
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    emit_move_b_dn(block, REG_68K_D_SCRATCH_0, ret_addr >> 8);
-    compile_call_dmg_write_d0(block);
+    emit_move_w_dn(block, REG_68K_D_SCRATCH_0, ret_addr);
+    compile_call_dmg_write16_d0(block);
 
     // Jump to target
     emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);

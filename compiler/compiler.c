@@ -138,10 +138,9 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
 
     while (!done) {
         size_t before = block->length;
-        // detect overflow of code block
-        // could split loops across multiple blocks which is correct but slower
-        // longest instruction is probably either adc or inc/dec (hl)
-        if (block->length > sizeof(block->code) - 240) {
+        // detect overflow of code block and chain to next block
+        // longest instruction is 94 bytes, exit sequence is 22 bytes
+        if (block->length > sizeof(block->code) - 116) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
             emit_patchable_exit(block);

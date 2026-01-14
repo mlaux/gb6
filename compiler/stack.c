@@ -18,23 +18,15 @@ void compile_ld_sp_imm16(
     emit_movea_w_imm16(block, REG_68K_A_SP, gb_sp);
 }
 
-// Push D3.w to stack via dmg_write. Clobbers D0, D1, D3.
-static void compile_push_d3(struct code_block *block)
+// Push D0.w to stack via dmg_write16. Clobbers D0, D1.
+static void compile_push_d0(struct code_block *block)
 {
     // SP -= 2
     emit_subq_w_an(block, REG_68K_A_SP, 2);
 
-    // Write low byte: dmg_write(SP, D3.b)
+    // dmg_write16(SP, D0.w) - writes low byte to SP, high byte to SP+1
     emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_0);
-    compile_call_dmg_write_d0(block);
-
-    // Write high byte: dmg_write(SP+1, D3.b >> 8)
-    emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-    emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-    emit_rol_w_8(block, REG_68K_D_NEXT_PC);
-    emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_0);
-    compile_call_dmg_write_d0(block);
+    compile_call_dmg_write16_d0(block);
 }
 
 int compile_stack_op(
@@ -50,55 +42,47 @@ int compile_stack_op(
             uint16_t addr = READ_BYTE(*src_ptr) | (READ_BYTE(*src_ptr + 1) << 8);
             *src_ptr += 2;
 
-            // Write low byte of SP
+            // dmg_write16(addr, SP)
             emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_0);
             emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr);
-            compile_call_dmg_write_d0(block);
-
-            // Write high byte of SP
-            emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_0);
-            emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
-            emit_move_w_dn(block, REG_68K_D_SCRATCH_1, addr + 1);
-            compile_call_dmg_write_d0(block);
+            compile_call_dmg_write16_d0(block);
         }
         return 1;
 
     case 0xc5: // push bc
         compile_bc_to_addr(block);  // D1.w = BC
-        emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
-        compile_push_d3(block);
+        emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
+        compile_push_d0(block);
         return 1;
 
     case 0xd5: // push de
         compile_de_to_addr(block);  // D1.w = DE
-        emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_NEXT_PC);
-        compile_push_d3(block);
+        emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);
+        compile_push_d0(block);
         return 1;
 
     case 0xe5: // push hl
-        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_NEXT_PC);
-        compile_push_d3(block);
+        emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
+        compile_push_d0(block);
         return 1;
 
     case 0xf5: // push af
-        // Build AF in D3: A in high byte, F in low byte
-        emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_NEXT_PC);
-        emit_rol_w_8(block, REG_68K_D_NEXT_PC);
-        emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_NEXT_PC);
-        compile_push_d3(block);
+        // Build AF in D0: A in high byte, F in low byte
+        emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_0);
+        emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
+        emit_move_b_dn_dn(block, REG_68K_D_FLAGS, REG_68K_D_SCRATCH_0);
+        compile_push_d0(block);
         return 1;
 
     case 0xc1: // pop bc
-        // Read low byte from [SP]
+        // dmg_read16(SP) -> D0.w = (high << 8) | low
         emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        compile_call_dmg_read(block);  // D0 = low byte
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_BC);  // C = low byte
+        compile_call_dmg_read16(block);
 
-        // Read high byte from [SP+1]
-        emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-        compile_call_dmg_read(block);  // D0 = high byte
+        // D0.w is now HHLL - extract to split BC format (0x00BB00CC)
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_BC);  // C = low byte
         emit_swap(block, REG_68K_D_BC);
+        emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
         emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_BC);  // B = high byte
         emit_swap(block, REG_68K_D_BC);
 
@@ -107,16 +91,14 @@ int compile_stack_op(
         return 1;
 
     case 0xd1: // pop de
-        // Read low byte from [SP]
+        // dmg_read16(SP) -> D0.w = (high << 8) | low
         emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        compile_call_dmg_read(block);  // D0 = low byte
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_DE);  // E = low byte
+        compile_call_dmg_read16(block);
 
-        // Read high byte from [SP+1]
-        emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-        compile_call_dmg_read(block);  // D0 = high byte
+        // D0.w is now HHLL - extract to split DE format (0x00DD00EE)
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_DE);  // E = low byte
         emit_swap(block, REG_68K_D_DE);
+        emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
         emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_DE);  // D = high byte
         emit_swap(block, REG_68K_D_DE);
 
@@ -125,19 +107,9 @@ int compile_stack_op(
         return 1;
 
     case 0xe1: // pop hl
-        // Read low byte from [SP]
+        // dmg_read16(SP) -> D0.w = (high << 8) | low = HL
         emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        compile_call_dmg_read(block);  // D0 = low byte
-        emit_move_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_NEXT_PC);  // save low in D3
-
-        // Read high byte from [SP+1]
-        emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-        compile_call_dmg_read(block);  // D0 = high byte
-
-        // Combine: D0.b = high, D3.b = low -> HL = (high << 8) | low
-        emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
-        emit_move_b_dn_dn(block, REG_68K_D_NEXT_PC, REG_68K_D_SCRATCH_0);
+        compile_call_dmg_read16(block);
         emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);
 
         // SP += 2
@@ -145,15 +117,13 @@ int compile_stack_op(
         return 1;
 
     case 0xf1: // pop af
-        // Read F (low byte) from [SP]
+        // dmg_read16(SP) -> D0.w = (A << 8) | F
         emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        compile_call_dmg_read(block);
-        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
+        compile_call_dmg_read16(block);
 
-        // Read A (high byte) from [SP+1]
-        emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);
-        emit_addq_w_dn(block, REG_68K_D_SCRATCH_1, 1);
-        compile_call_dmg_read(block);
+        // Extract F (low byte) and A (high byte)
+        emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
+        emit_rol_w_8(block, REG_68K_D_SCRATCH_0);
         emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_A);
 
         // SP += 2

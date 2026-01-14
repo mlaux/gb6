@@ -13,4 +13,7 @@ void compile_call_ei_di(struct code_block *block, int enabled);
 void compile_slow_dmg_read(struct code_block *block);
 void compile_slow_dmg_write(struct code_block *block, uint8_t val_reg);
 
+void compile_call_dmg_read16(struct code_block *block);    // addr in D1, result in D0
+void compile_call_dmg_write16_d0(struct code_block *block); // addr in D1, data in D0
+
 #endif

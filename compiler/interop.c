@@ -5,19 +5,17 @@
 #define DMG_READ_PAGE_OFFSET 0x80
 #define DMG_WRITE_PAGE_OFFSET (0x80 + (0x100 * 4))
 
-// Value source for write operations
-typedef enum {
-    WRITE_VAL_A,    // value in D4 (A register)
-    WRITE_VAL_D0,   // value in D0
-    WRITE_VAL_IMM   // immediate value
-} write_val_src;
+// Retro68 uses D0-D2 as scratch so I have to push cycle count before calling
+// back into C. i'm not sure if this is a mac calling convention or specific
+// to this gcc port
 
-// call dmg_write in C, addr in D1, val_reg specifies value register
+// addr in D1, val_reg specifies value register
 void compile_slow_dmg_write(struct code_block *block, uint8_t val_reg)
 {
     // store current cycle count for lazy register evaluation, right now
     // it's just DIV but want to add more like lcd
     emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
+    // and push so retro68 doesn't erase
     emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT); // 2
     emit_push_b_dn(block, val_reg); // 2
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1); // 2
@@ -112,13 +110,13 @@ void compile_call_dmg_write_d0(struct code_block *block)
 void compile_slow_dmg_read(struct code_block *block)
 {
     // store current cycle count for lazy DIV evaluation
-    emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
+    emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX); // 4
     emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT); // 2
-    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
-    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
-    emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
-    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
-    emit_addq_l_an(block, 7, 6);
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_1); // 2
+    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX); // 4
+    emit_movea_l_disp_an_an(block, JIT_CTX_READ, REG_68K_A_CTX, REG_68K_A_SCRATCH_1); // 4
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1); // 2
+    emit_addq_l_an(block, 7, 6); // 2
     emit_pop_l_dn(block, REG_68K_D_CYCLE_COUNT); // 2
 }
 
@@ -199,4 +197,31 @@ void compile_call_ei_di(struct code_block *block, int enabled)
     emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
     // clean up stack
     emit_addq_l_an(block, 7, 6);
+}
+
+// Call dmg_read16(dmg, addr) - addr in D1.w, result in D0.w
+void compile_call_dmg_read16(struct code_block *block)
+{
+    emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
+    emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT);
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
+    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
+    emit_movea_l_disp_an_an(block, JIT_CTX_READ16, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
+    emit_addq_l_an(block, 7, 6);
+    emit_pop_l_dn(block, REG_68K_D_CYCLE_COUNT);
+}
+
+// Call dmg_write16(dmg, addr, data) - addr in D1.w, data in D0.w
+void compile_call_dmg_write16_d0(struct code_block *block)
+{
+    emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
+    emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT);
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_0);
+    emit_push_w_dn(block, REG_68K_D_SCRATCH_1);
+    emit_push_l_disp_an(block, JIT_CTX_DMG, REG_68K_A_CTX);
+    emit_movea_l_disp_an_an(block, JIT_CTX_WRITE16, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+    emit_jsr_ind_an(block, REG_68K_A_SCRATCH_1);
+    emit_addq_l_an(block, 7, 8);
+    emit_pop_l_dn(block, REG_68K_D_CYCLE_COUNT);
 }
