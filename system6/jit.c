@@ -11,6 +11,7 @@
 #include "dmg.h"
 #include "lru.h"
 #include "lcd.h"
+#include "rom.h"
 #include "dispatcher_asm.h"
 #include "emulator.h"
 #include "debug.h"
@@ -85,8 +86,6 @@ void jit_init(struct dmg *dmg)
     // Initialize compile-time context
     compile_ctx.dmg = dmg;
     compile_ctx.read = dmg_read;
-    compile_ctx.wram_base = dmg->main_ram;
-    compile_ctx.hram_base = dmg->zero_page;
 
     jit_ctx.dmg = dmg;
     jit_ctx.read_func = dmg_read;
@@ -102,11 +101,7 @@ void jit_init(struct dmg *dmg)
 
     jit_regs.d2 = 0;
     jit_regs.d3 = 0x100;
-    // Initialize SP to point to top of HRAM (0xFFFE)
-    // A3 is the native pointer, gb_sp is the GB address, sp_adjust converts between them
-    jit_regs.a3 = (unsigned long) (dmg->zero_page + 0xfffe - 0xff80);
-    jit_ctx.gb_sp = 0xfffe;
-    jit_ctx.sp_adjust = 0xff80 - (u32) dmg->zero_page;
+    jit_regs.a3 = 0xfffe;  // A3 = GB SP value (not a pointer)
     jit_regs.a4 = (unsigned long) &jit_ctx;
 
     jit_halted = 0;
@@ -178,13 +173,10 @@ int jit_step(struct dmg *dmg)
             dmg->interrupt_request_mask &= ~(1 << k);
             dmg->interrupt_enable = 0;
 
-            // push PC to stack
-            u8 *sp_ptr = (u8 *) jit_regs.a3;
-            sp_ptr -= 2;
-            sp_ptr[1] = (jit_regs.d3 >> 8) & 0xff;
-            sp_ptr[0] = jit_regs.d3 & 0xff;
-            jit_regs.a3 = (unsigned long) sp_ptr;
-            jit_ctx.gb_sp -= 2;
+            // push PC to stack (A3 holds GB SP value)
+            jit_regs.a3 -= 2;
+            dmg_write(dmg, jit_regs.a3, jit_regs.d3 & 0xff);
+            dmg_write(dmg, jit_regs.a3 + 1, (jit_regs.d3 >> 8) & 0xff);
 
             // Jump to handler
             jit_regs.d3 = handlers[k];

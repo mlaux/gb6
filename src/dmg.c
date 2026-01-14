@@ -13,6 +13,8 @@
 extern int dmg_reads, dmg_writes;
 
 #define CYCLES_PER_FRAME 70224
+#define CYCLES_PER_LINE 456
+#define CYCLES_LINE_144 (CYCLES_PER_FRAME - (10 * CYCLES_PER_LINE))
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {
@@ -139,49 +141,23 @@ static u8 get_button_state(struct dmg *dmg)
     return ret;
 }
 
-// calculate current frame cycle position including in-flight JIT cycles
-static u32 get_frame_cycles(struct dmg *dmg)
-{
-    u32 frame_cycles = dmg->cycles_since_render + jit_ctx.read_cycles;
-    // wrap at frame boundary
-    if (frame_cycles >= CYCLES_PER_FRAME) {
-        frame_cycles -= CYCLES_PER_FRAME;
-    }
-    return frame_cycles;
-}
-
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        u32 frame_cycles = get_frame_cycles(dmg);
-        return (frame_cycles / 456);
+        // just give it the value it's waiting for. LY=LYC is handled in a
+        // nicer way below, when the emulator returns back from compiled code
+        // to C
+        dmg->ly_hack++;
+        if (dmg->ly_hack == 154) {
+            dmg->ly_hack = 0;
+        }
+        return dmg->ly_hack;
     }
 
     if (address == REG_STAT) {
         u8 stat = lcd_read(dmg->lcd, REG_STAT);
-        u32 frame_cycles = get_frame_cycles(dmg);
-        int ly = (frame_cycles / 456);
-        int mode;
-
-        if (ly >= 144) {
-            // vblank
-            mode = 1;
-        } else {
-            int cycle_in_line = frame_cycles % 456;
-            if (cycle_in_line < 80) {
-                // OAM scan
-                mode = 2;
-            } else if (cycle_in_line < 252) {
-                // active area, 160 visible pixels + 12 extra
-                // https://gbdev.io/pandocs/Rendering.html#first12
-                mode = 3;
-            } else {
-                // hblank
-                mode = 0;
-            }
-        }
-        stat = (stat & 0xfc) | mode;
-
+        stat = (stat & 0xfc) | (((stat & 3) + 1) & 3);
+        lcd_write(dmg->lcd, REG_STAT, stat);
         return stat;
     }
 
@@ -342,12 +318,11 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     int ly, lyc;
 
     dmg->total_cycles += cycles;
-    dmg->cycles_since_render += cycles;
+    dmg->frame_cycles += cycles;
 
-    ly = (dmg->cycles_since_render / 456) % 154;
+    int lyc_cycles = lcd_read(dmg->lcd, REG_LYC) * CYCLES_PER_LINE;
 
-    lyc = lcd_read(dmg->lcd, REG_LYC);
-    if (ly >= lyc && !dmg->sent_ly_interrupt) {
+    if (dmg->frame_cycles >= lyc_cycles && !dmg->sent_ly_interrupt) {
         lcd_set_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_MATCH)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);
@@ -357,12 +332,15 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
     }
 
-    if (dmg->cycles_since_render >= CYCLES_PER_FRAME - 4560 && !dmg->sent_vblank_start) {
+    if (dmg->frame_cycles >= CYCLES_LINE_144 && !dmg->sent_vblank_start) {
         // fire VBLANK once per frame
         dmg_request_interrupt(dmg, INT_VBLANK);
         if (lcd_isset(dmg->lcd, REG_STAT, STAT_INTR_SOURCE_VBLANK)) {
             dmg_request_interrupt(dmg, INT_LCDSTAT);
         }
+
+        // MAYBE todo: render per-tile-row? might be a good compromise - there
+        // is no "best" choice for where to do this, so just do it on line 144
         if (dmg->frames_rendered % dmg->frame_skip == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE) {
@@ -382,8 +360,8 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
     // need as a separate check for the case where cycles = 70224. in that case,
     // it needs to execute both the previous block and this one
-    if (dmg->cycles_since_render >= CYCLES_PER_FRAME) {
-        dmg->cycles_since_render -= CYCLES_PER_FRAME;
+    if (dmg->frame_cycles >= CYCLES_PER_FRAME) {
+        dmg->frame_cycles -= CYCLES_PER_FRAME;
         dmg->sent_vblank_start = 0;
         dmg->sent_ly_interrupt = 0;
     }

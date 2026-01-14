@@ -19,8 +19,8 @@ typedef struct {
     /* 18 */ struct code_block ***banked_cache;
     /* 1c */ struct code_block **upper_cache;
     /* 20 */ void *dispatcher_return;
-    /* 24 */ u32 sp_adjust;  // 0 means SP outside WRAM/HRAM
-    /* 28 */ u16 gb_sp;      // always-accurate GB SP value
+    /* 24 */ u32 unused_1;
+    /* 28 */ u16 unused_2;
     /* 2a */ u8 _pad2[2];
     /* 2c */ u32 cycles_accumulated;  // GB cycles accumulated by compiled code
     /* 30 */ void *patch_helper;  // patch_helper routine for lazy block patching

@@ -39,13 +39,15 @@
 
 #include "compiler.h"
 
+static void UpdateScaleMenuChecks(void);
+
 // Called by dmg.c when ROM bank switches
 static void on_rom_bank_switch(int new_bank)
 {
     jit_ctx.current_rom_bank = (u8) new_bank;
     // force exit to dispatcher ?
     // only way this is needed is if games switch banks and then don't jump
-    // or call afterwards... 
+    // or call afterwards...
 }
 
 // this is pretty much hollowed out and a lot of it can go.
@@ -62,8 +64,6 @@ unsigned char sound_enabled;
 int screen_depth;
 
 static unsigned long soft_reset_release_tick;
-
-static Rect window_bounds = { WINDOW_Y, WINDOW_X, WINDOW_Y + WINDOW_HEIGHT, WINDOW_X + WINDOW_WIDTH };
 
 static char save_filename[32];
 // for GetFInfo/SetFInfo
@@ -114,10 +114,10 @@ void InitToolbox(void)
   mbar = GetNewMBar(MBAR_DEFAULT);
   SetMenuBar(mbar);
   AppendResMenu(GetMenuHandle(MENU_APPLE), 'DRVR');
-  InsertMenuItem(GetMenuHandle(MENU_FILE), "\pSoft Reset", FILE_SCREENSHOT);
   if (!audio_mac_available()) {
     DisableItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND);
   }
+  UpdateScaleMenuChecks();
   DrawMenuBar();
 
   app_running = 1;
@@ -127,7 +127,8 @@ void set_status_bar(const char *str)
 {
   int k;
   Str255 pstr;
-  Rect statusRect = { 288, 0, 299, 320 };
+  Rect statusRect;
+  int height;
 
   if (!strcmp(str, status_bar)) {
     return;
@@ -138,8 +139,14 @@ void set_status_bar(const char *str)
   }
   status_bar[k] = '\0';
 
+  height = (screen_scale == 1) ? 144 : 288;
+  statusRect.top = height;
+  statusRect.left = 0;
+  statusRect.bottom = height + 11;
+  statusRect.right = (screen_scale == 1) ? 160 : 320;
+
   EraseRect(&statusRect);
-  MoveTo(4, 298);
+  MoveTo(4, height + 10);
   for (k = 0; k < 255 && status_bar[k]; k++) {
     pstr[k + 1] = status_bar[k];
   }
@@ -166,15 +173,18 @@ void InitColorOffscreen(void)
 {
   GDHandle mainDev;
   PixMapHandle screenPM;
+  int width;
 
   // use screen's color table so CopyBits skips color matching
   mainDev = GetMainDevice();
   screenPM = (*mainDev)->gdPMap;
   offscreen_ctab = (*screenPM)->pmTable;
 
+  width = (screen_scale == 1) ? 160 : 320;
+
   // PixMap setup - always 8bpp, CopyBits handles depth conversion
   offscreen_pixmap.baseAddr = offscreen_color_buf;
-  offscreen_pixmap.rowBytes = 320 | 0x8000;  // high bit = PixMap flag
+  offscreen_pixmap.rowBytes = width | 0x8000;  // high bit = PixMap flag
   offscreen_pixmap.bounds = offscreen_rect;
   offscreen_pixmap.pmVersion = 0;
   offscreen_pixmap.packType = 0;
@@ -191,23 +201,53 @@ void InitColorOffscreen(void)
 
 void StopEmulation(void)
 {
+  if (!g_wp) {
+    return;
+  }
+
   audio_mac_shutdown();
   EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
+  if (screen_depth > 1) {
+    PaletteHandle pal = GetPalette(g_wp);
+    if (pal) {
+      DisposePalette(pal);
+    }
+  }
   DisposeWindow(g_wp);
   g_wp = NULL;
 }
 
 void StartEmulation(void)
 {
+  int width, height;
+  Rect bounds;
+
   if (g_wp) {
     StopEmulation();
   }
 
+  // set up dimensions based on scale
+  if (screen_scale == 1) {
+    width = 160;
+    height = 144;
+  } else {
+    width = 320;
+    height = 288;
+  }
+
+  bounds.top = WINDOW_Y;
+  bounds.left = WINDOW_X;
+  bounds.right = WINDOW_X + width;
+  bounds.bottom = WINDOW_Y + height + 11;  // +11 for status bar
+
+  offscreen_rect.right = width;
+  offscreen_rect.bottom = height;
+
   if (screen_depth > 1) {
-    g_wp = NewCWindow(0, &window_bounds, save_filename_p, true,
+    g_wp = NewCWindow(0, &bounds, save_filename_p, true,
           noGrowDocProc, (WindowPtr) -1, true, 0);
   } else {
-    g_wp = NewWindow(0, &window_bounds, save_filename_p, true,
+    g_wp = NewWindow(0, &bounds, save_filename_p, true,
           noGrowDocProc, (WindowPtr) -1, true, 0);
   }
   SetPort(g_wp);
@@ -233,7 +273,7 @@ void StartEmulation(void)
 
   offscreen_bmp.baseAddr = offscreen_buf;
   offscreen_bmp.bounds = offscreen_rect;
-  offscreen_bmp.rowBytes = 40;
+  offscreen_bmp.rowBytes = width / 8;
   if (screen_depth > 1) {
     InitColorOffscreen();
     // init even if indexed isn;t currently selected so it's correct
@@ -257,6 +297,74 @@ void CheckSoftResetRelease(void)
         BUTTON_A | BUTTON_B | BUTTON_SELECT | BUTTON_START, 0);
     soft_reset_release_tick = 0;
   }
+}
+
+static void UpdateScaleMenuChecks(void)
+{
+  MenuHandle menu = GetMenuHandle(MENU_EDIT);
+  CheckItem(menu, EDIT_SCALE_1X, screen_scale == 1);
+  CheckItem(menu, EDIT_SCALE_2X, screen_scale == 2);
+}
+
+void SetScreenScale(int scale)
+{
+  int width, height;
+
+  if (scale == screen_scale) {
+    return;
+  }
+
+  screen_scale = scale;
+
+  // update offscreen rect and pixmap for new scale
+  if (scale == 1) {
+    width = 160;
+    height = 144;
+  } else {
+    width = 320;
+    height = 288;
+  }
+
+  offscreen_rect.right = width;
+  offscreen_rect.bottom = height;
+  offscreen_bmp.bounds = offscreen_rect;
+  offscreen_bmp.rowBytes = width / 8;
+  offscreen_pixmap.bounds = offscreen_rect;
+  offscreen_pixmap.rowBytes = width | 0x8000;
+
+  if (g_wp) {
+    Rect newBounds;
+
+    // dispose palette before window (Color QuickDraw only)
+    if (screen_depth > 1) {
+      PaletteHandle pal = GetPalette(g_wp);
+      if (pal) {
+        DisposePalette(pal);
+      }
+    }
+    DisposeWindow(g_wp);
+
+    // create new window with updated size
+    newBounds.top = WINDOW_Y;
+    newBounds.left = WINDOW_X;
+    newBounds.right = WINDOW_X + width;
+    newBounds.bottom = WINDOW_Y + height + 11;  // +11 for status bar
+
+    if (screen_depth > 1) {
+      g_wp = NewCWindow(0, &newBounds, save_filename_p, true,
+            noGrowDocProc, (WindowPtr) -1, true, 0);
+    } else {
+      g_wp = NewWindow(0, &newBounds, save_filename_p, true,
+            noGrowDocProc, (WindowPtr) -1, true, 0);
+    }
+    SetPort(g_wp);
+
+    if (screen_depth > 1) {
+      init_indexed_lut(g_wp);
+    }
+  }
+
+  UpdateScaleMenuChecks();
 }
 
 int LoadRom(Str63 fileName, short vRefNum)
@@ -349,6 +457,9 @@ void OnMenuAction(long action)
         soft_reset_release_tick = TickCount() + SOFT_RESET_TICKS;
       }
     }
+    else if(item == FILE_CLOSE) {
+      StopEmulation();
+    }
     else if(item == FILE_QUIT) {
       app_running = 0;
     }
@@ -363,6 +474,10 @@ void OnMenuAction(long action)
         audio_mac_stop();
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND, sound_enabled);
+    } else if (item == EDIT_SCALE_1X) {
+      SetScreenScale(1);
+    } else if (item == EDIT_SCALE_2X) {
+      SetScreenScale(2);
     } else if (item == EDIT_KEY_MAPPINGS) {
       ShowKeyMappingsDialog();
     } else if (item == EDIT_PREFERENCES) {

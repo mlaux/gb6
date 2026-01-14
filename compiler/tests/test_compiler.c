@@ -148,9 +148,9 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, 0); // infinite loop at 0
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, 0);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ_CYCLES, 0);
-    // sp_adjust must be non-zero for fast path (0 = slow mode)
-    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_SP_ADJUST, 1);
-    m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_GB_SP, DEFAULT_GB_SP);
+    // Unused fields (was sp_adjust and gb_sp)
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_UNUSED_1, 0);
+    m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_UNUSED_2, 0);
     // hram_base points to start of high RAM (0xff80-0xfffe) in 68k address space
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_HRAM_BASE, GB_MEM_BASE + 0xff80);
 }
@@ -298,8 +298,6 @@ int main(int argc, char *argv[])
     // Initialize test compile context
     test_ctx.dmg = NULL;
     test_ctx.read = test_read;
-    test_ctx.wram_base = NULL;
-    test_ctx.hram_base = NULL;
 
     register_exec_tests();
 

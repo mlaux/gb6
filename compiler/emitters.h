@@ -19,6 +19,7 @@ void emit_swap(struct code_block *block, uint8_t reg);
 
 void emit_move_w_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg);
 void emit_movea_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg);
+void emit_movea_w_an_an(struct code_block *block, uint8_t src_areg, uint8_t dest_areg);
 void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t val);
 
 void emit_subq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val);

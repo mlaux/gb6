@@ -7,6 +7,11 @@
 #include "dmg.h"
 #include "rom.h"
 
+static int is_mbc2(int type)
+{
+  return type == 0x05 || type == 0x06;
+}
+
 static int is_mbc3(int type)
 {
   return type >= 0x0f && type <= 0x13;
@@ -35,6 +40,25 @@ static int mbc1_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
     return 1;
   } else if (addr >= 0x6000 && addr <= 0x7fff) {
     //printf("sel %d\n", data);
+    return 1;
+  }
+  return 0;
+}
+
+static int mbc2_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
+{
+  if (addr <= 0x3fff) {
+    // Bit 8 of address determines RAM enable vs ROM bank
+    if ((addr & 0x0100) == 0) {
+      // RAM enable (only lower 4 bits of data matter)
+      mbc->ram_enabled = (data & 0x0f) == 0x0a;
+      // MBC2 RAM is accessed through mbc_ram_read/write, no bank pointer
+    } else {
+      // ROM bank number (lower 4 bits, 0 becomes 1)
+      mbc->rom_bank = data & 0x0f;
+      int use_bank = mbc->rom_bank ? mbc->rom_bank : 1;
+      dmg_update_rom_bank(dmg, use_bank);
+    }
     return 1;
   }
   return 0;
@@ -108,8 +132,9 @@ struct mbc *mbc_new(int type)
   static struct mbc mbc;
 
   // MBC1 types: 0x00-0x03
+  // MBC2 types: 0x05-0x06
   // MBC3 types: 0x0f-0x13
-  if (type > 3 && !is_mbc3(type)) {
+  if (type > 3 && !is_mbc2(type) && !is_mbc3(type)) {
     return NULL;
   }
 
@@ -120,6 +145,10 @@ struct mbc *mbc_new(int type)
   if (type == 3) {
     // MBC1+RAM+BATTERY
     mbc.has_battery = 1;
+  } else if (is_mbc2(type)) {
+    // 0x05: MBC2
+    // 0x06: MBC2+BATTERY
+    mbc.has_battery = (type == 0x06);
   } else if (is_mbc3(type)) {
     // 0x0f: MBC3+TIMER+BATTERY
     // 0x10: MBC3+TIMER+RAM+BATTERY
@@ -138,6 +167,9 @@ int mbc_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
   if (mbc->type == 0) {
     return 0;
   }
+  if (is_mbc2(mbc->type)) {
+    return mbc2_write(mbc, dmg, addr, data);
+  }
   if (is_mbc3(mbc->type)) {
     return mbc3_write(mbc, dmg, addr, data);
   }
@@ -149,6 +181,14 @@ int mbc_ram_read(struct mbc *mbc, u16 addr, u8 *out)
   if (!mbc->ram_enabled) {
     return 0;
   }
+
+  if (is_mbc2(mbc->type)) {
+    // MBC2: 512×4 bits, only bottom 9 bits of address used
+    int index = addr & 0x1ff;
+    *out = mbc->ram[index] | 0xf0;  // Upper 4 bits undefined, set to 1
+    return 1;
+  }
+
   if (!is_mbc3(mbc->type) || mbc->rtc_select < 0) {
     return 0;
   }
@@ -169,6 +209,14 @@ int mbc_ram_write(struct mbc *mbc, u16 addr, u8 data)
   if (!mbc->ram_enabled) {
     return 0;
   }
+
+  if (is_mbc2(mbc->type)) {
+    // MBC2: 512×4 bits, only bottom 9 bits of address used
+    int index = addr & 0x1ff;
+    mbc->ram[index] = data & 0x0f;  // Only lower 4 bits stored
+    return 1;
+  }
+
   if (!is_mbc3(mbc->type) || mbc->rtc_select < 0) {
     return 0;
   }

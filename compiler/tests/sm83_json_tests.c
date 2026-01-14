@@ -168,8 +168,8 @@ static void setup_runtime_stubs(void)
     // JIT_CTX_DISPATCH: where to jump after block ends
     // Point to an infinite loop so m68k_execute returns
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, CODE_BASE + 0x800);
-    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_SP_ADJUST, 1);
-    m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_GB_SP, 0xfffe);
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_UNUSED_1, 0);
+    m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_UNUSED_2, 0);
     m68k_write_memory_16(CODE_BASE + 0x800, 0x60fe);          // bra.s *
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, CODE_BASE + 0x800);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_HRAM_BASE, 0xff80);

@@ -4,6 +4,7 @@
 extern int cycles_per_exit;
 extern int frame_skip;
 extern int video_mode;
+extern int screen_scale;
 
 #define VIDEO_DITHER_COPYBITS 0
 #define VIDEO_DITHER_DIRECT 1

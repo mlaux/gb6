@@ -55,12 +55,12 @@ struct dmg {
     u8 timer_mod;
     u8 timer_control;
 
-    // cycle accumulator for timing - only sync LCD when >= CYCLES_PER_FRAME
-    u32 cycles_since_render;
+    u32 frame_cycles;
     u8 sent_ly_interrupt;
     u8 sent_vblank_start;
+    u16 ly_hack;
 
-    // for DIV/LY/STAT evaluation from cycles
+    // for DIV evaluation from cycles
     u32 total_cycles;
     u32 div_reset_cycle;
 };

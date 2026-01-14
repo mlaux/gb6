@@ -136,11 +136,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
     }
 
     while (!done) {
-        // size_t before = block->length;
+        size_t before = block->length;
         // detect overflow of code block
         // could split loops across multiple blocks which is correct but slower
         // longest instruction is probably either adc or inc/dec (hl)
-        if (block->length > sizeof(block->code) - 160) {
+        if (block->length > sizeof(block->code) - 224) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);
             emit_move_w_dn(block, REG_68K_D_NEXT_PC, src_address + src_ptr);
             emit_patchable_exit(block);
@@ -284,6 +284,14 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);  // D3.w = HL
             emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_0);
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3
+            compile_set_c_flag(block);
+            break;
+
+        case 0x39: // add hl, sp
+            emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);  // D0.w = HL
+            emit_move_w_an_dn(block, REG_68K_A_SP, REG_68K_D_SCRATCH_1);  // D1.w = SP
+            emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D0 += D1, sets C
+            emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D0
             compile_set_c_flag(block);
             break;
 
@@ -472,25 +480,53 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
         }
 
-        case 0xc7:
+        case 0xc7: // rst nn
             compile_rst_n(block, 0x00, src_address + src_ptr);
             done = 1;
             break;
-
-        case 0xef: // rst 28h - like call $0028
+        case 0xcf:
+            compile_rst_n(block, 0x08, src_address + src_ptr);
+            done = 1;
+            break;
+        case 0xd7:
+            compile_rst_n(block, 0x10, src_address + src_ptr);
+            done = 1;
+            break;
+        case 0xdf:
+            compile_rst_n(block, 0x18, src_address + src_ptr);
+            done = 1;
+            break;
+        case 0xe7:
+            compile_rst_n(block, 0x20, src_address + src_ptr);
+            done = 1;
+            break;
+        case 0xef:
             compile_rst_n(block, 0x28, src_address + src_ptr);
             done = 1;
             break;
-
+        case 0xf7:
+            compile_rst_n(block, 0x30, src_address + src_ptr);
+            done = 1;
+            break;
+        case 0xff:
+            compile_rst_n(block, 0x38, src_address + src_ptr);
+            done = 1;
+            break;
 
         case 0xe2: // ld ($ff00 + c), a
             emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00);
-            emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D1.b |= C
+            emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);
             compile_call_dmg_write(block);
             break;
 
         case 0xf0: // ld a, ($ff00 + u8)
             compile_ldh_a_u8(block, READ_BYTE(src_ptr++));
+            break;
+
+        case 0xf2: // ld a, ($ff00 + c)
+            emit_move_w_dn(block, REG_68K_D_SCRATCH_1, 0xff00);
+            emit_or_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);
+            compile_call_dmg_read_a(block);
             break;
 
         case 0xd9: // reti
@@ -567,10 +603,10 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
         }
 
-        // size_t emitted = block->length - before;
-        // if (emitted > 80) {
-        //     printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
-        // }
+        size_t emitted = block->length - before;
+        if (emitted > 80) {
+            printf("warning: instruction %02x emitted %zu bytes\n", op, emitted);
+        }
 
         if (ctx->single_instruction && !done) {
             emit_moveq_dn(block, REG_68K_D_NEXT_PC, 0);

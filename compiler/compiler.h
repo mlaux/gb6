@@ -49,8 +49,8 @@
 #define JIT_CTX_BANKED_CACHE  24  // struct code_block ***banked_cache
 #define JIT_CTX_UPPER_CACHE   28  // struct code_block **upper_cache
 #define JIT_CTX_DISPATCH      32  // void *dispatcher_return
-#define JIT_CTX_SP_ADJUST     36  // int32_t: add to A3 to get GB SP (0 = slow mode)
-#define JIT_CTX_GB_SP         40  // uint16_t: always-accurate GB SP value
+#define JIT_CTX_UNUSED_1      36  // was sp_adjust
+#define JIT_CTX_UNUSED_2      40  // was gb_sp
 // 2 bytes padding at 42
 #define JIT_CTX_CYCLES        44  // u32: accumulated GB cycles
 #define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
@@ -80,8 +80,6 @@ typedef uint8_t (*dmg_read_fn)(void *dmg, uint16_t address);
 struct compile_ctx {
     void *dmg;              // dmg pointer for memory reads
     dmg_read_fn read;       // read function
-    void *wram_base;        // for SP address calculation
-    void *hram_base;
     int single_instruction; // if set, compile only one instruction then dispatch
 };
 

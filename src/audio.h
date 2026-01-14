@@ -36,7 +36,6 @@ struct audio {
     struct audio_channel ch4;   // noise
 
     u8 wave_ram[16];            // 32 4-bit samples
-    u32 noise_pos;              // position in precomputed LFSR sequence
     u8 lfsr_width;              // 0 = 15-bit, 1 = 7-bit
     u8 noise_divisor;
     u8 noise_shift;

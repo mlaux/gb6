@@ -21,6 +21,7 @@ int keyMappings[8];
 
 int frame_skip;
 int video_mode;
+int screen_scale = 2;
 
 extern int screen_depth;
 

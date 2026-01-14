@@ -94,6 +94,13 @@ void emit_movea_w_dn_an(struct code_block *block, uint8_t dreg, uint8_t areg)
     emit_word(block, 0x3040 | (areg << 9) | dreg);
 }
 
+// movea.w An, An - copy address register to address register
+void emit_movea_w_an_an(struct code_block *block, uint8_t src_areg, uint8_t dest_areg)
+{
+    // 00 11 ddd 001 001 sss
+    emit_word(block, 0x3048 | (dest_areg << 9) | src_areg);
+}
+
 void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t val)
 {
     // 00 11 aaa 001 111 100

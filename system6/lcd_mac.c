@@ -1,5 +1,5 @@
 /* Game Boy emulator for 68k Macs
-   lcd_mac.c - LCD rendering with 2x scaling */
+   lcd_mac.c - LCD rendering with 1x/2x scaling */
 
 #include <Quickdraw.h>
 #include <Windows.h>
@@ -11,6 +11,7 @@
 
 extern WindowPtr g_wp;
 extern int screen_depth;
+extern int screen_scale;
 
 // for 1bpp dithered mode
 extern char offscreen_buf[];
@@ -26,8 +27,26 @@ extern PixMap offscreen_pixmap;
 static unsigned char dither_row0[256];
 static unsigned char dither_row1[256];
 
+// lookup tables for 1x threshold rendering
+// thresh_hi: 4 GB pixels -> 4 bits in high nibble
+// thresh_lo: 4 GB pixels -> 4 bits in low nibble
+static unsigned char thresh_hi[256];
+static unsigned char thresh_lo[256];
+
 // pre-mapped color indices for current screen CLUT
 static unsigned char gray_index[4];
+
+static const RGBColor palettes[][4] = {
+  // blk-aqu4
+  { { 0x9f9f, 0xf4f4, 0xe5e5 }, { 0x0000, 0xb9b9, 0xbebe },
+    { 0x0000, 0x5f5f, 0x8c8c }, { 0x0000, 0x2b2b, 0x5959 } },
+  // bgb default
+  { { 0x7575, 0x9898, 0x3333 }, { 0x5959, 0x8e8e, 0x5050 },
+    { 0x3b3b, 0x7474, 0x6060 }, { 0x2e2e, 0x6161, 0x5a5a } },
+  // velvet-cherry-gb
+  { { 0x9797, 0x7575, 0xa6a6 }, { 0x6868, 0x3a3a, 0x6868 },
+    { 0x4141, 0x2727, 0x5252 }, { 0x2d2d, 0x1616, 0x2c2c } },
+};
 
 void init_dither_lut(void)
 {
@@ -51,20 +70,15 @@ void init_dither_lut(void)
                        (pat_top[p2] >> 4) | (pat_top[p3] >> 6);
     dither_row1[idx] = pat_bot[p0] | (pat_bot[p1] >> 2) |
                        (pat_bot[p2] >> 4) | (pat_bot[p3] >> 6);
+
+    // threshold LUTs for 1x mode: color >= 2 is black
+    // thresh_hi produces high nibble, thresh_lo produces low nibble
+    thresh_hi[idx] = ((p0 >= 2) ? 0x80 : 0) | ((p1 >= 2) ? 0x40 : 0) |
+                     ((p2 >= 2) ? 0x20 : 0) | ((p3 >= 2) ? 0x10 : 0);
+    thresh_lo[idx] = ((p0 >= 2) ? 0x08 : 0) | ((p1 >= 2) ? 0x04 : 0) |
+                     ((p2 >= 2) ? 0x02 : 0) | ((p3 >= 2) ? 0x01 : 0);
   }
 }
-
-static const RGBColor palettes[][4] = {
-  // blk-aqu4
-  { { 0x9f9f, 0xf4f4, 0xe5e5 }, { 0x0000, 0xb9b9, 0xbebe },
-    { 0x0000, 0x5f5f, 0x8c8c }, { 0x0000, 0x2b2b, 0x5959 } },
-  // bgb default
-  { { 0x7575, 0x9898, 0x3333 }, { 0x5959, 0x8e8e, 0x5050 },
-    { 0x3b3b, 0x7474, 0x6060 }, { 0x2e2e, 0x6161, 0x5a5a } },
-  // velvet-cherry-gb
-  { { 0x9797, 0x7575, 0xa6a6 }, { 0x6868, 0x3a3a, 0x6868 },
-    { 0x4141, 0x2727, 0x5252 }, { 0x2d2d, 0x1616, 0x2c2c } },
-};
 
 void init_indexed_lut(WindowPtr wp)
 {
@@ -85,9 +99,88 @@ void init_indexed_lut(WindowPtr wp)
   }
 }
 
+// 1x rendering, >= 2 is black, doesn't look great but it's fine
+static void lcd_draw_1x_copybits(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst = (unsigned char *) offscreen_buf;
+
+  for (gy = 0; gy < 144; gy++) {
+    int gx;
+    for (gx = 0; gx < 160; gx += 8) {
+      unsigned char idx0 = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
+      unsigned char idx1 = (src[4] << 6) | (src[5] << 4) | (src[6] << 2) | src[7];
+      src += 8;
+      *dst++ = thresh_hi[idx0] | thresh_lo[idx1];
+    }
+  }
+
+  SetPort(g_wp);
+  CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+}
+
+static void lcd_draw_1x_direct(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst;
+  int screen_rb;
+  Point topLeft;
+
+  SetPort(g_wp);
+  topLeft.h = 0;
+  topLeft.v = 0;
+  LocalToGlobal(&topLeft);
+
+  screen_rb = qd.screenBits.rowBytes;
+  dst = (unsigned char *) qd.screenBits.baseAddr
+      + (topLeft.v * screen_rb)
+      + (topLeft.h >> 3);
+
+  for (gy = 0; gy < 144; gy++) {
+    unsigned char *row = dst;
+    int gx;
+    for (gx = 0; gx < 160; gx += 8) {
+      unsigned char idx0 = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
+      unsigned char idx1 = (src[4] << 6) | (src[5] << 4) | (src[6] << 2) | src[7];
+      src += 8;
+      *row++ = thresh_hi[idx0] | thresh_lo[idx1];
+    }
+    dst += screen_rb;
+  }
+}
+
+static void lcd_draw_1x_indexed(struct lcd *lcd_ptr)
+{
+  int gy;
+  unsigned char *src = lcd_ptr->pixels;
+  unsigned char *dst = (unsigned char *) offscreen_color_buf;
+  CGrafPtr port;
+
+  if (screen_depth == 1) {
+    return;
+  }
+
+  for (gy = 0; gy < 144; gy++) {
+    int gx;
+    for (gx = 0; gx < 160; gx++) {
+      *dst++ = gray_index[*src++];
+    }
+  }
+
+  SetPort(g_wp);
+  port = (CGrafPtr) g_wp;
+  CopyBits(
+      (BitMap *) &offscreen_pixmap,
+      (BitMap *) *port->portPixMap,
+      &offscreen_rect, &offscreen_rect, srcCopy, NULL
+  );
+}
+
 // might work better for color Macs with more advanced video hardware.
 // direct rendering was slower than CopyBits on my IIfx
-static void lcd_draw_dither_copybits(struct lcd *lcd_ptr)
+static void lcd_draw_2x_copybits(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
@@ -115,7 +208,7 @@ static void lcd_draw_dither_copybits(struct lcd *lcd_ptr)
   CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
 }
 
-static void lcd_draw_dither_direct(struct lcd *lcd_ptr)
+static void lcd_draw_2x_direct(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
@@ -154,7 +247,7 @@ static void lcd_draw_dither_direct(struct lcd *lcd_ptr)
   }
 }
 
-static void lcd_draw_indexed(struct lcd *lcd_ptr)
+static void lcd_draw_2x_indexed(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
@@ -190,19 +283,14 @@ static void lcd_draw_indexed(struct lcd *lcd_ptr)
   );
 }
 
+void (*draw_funcs[2][3])(struct lcd *) = {
+  { lcd_draw_1x_copybits, lcd_draw_1x_direct, lcd_draw_1x_indexed },
+  { lcd_draw_2x_copybits, lcd_draw_2x_direct, lcd_draw_2x_indexed },
+};
+
 // called by dmg_step at vblank
 void lcd_draw(struct lcd *lcd_ptr)
 {
-  // would a function pointer be faster? not called enough to matter
-  switch (video_mode) {
-    case VIDEO_DITHER_DIRECT:
-      lcd_draw_dither_direct(lcd_ptr);
-      break;
-    case VIDEO_DITHER_COPYBITS:
-      lcd_draw_dither_copybits(lcd_ptr);
-      break;
-    case VIDEO_INDEXED:
-      lcd_draw_indexed(lcd_ptr);
-      break;
-  }
+  // screen scale is 1 based, video mode is 0 based
+  draw_funcs[screen_scale - 1][video_mode](lcd_ptr);
 }

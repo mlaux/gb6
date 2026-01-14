@@ -9,7 +9,7 @@
 
 #define WINDOW_TITLE "\pgb6"
 
-#define WINDOW_X 0
+#define WINDOW_X 8
 #define WINDOW_Y 40
 #define WINDOW_WIDTH 320
 #define WINDOW_HEIGHT 299
@@ -26,18 +26,22 @@
 #define APPLE_ABOUT 1
 
 #define FILE_OPEN 1
-#define FILE_SCREENSHOT 2
-#define FILE_SOFT_RESET 3
-#define FILE_QUIT 5
+#define FILE_SCREENSHOT 3
+#define FILE_SOFT_RESET 4
+#define FILE_CLOSE 6
+#define FILE_QUIT 7
 
 #define EDIT_SOUND 1
-#define EDIT_PREFERENCES 3
-#define EDIT_KEY_MAPPINGS 4
+#define EDIT_SCALE_1X 4
+#define EDIT_SCALE_2X 5
+#define EDIT_PREFERENCES 7
+#define EDIT_KEY_MAPPINGS 8
 
 #define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
 
 int LoadRom(Str63, short);
 void CheckSoftResetRelease(void);
+void SetScreenScale(int scale);
 
 void set_status_bar(const char *str);
 
