@@ -30,6 +30,7 @@ struct {
   u32 d3; // next pc, output only
   u32 d4, d5, d6, d7; // a, bc, de, f
   u32 a2, a3, a4; // hl, sp, ctx
+  u32 a5, a6; // read_page, write_page
 } jit_regs;
 
 // exposed to main emulator.c
@@ -53,7 +54,7 @@ static void enter_asm_world(void *code)
 
     // load GB state into 68k registers
     "lea %[jit_regs], %%a1\n\t"
-    "movem.l (%%a1), %%d2-%%d7/%%a2-%%a4\n\t"
+    "movem.l (%%a1), %%d2-%%d7/%%a2-%%a6\n\t"
 
     // call the generated code, this can then chain to other blocks
     "jsr (%%a0)\n\t"
@@ -84,15 +85,10 @@ void jit_init(struct dmg *dmg)
 {
   compiler_init();
 
-  // initialize arena if not already done, otherwise reset it
-  if (!arena_remaining()) {
-    if (!arena_init()) {
-      set_status_bar("Arena alloc fail");
-      jit_halted = 1;
-      return;
-    }
-  } else {
-    arena_reset();
+  if (!arena_init()) {
+    set_status_bar("Arena alloc fail");
+    jit_halted = 1;
+    return;
   }
 
   // pre-allocate cache arrays so dispatcher never sees NULL
@@ -125,6 +121,8 @@ void jit_init(struct dmg *dmg)
   jit_regs.d3 = 0x100; // initial PC
   jit_regs.a3 = 0xfffe; // initial SP
   jit_regs.a4 = (unsigned long) &jit_ctx;
+  jit_regs.a5 = (unsigned long) dmg->read_page;
+  jit_regs.a6 = (unsigned long) dmg->write_page;
 
   jit_halted = 0;
 }
@@ -176,7 +174,11 @@ int jit_step(struct dmg *dmg)
       return 0;
     }
 
-    cache_store(jit_regs.d3, jit_ctx.current_rom_bank, block->code);
+    if (!cache_store(jit_regs.d3, jit_ctx.current_rom_bank, block->code)) {
+      // this means this was the first block to be stored for a given bank, 
+      // and the bank cache array couldn't be allocated. unrecoverable OOM?
+      // i'm not actually sure...
+    }
     sync_cache_pointers();
     code = block->code;
   }
@@ -250,4 +252,10 @@ int jit_step(struct dmg *dmg)
   }
 
   return 1;
+}
+
+void jit_cleanup(void)
+{
+  // we need this memory back to load the next ROM
+  arena_destroy();
 }

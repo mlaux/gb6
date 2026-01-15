@@ -60,3 +60,13 @@ size_t arena_remaining(void)
 {
     return arena_end - arena_ptr;
 }
+
+void arena_destroy(void)
+{
+    if (arena_base) {
+        DisposePtr(arena_base);
+        arena_base = NULL;
+        arena_ptr = NULL;
+        arena_end = 0;
+    }
+}

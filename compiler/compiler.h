@@ -18,8 +18,8 @@
 // A2 = HL (contiguous: 0xHHLL)
 // A3 = SP
 // A4 = runtime context pointer
-// A5 = reserved (Mac "A5 world")
-// A6 = reserved (Mac frame pointer)
+// A5 = read page table base (dmg + 0x80)
+// A6 = write page table base (dmg + 0x480)
 // A7 = 68k stack pointer
 
 #define REG_68K_D_SCRATCH_0 0
@@ -36,6 +36,8 @@
 #define REG_68K_A_HL 2
 #define REG_68K_A_SP 3
 #define REG_68K_A_CTX 4
+#define REG_68K_A_READ_PAGE 5
+#define REG_68K_A_WRITE_PAGE 6
 
 // Runtime context offsets
 #define JIT_CTX_DMG         0
@@ -56,6 +58,8 @@
 #define JIT_CTX_READ_CYCLES   52  // u32: in-flight cycles at dmg_read call
 #define JIT_CTX_HRAM_BASE     56  // void *hram_base (dmg->zero_page)
 #define JIT_CTX_FRAME_CYCLES_PTR 60  // u32 *frame_cycles_ptr (dmg->frame_cycles)
+#define JIT_CTX_TEMP_1 64
+#define JIT_CTX_TEMP_2 68
 
 struct code_block {
     uint8_t code[1024];
@@ -73,7 +77,7 @@ struct code_block {
 typedef uint8_t (*dmg_read_fn)(void *dmg, uint16_t address);
 
 // cache store function signature for registering mid-block entry points
-typedef void (*cache_store_fn)(uint16_t pc, uint8_t bank, void *code_ptr);
+typedef int (*cache_store_fn)(uint16_t pc, uint8_t bank, void *code_ptr);
 
 // allocator function signature for arena allocation
 typedef void *(*alloc_fn)(size_t size);

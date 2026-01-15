@@ -206,6 +206,8 @@ void StopEmulation(void)
   }
 
   audio_mac_shutdown();
+  jit_cleanup();
+
   EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
   if (screen_depth > 1) {
     PaletteHandle pal = GetPalette(g_wp);
@@ -213,6 +215,7 @@ void StopEmulation(void)
       DisposePalette(pal);
     }
   }
+  DisposePtr(rom.data);
   DisposeWindow(g_wp);
   g_wp = NULL;
 }
@@ -290,7 +293,7 @@ void StartEmulation(void)
   DisableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
 }
 
-void CheckSoftResetRelease(void)
+static void CheckSoftResetRelease(void)
 {
   if (soft_reset_release_tick && TickCount() >= soft_reset_release_tick) {
     dmg_set_button(&dmg, FIELD_ACTION,
@@ -387,7 +390,7 @@ int LoadRom(Str63 fileName, short vRefNum)
   }
   
   GetEOF(fileNo, (long *) &rom.length);
-  rom.data = (unsigned char *) malloc(rom.length);
+  rom.data = (unsigned char *) NewPtr(rom.length);
   if(rom.data == NULL) {
     ShowCenteredAlert(ALRT_NOT_ENOUGH_RAM, "\p", "\p", "\p", "\p", ALERT_NORMAL);
     return false;
@@ -405,6 +408,17 @@ int LoadRom(Str63 fileName, short vRefNum)
         ALERT_NORMAL
     );
     return false;
+  }
+
+  if (MaxBlock() < MEMORY_WARNING_THRESHOLD) {
+    ShowCenteredAlert(
+        ALRT_4_LINE,
+        "\pI don't have much memory left after", 
+        "\ploading the ROM. I'll keep going, but", 
+        "\ptry giving me more in Get Info from",
+        "\pthe Finder for the best performance.",
+        ALERT_NORMAL
+    );
   }
 
   if (GetFInfo(fileName, vRefNum, &fndrInfo) == noErr) {
@@ -602,9 +616,7 @@ int main(int argc, char *argv[])
   lcd_init_lut();
 
   finderResult = CheckFinderFiles();
-  if (finderResult == 1) {
-    StartEmulation();
-  } else if (ShowOpenBox()) {
+  if (finderResult == 1 || ShowOpenBox()) {
     StartEmulation();
   }
 

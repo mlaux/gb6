@@ -32,7 +32,7 @@ void *cache_lookup(u16 pc, u8 bank)
 }
 
 // Store code pointer in cache for given PC and bank
-void cache_store(u16 pc, u8 bank, void *code)
+int cache_store(u16 pc, u8 bank, void *code)
 {
     if (pc < 0x4000) {
         bank0_cache[pc] = code;
@@ -40,7 +40,7 @@ void cache_store(u16 pc, u8 bank, void *code)
         if (!banked_cache[bank]) {
             banked_cache[bank] = arena_alloc(BANKED_CACHE_SIZE * sizeof(void *));
             if (!banked_cache[bank]) {
-                return;
+                return 0;
             }
             memset(banked_cache[bank], 0, BANKED_CACHE_SIZE * sizeof(void *));
         }
@@ -48,6 +48,7 @@ void cache_store(u16 pc, u8 bank, void *code)
     } else {
         upper_cache[pc - 0x8000] = code;
     }
+    return 1;
 }
 
 // Allocate and zero all cache arrays upfront

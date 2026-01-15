@@ -26,6 +26,8 @@ typedef struct {
     /* 34 */ u32 read_cycles; // in-flight cycles at time of dmg_read call
     /* 38 */ void *hram_base; // dmg->zero_page for inline high RAM access
     /* 3c */ u32 *frame_cycles_ptr; // pointer to dmg->frame_cycles for HALT
+    /* 40 */ u32 temp1;
+    /* 44 */ u32 temp2;
 } jit_context;
 
 extern jit_context jit_ctx;
@@ -35,5 +37,7 @@ extern int dmg_reads, dmg_writes;
 void jit_init(struct dmg *dmg);
 
 int jit_step(struct dmg *dmg);
+
+void jit_cleanup(void);
 
 #endif

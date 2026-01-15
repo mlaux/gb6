@@ -4,6 +4,7 @@
 #include "rom.h"
 #include "types.h"
 
+// this was only used by the imgui version, can remove
 int rom_load(struct rom *rom, const char *filename)
 {
     FILE *fp;

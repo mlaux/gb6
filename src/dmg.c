@@ -12,6 +12,7 @@
 
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
+#define CYCLES_MIDDLE (70224 / 2)
 #define CYCLES_LINE_144 (CYCLES_PER_FRAME - (10 * CYCLES_PER_LINE))
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
@@ -344,6 +345,29 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         lcd_clear_bit(dmg->lcd, REG_STAT, STAT_FLAG_MATCH);
     }
 
+    if (dmg->frame_cycles >= CYCLES_MIDDLE && !dmg->rendered_this_frame) {
+        // MAYBE todo: render per-tile-row? might be a good compromise - when 
+        // drawing so inaccurately, there is no "best" choice for where to do
+        // this, so just do it in the middle of the screen. this could maybe avoid
+        // games turning off sprites for text boxes, messing with the scroll for
+        // status bars, etc
+        if (dmg->frames_rendered % dmg->frame_skip == 0) {
+            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
+            if (lcdc & LCDC_ENABLE) {
+                if (lcdc & LCDC_ENABLE_BG) {
+                    lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
+                }
+                if (lcdc & LCDC_ENABLE_OBJ) {
+                    lcd_render_objs(dmg);
+                }
+                lcd_draw(dmg->lcd);
+            }
+        }
+
+        dmg->frames_rendered++;
+        dmg->rendered_this_frame = 1;
+    }
+
     if (dmg->frame_cycles >= CYCLES_LINE_144 && !dmg->sent_vblank_start) {
         // fire VBLANK once per frame
         dmg_request_interrupt(dmg, INT_VBLANK);
@@ -359,24 +383,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         dmg->frame_cycles -= CYCLES_PER_FRAME;
         dmg->sent_vblank_start = 0;
         dmg->sent_ly_interrupt = 0;
-
-        // MAYBE todo: render per-tile-row? might be a good compromise - when 
-        // drawing so inaccurately, there is no "best" choice for where to do
-        // this, so just do it at the end of the frame
-        if (dmg->frames_rendered % dmg->frame_skip == 0) {
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE) {
-                if (lcdc & LCDC_ENABLE_BG) {
-                    lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
-                }
-                if (lcdc & LCDC_ENABLE_OBJ) {
-                    lcd_render_objs(dmg);
-                }
-                lcd_draw(dmg->lcd);
-            }
-        }
-
-        dmg->frames_rendered++;
+        dmg->rendered_this_frame = 0;
     }
 }
 

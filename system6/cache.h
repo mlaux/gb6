@@ -15,7 +15,7 @@ int cache_init(void);
 void *cache_lookup(u16 pc, u8 bank);
 
 // Store code pointer in cache
-void cache_store(u16 pc, u8 bank, void *code);
+int cache_store(u16 pc, u8 bank, void *code);
 
 // Get current cache array pointers for dispatcher
 // this is the first time i've ever used a ****
