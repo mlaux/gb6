@@ -12,7 +12,7 @@
 
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
-#define CYCLES_MIDDLE (70224 / 2)
+#define CYCLES_MIDDLE (CYCLES_LINE_144 / 2)
 #define CYCLES_LINE_144 (CYCLES_PER_FRAME - (10 * CYCLES_PER_LINE))
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
@@ -143,9 +143,10 @@ static u8 get_button_state(struct dmg *dmg)
 u8 dmg_read_slow(struct dmg *dmg, u16 address)
 {
     if (address == REG_LY) {
-        // just give it the value it's waiting for. LY=LYC is handled in a
-        // nicer way below, when the emulator returns back from compiled code
-        // to C
+        // the compiler detects "ldh a, [$44]; cp N; jr cc" which is the most
+        // common case, and skips to that line, so this actually doesn't run
+        // that much - just give it the value it's waiting for. LY=LYC is handled
+        // in a nicer way below, when the compiled code returns to C
         dmg->ly_hack++;
         if (dmg->ly_hack == 154) {
             dmg->ly_hack = 0;
@@ -322,10 +323,11 @@ void dmg_write16(void *_dmg, u16 address, u16 data)
     dmg_write(_dmg, address + 1, (data >> 8) & 0xff);
 }
 
-
 // not accurate at all, but not going for accuracy. i'm FINALLY happy with the
 // logic here. supports arbitrary cycles_per_exit, currently user configurable
-// between every line, every 16 lines, every 1 frame
+// between every line, every 16 lines, and every 1 frame
+// note that the user configurable setting is less relevant for games that use
+// HALT, because HALT will skip directly to line 144
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
     int ly, lyc;

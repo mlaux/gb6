@@ -3,9 +3,9 @@
 
 #include "arena.h"
 
-// 512 KB reserved for other allocations
+// 256 KB reserved for other allocations
 // not sure if i need this much, 
-#define ARENA_SAFETY_MARGIN 524288
+#define ARENA_SAFETY_MARGIN 262144
 
 static unsigned char *arena_base;
 static unsigned char *arena_ptr;
@@ -59,6 +59,11 @@ void arena_reset(void)
 size_t arena_remaining(void)
 {
     return arena_end - arena_ptr;
+}
+
+size_t arena_size(void)
+{
+    return arena_end - arena_base;
 }
 
 void arena_destroy(void)

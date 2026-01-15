@@ -17,6 +17,11 @@ static int is_mbc3(int type)
   return type >= 0x0f && type <= 0x13;
 }
 
+static int is_mbc5(int type)
+{
+  return type >= 0x19 && type <= 0x1e;
+}
+
 static int mbc1_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
 {
   if (addr >= 0 && addr <= 0x1fff) {
@@ -127,6 +132,45 @@ static int mbc3_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
   return 0;
 }
 
+static int mbc5_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
+{
+  if (addr <= 0x1fff) {
+    // RAM Enable
+    int was_enabled = mbc->ram_enabled;
+    mbc->ram_enabled = (data & 0x0f) == 0x0a;
+    if (mbc->ram_enabled != was_enabled) {
+      u8 *ram_base = mbc->ram_enabled ? &mbc->ram[0x2000 * mbc->ram_bank] : NULL;
+      dmg_update_ram_bank(dmg, ram_base);
+    }
+    return 1;
+  }
+
+  if (addr >= 0x2000 && addr <= 0x2fff) {
+    // Low 8 bits of ROM bank number
+    mbc->rom_bank = (mbc->rom_bank & 0x100) | data;
+    dmg_update_rom_bank(dmg, mbc->rom_bank);
+    return 1;
+  }
+
+  if (addr >= 0x3000 && addr <= 0x3fff) {
+    // 9th bit of ROM bank number
+    mbc->rom_bank = (mbc->rom_bank & 0xff) | ((data & 0x01) << 8);
+    dmg_update_rom_bank(dmg, mbc->rom_bank);
+    return 1;
+  }
+
+  if (addr >= 0x4000 && addr <= 0x5fff) {
+    // RAM bank number (0x00-0x0f)
+    mbc->ram_bank = data & 0x0f;
+    if (mbc->ram_enabled) {
+      dmg_update_ram_bank(dmg, &mbc->ram[0x2000 * mbc->ram_bank]);
+    }
+    return 1;
+  }
+
+  return 0;
+}
+
 struct mbc *mbc_new(int type)
 {
   static struct mbc mbc;
@@ -134,7 +178,8 @@ struct mbc *mbc_new(int type)
   // MBC1 types: 0x00-0x03
   // MBC2 types: 0x05-0x06
   // MBC3 types: 0x0f-0x13
-  if (type > 3 && !is_mbc2(type) && !is_mbc3(type)) {
+  // MBC5 types: 0x19-0x1e
+  if (type > 3 && !is_mbc2(type) && !is_mbc3(type) && !is_mbc5(type)) {
     return NULL;
   }
 
@@ -157,6 +202,14 @@ struct mbc *mbc_new(int type)
     // 0x13: MBC3+RAM+BATTERY
     mbc.has_rtc = (type == 0x0f || type == 0x10);
     mbc.has_battery = (type == 0x0f || type == 0x10 || type == 0x13);
+  } else if (is_mbc5(type)) {
+    // 0x19: MBC5
+    // 0x1a: MBC5+RAM
+    // 0x1b: MBC5+RAM+BATTERY
+    // 0x1c: MBC5+RUMBLE
+    // 0x1d: MBC5+RUMBLE+RAM
+    // 0x1e: MBC5+RUMBLE+RAM+BATTERY
+    mbc.has_battery = (type == 0x1b || type == 0x1e);
   }
 
   return &mbc;
@@ -172,6 +225,9 @@ int mbc_write(struct mbc *mbc, struct dmg *dmg, u16 addr, u8 data)
   }
   if (is_mbc3(mbc->type)) {
     return mbc3_write(mbc, dmg, addr, data);
+  }
+  if (is_mbc5(mbc->type)) {
+    return mbc5_write(mbc, dmg, addr, data);
   }
   return mbc1_write(mbc, dmg, addr, data);
 }

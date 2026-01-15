@@ -16,6 +16,9 @@ void arena_reset(void);
 // return bytes remaining in arena
 size_t arena_remaining(void);
 
+// return total size of arena
+size_t arena_size(void);
+
 void arena_destroy(void);
 
 #endif

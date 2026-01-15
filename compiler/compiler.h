@@ -64,7 +64,10 @@
 struct code_block {
     uint8_t code[1024];
     uint16_t m68k_offsets[256];
+    // number of bytes populated in code[]
     size_t length;
+    // number of GB instructions
+    size_t count;
     uint16_t src_address;
     uint16_t end_address; // address after last instruction
 

@@ -315,7 +315,7 @@ static s8 generate_noise(struct audio *audio)
     return high ? ch->volume : -(s8)ch->volume;
 }
 
-void audio_generate(struct audio *audio, s8 *buffer, int samples)
+void audio_generate(struct audio *audio, u8 *buffer, int samples)
 {
     int k;
 
@@ -351,6 +351,6 @@ void audio_generate(struct audio *audio, s8 *buffer, int samples)
         // >>3 would be "most correct" in terms of keeping the original scale
         // but this scales to -106 - 104 to make it louder
         mix = (mix * master) >> 2;
-        buffer[k] = (s8) mix;
+        buffer[k] = (u8) (mix + 128);
     }
 }

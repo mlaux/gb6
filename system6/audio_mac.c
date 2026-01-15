@@ -72,12 +72,7 @@ static void FillBuffer(unsigned char *p)
         return;
     }
 
-    audio_generate(g_audio, (s8 *)p, BUFFER_SAMPLES);
-
-    // convert signed to unsigned
-    for (k = 0; k < BUFFER_SAMPLES; k++) {
-        p[k] ^= 0x80;
-    }
+    audio_generate(g_audio, p, BUFFER_SAMPLES);
 }
 
 // called at interrupt time when a buffer is exhausted

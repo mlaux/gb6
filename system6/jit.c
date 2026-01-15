@@ -143,8 +143,8 @@ int jit_step(struct dmg *dmg)
   code = cache_lookup(jit_regs.d3, jit_ctx.current_rom_bank);
 
   if (!code) {
-    sprintf(buf, "Compiling $%02x:%04x mem=%luk",
-            jit_ctx.current_rom_bank, jit_regs.d3, arena_remaining() / 1024);
+    sprintf(buf, "Compiling $%02x:%04x %luk/%luk",
+            jit_ctx.current_rom_bank, jit_regs.d3, arena_remaining() / 1024, arena_size() / 1024);
     set_status_bar(buf);
     compile_ctx.current_bank = jit_ctx.current_rom_bank;
     block = compile_block(jit_regs.d3, &compile_ctx);
@@ -211,8 +211,7 @@ int jit_step(struct dmg *dmg)
 
           // push PC to stack
           jit_regs.a3 -= 2;
-          dmg_write(dmg, jit_regs.a3, jit_regs.d3 & 0xff);
-          dmg_write(dmg, jit_regs.a3 + 1, (jit_regs.d3 >> 8) & 0xff);
+          dmg_write16(dmg, jit_regs.a3, jit_regs.d3);
 
           // Jump to handler
           jit_regs.d3 = handlers[k];

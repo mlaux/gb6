@@ -14,6 +14,8 @@ static u8 tile_decode_lut[256][4];
 // Base LUT with color indices 0-3 (palette-independent)
 static u8 tile_decode_base[256][4];
 
+static u8 pixels[160 * 144];
+
 void lcd_init_lut(void)
 {
     int n1, n2;
@@ -58,9 +60,8 @@ struct oam_entry {
 
 void lcd_new(struct lcd *lcd)
 {
-    const size_t size = 256 * 256;
     // todo < 8 bpp
-    lcd->pixels = malloc(LCD_WIDTH * LCD_HEIGHT);
+    lcd->pixels = pixels;
 }
 
 u8 lcd_is_valid_addr(u16 addr)

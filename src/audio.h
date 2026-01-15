@@ -54,6 +54,6 @@ struct audio {
 void audio_init(struct audio *audio);
 void audio_write(struct audio *audio, u16 addr, u8 value);
 u8 audio_read(struct audio *audio, u16 addr);
-void audio_generate(struct audio *audio, s8 *buffer, int samples);
+void audio_generate(struct audio *audio, u8 *buffer, int samples);
 
 #endif
