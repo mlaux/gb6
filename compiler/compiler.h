@@ -70,14 +70,22 @@ struct code_block {
     uint16_t failed_address;
 };
 
-// read function signature: u8 (*read)(void *dmg, u16 address)
 typedef uint8_t (*dmg_read_fn)(void *dmg, uint16_t address);
+
+// cache store function signature for registering mid-block entry points
+typedef void (*cache_store_fn)(uint16_t pc, uint8_t bank, void *code_ptr);
+
+// allocator function signature for arena allocation
+typedef void *(*alloc_fn)(size_t size);
 
 // compile-time context
 struct compile_ctx {
     void *dmg;              // dmg pointer for memory reads
     dmg_read_fn read;       // read function
     int single_instruction; // if set, compile only one instruction then dispatch
+    cache_store_fn cache_store;  // NULL in tests, registers mid-block entries
+    alloc_fn alloc;              // NULL uses malloc, otherwise arena_alloc
+    uint8_t current_bank;        // current ROM bank for cache_store calls
 };
 
 void compiler_init(void);

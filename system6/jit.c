@@ -9,14 +9,14 @@
 #include "compiler.h"
 #include "cpu.h"
 #include "dmg.h"
-#include "lru.h"
+#include "cache.h"
 #include "lcd.h"
 #include "rom.h"
 #include "dispatcher_asm.h"
 #include "emulator.h"
 #include "debug.h"
+#include "arena.h"
 
-static u32 time_in_compile = 0;
 static u32 time_in_jit = 0;
 static u32 time_in_sync = 0;
 static u32 call_count = 0;
@@ -42,11 +42,11 @@ static struct compile_ctx compile_ctx;
 // this is a huge context switch and my main goal is to do this as little as
 // possible. currently it will not return to C when jumping to another compiled 
 // block. it still does to check and handle interrupts, though. 
-static void execute_block(void *code)
+static void enter_asm_world(void *code)
 {
   asm volatile(
     // save callee-saved registers
-    "movem.l %%d2-%%d7/%%a2-%%a4, -(%%sp)\n\t"
+    "movem.l %%d2-%%d7/%%a2-%%a6, -(%%sp)\n\t"
 
     // copy code pointer to A0
     "movea.l %[code], %%a0\n\t"
@@ -63,7 +63,7 @@ static void execute_block(void *code)
     "movem.l %%d2-%%d7/%%a2-%%a3, (%%a0)\n\t"
 
     // restore callee-saved registers
-    "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a4\n\t"
+    "movem.l (%%sp)+, %%d2-%%d7/%%a2-%%a6\n\t"
 
     : // no outputs
     : [jit_regs] "m" (jit_regs),
@@ -72,19 +72,42 @@ static void execute_block(void *code)
   );
 }
 
+// Sync jit_ctx cache pointers from lru.c, need to do this when the arena
+// is cleared and the cache is reinitialized with new arrays
+static void sync_cache_pointers(void)
+{
+  cache_get_arrays(&jit_ctx.bank0_cache, &jit_ctx.banked_cache, &jit_ctx.upper_cache);
+}
+
 // Initialize JIT state for a new emulation session
 void jit_init(struct dmg *dmg)
 {
   compiler_init();
 
-  // Clear any existing cache from previous session
-  cache_clear_all();
-  cache_free_bank_arrays();
+  // initialize arena if not already done, otherwise reset it
+  if (!arena_remaining()) {
+    if (!arena_init()) {
+      set_status_bar("Arena alloc fail");
+      jit_halted = 1;
+      return;
+    }
+  } else {
+    arena_reset();
+  }
+
+  // pre-allocate cache arrays so dispatcher never sees NULL
+  if (!cache_init()) {
+    set_status_bar("Cache alloc fail");
+    jit_halted = 1;
+    return;
+  }
 
   memset(&jit_regs, 0, sizeof jit_regs);
 
   compile_ctx.dmg = dmg;
   compile_ctx.read = dmg_read;
+  compile_ctx.cache_store = cache_store;
+  compile_ctx.alloc = arena_alloc;
 
   jit_ctx.dmg = dmg;
   jit_ctx.read_func = dmg_read;
@@ -93,16 +116,14 @@ void jit_init(struct dmg *dmg)
   jit_ctx.write16_func = dmg_write16;
   jit_ctx.ei_di_func = dmg_ei_di;
   jit_ctx.current_rom_bank = 1; // bank 1 is default after boot
-  jit_ctx.bank0_cache = bank0_cache;
-  jit_ctx.banked_cache = banked_cache;
-  jit_ctx.upper_cache = upper_cache;
   jit_ctx.dispatcher_return = (void *) get_dispatcher_code();
   jit_ctx.patch_helper = (void *) get_patch_helper_code();
   jit_ctx.hram_base = dmg->zero_page;
   jit_ctx.frame_cycles_ptr = &dmg->frame_cycles;
+  sync_cache_pointers();
 
-  jit_regs.d3 = 0x100;
-  jit_regs.a3 = 0xfffe;
+  jit_regs.d3 = 0x100; // initial PC
+  jit_regs.a3 = 0xfffe; // initial SP
   jit_regs.a4 = (unsigned long) &jit_ctx;
 
   jit_halted = 0;
@@ -110,6 +131,7 @@ void jit_init(struct dmg *dmg)
 
 int jit_step(struct dmg *dmg)
 {
+  void *code;
   struct code_block *block;
   char buf[64];
   u32 t0, t1, t2, t3;
@@ -120,36 +142,47 @@ int jit_step(struct dmg *dmg)
   }
 
   // Look up or compile block
-  block = cache_lookup(jit_regs.d3, jit_ctx.current_rom_bank);
+  code = cache_lookup(jit_regs.d3, jit_ctx.current_rom_bank);
 
-  if (!block) {
-      u32 free_heap;
-      cache_ensure_memory();
-      free_heap = (u32) FreeMem();
-      sprintf(buf, "Compiling $%02x:%04x free=%u",
-              jit_ctx.current_rom_bank, jit_regs.d3, free_heap);
-      set_status_bar(buf);
+  if (!code) {
+    sprintf(buf, "Compiling $%02x:%04x mem=%luk",
+            jit_ctx.current_rom_bank, jit_regs.d3, arena_remaining() / 1024);
+    set_status_bar(buf);
+    compile_ctx.current_bank = jit_ctx.current_rom_bank;
+    block = compile_block(jit_regs.d3, &compile_ctx);
+    if (!block) {
+      // arena full, reset and retry once
+      arena_reset();
+      if (!cache_init()) {
+        sprintf(buf, "JIT: cache fail pc=%04x", jit_regs.d3);
+        set_status_bar(buf);
+        jit_halted = 1;
+        return 0;
+      }
+      sync_cache_pointers();
       block = compile_block(jit_regs.d3, &compile_ctx);
       if (!block) {
-          sprintf(buf, "JIT: alloc fail pc=%04x", jit_regs.d3);
-          set_status_bar(buf);
-          jit_halted = 1;
-          return 0;
+        sprintf(buf, "JIT: alloc fail pc=%04x", jit_regs.d3);
+        set_status_bar(buf);
+        jit_halted = 1;
+        return 0;
       }
+    }
 
-      if (block->error) {
-          sprintf(buf, "Error pc=%04x op=%02x", block->failed_address, block->failed_opcode);
-          set_status_bar(buf);
-          jit_halted = 1;
-          block_free(block);
-          return 0;
-      }
+    if (block->error) {
+      sprintf(buf, "Error pc=%04x op=%02x", block->failed_address, block->failed_opcode);
+      set_status_bar(buf);
+      jit_halted = 1;
+      return 0;
+    }
 
-      cache_store(jit_regs.d3, jit_ctx.current_rom_bank, block);
+    cache_store(jit_regs.d3, jit_ctx.current_rom_bank, block->code);
+    sync_cache_pointers();
+    code = block->code;
   }
 
   t1 = TickCount();
-  execute_block(block->code);
+  enter_asm_world(code);
   t2 = TickCount();
 
   // Get next PC from D3
@@ -174,7 +207,7 @@ int jit_step(struct dmg *dmg)
           dmg->interrupt_request_mask &= ~(1 << k);
           dmg->interrupt_enable = 0;
 
-          // push PC to stack (A3 holds GB SP value)
+          // push PC to stack
           jit_regs.a3 -= 2;
           dmg_write(dmg, jit_regs.a3, jit_regs.d3 & 0xff);
           dmg_write(dmg, jit_regs.a3 + 1, (jit_regs.d3 >> 8) & 0xff);
@@ -188,21 +221,18 @@ int jit_step(struct dmg *dmg)
   }
 
   t3 = TickCount();
-  time_in_compile += t1 - t0;
   time_in_jit += t2 - t1;
   time_in_sync += t3 - t2;
   call_count++;
   if (call_count % 100 == 0) {
-    static u32 last_compile = 0, last_jit = 0, last_sync = 0, last_frames_rendered = 0;
+    static u32 last_jit = 0, last_sync = 0, last_frames_rendered = 0;
     u32 now = TickCount();
     u32 elapsed = now - last_report_tick;
     u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
 
-    u32 d_compile = time_in_compile - last_compile;
     u32 d_jit = time_in_jit - last_jit;
     u32 d_sync = time_in_sync - last_sync;
 
-    u32 pct_compile = elapsed > 0 ? (d_compile * 100) / elapsed : 0;
     u32 pct_jit = elapsed > 0 ? (d_jit * 100) / elapsed : 0;
     u32 pct_sync = elapsed > 0 ? (d_sync * 100) / elapsed : 0;
 
@@ -211,12 +241,11 @@ int jit_step(struct dmg *dmg)
     u32 fps = elapsed > 0 ? (frames_delta * 60) / elapsed : 0;
     last_frames_rendered = frames_now;
 
-    last_compile = time_in_compile;
     last_jit = time_in_jit;
     last_sync = time_in_sync;
     last_report_tick = now;
 
-    sprintf(buf, "%lu, E/s:%lu J:%lu%% S:%lu%%", fps, exits_per_sec, pct_jit, pct_sync);
+    sprintf(buf, "%lu FPS, E:%lu, J:%lu%%, S:%lu%%", fps, exits_per_sec, pct_jit, pct_sync);
     set_status_bar(buf);
   }
 

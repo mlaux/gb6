@@ -70,6 +70,12 @@ int compile_jr(
         target_m68k = block->m68k_offsets[target_gb_offset];
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
 
+        // Register mid-block entry point for this branch target
+        if (ctx->cache_store) {
+            void *code_ptr = (void *) (block->code + target_m68k);
+            ctx->cache_store(target_gb_pc, ctx->current_bank, code_ptr);
+        }
+
         // Tiny loops (disp >= -3, e.g. "dec a; jr nz") are pure computation
         // (no room for memory access + flag-setting instruction).
         // Skip interrupt check to avoid overhead killing performance.
@@ -136,6 +142,12 @@ void compile_jr_cond(
         target_gb_pc = src_address + target_gb_offset;
         target_m68k = block->m68k_offsets[target_gb_offset];
         m68k_disp = (int16_t) target_m68k - (int16_t) (block->length + 2);
+
+        // Register mid-block entry point for this branch target
+        if (ctx->cache_store) {
+            void *code_ptr = (void *) (block->code + target_m68k);
+            ctx->cache_store(target_gb_pc, ctx->current_bank, code_ptr);
+        }
 
         // Tiny loops (disp >= -3): skip interrupt check, just branch
         if (disp >= -3) {
@@ -394,6 +406,12 @@ int compile_jr_cond_fused(
     if (target_gb_offset >= 0 && target_gb_offset < (int16_t) (*src_ptr - 2)) {
         target_gb_pc = src_address + target_gb_offset;
         target_m68k = block->m68k_offsets[target_gb_offset];
+
+        // Register mid-block entry point for this branch target
+        if (ctx->cache_store) {
+            void *code_ptr = (void *) (block->code + target_m68k);
+            ctx->cache_store(target_gb_pc, ctx->current_bank, code_ptr);
+        }
 
         // Tiny loops: skip cycle check
         if (disp >= -3) {

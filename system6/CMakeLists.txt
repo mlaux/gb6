@@ -23,13 +23,14 @@ add_application(Emulator
     ../compiler/alu.c
     ../compiler/instructions.c
     ../compiler/stack.c
+    arena.c
     dialogs.c
     debug.c
     dispatcher_asm.c
     jit.c
     input.c
     lcd_mac.c
-    lru.c
+    cache.c
     audio_mac.c
     emulator.c
     resources.r

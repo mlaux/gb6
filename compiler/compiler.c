@@ -144,7 +144,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
            READ_BYTE(0), READ_BYTE(1), READ_BYTE(2));
 #endif
 
-    block = malloc(sizeof *block);
+    if (ctx->alloc) {
+        block = ctx->alloc(sizeof *block);
+    } else {
+        block = malloc(sizeof *block);
+    }
     if (!block) {
         return NULL;
     }

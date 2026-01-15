@@ -82,11 +82,19 @@ static unsigned char patch_helper_code[] = {
     0x64, 0x36,                   // 12: bcc.s .upper (+54) -> offset 68
 
     // .banked: (offset 14) - lookup banked_cache[current_bank][d3 - 0x4000]
-    // TODO this is incorrect for actual banked code, just temp for testing:
-    // - block A in bank 1 jumps to address X
-    // - A is patched to JMP.L to block B (compiled when bank 1 was active)
-    // - later, bank 2 is active, and it jumps to address X
-    // - the patched JMP.L still goes to block B (bank 1's code), which is wrong
+
+    // TODO: this scenario can occur, but i think it's saved by the fact that
+    // 'jp hl' always goes through the dispatcher, and bank0 code with a
+    // hardcoded jp/call $5xxx where the intended target varies by bank is very rare:
+
+    // 1. block A is at address 0x1000 (bank 0, always visible)
+    // 2. block A has a patchable exit to address 0x5000 (banked region)
+    // 3. with bank 1 active, block A runs, patch_helper finds bank 1's code
+    //      at 0x5000, patches block A with JMP.L bank1_code
+    // 4. later, bank 2 is switched in
+    // 5. some other code jumps to 0x1000 - block A is found in bank0_cache and runs
+    // 6. block A's patched JMP goes directly to bank 1's code
+
     0x20, 0x6c, 0x00, 0x18,       // 14: movea.l 24(a4), a0  [banked_cache]
     0x72, 0x00,                   // 18: moveq #0, d1
     0x12, 0x2c, 0x00, 0x11,       // 20: move.b 17(a4), d1  [current_rom_bank]

@@ -15,9 +15,9 @@ typedef struct {
     /* 10 */ volatile u8 interrupt_check; // no longer used, can go away
     /* 11 */ volatile u8 current_rom_bank;
     /* 12 */ u8 _pad[2];
-    /* 14 */ struct code_block **bank0_cache;
-    /* 18 */ struct code_block ***banked_cache;
-    /* 1c */ struct code_block **upper_cache;
+    /* 14 */ void **bank0_cache;
+    /* 18 */ void ***banked_cache;
+    /* 1c */ void **upper_cache;
     /* 20 */ void *dispatcher_return;
     /* 24 */ void *read16_func;
     /* 28 */ void *write16_func;
@@ -25,7 +25,7 @@ typedef struct {
     /* 30 */ void *patch_helper;  // patch_helper routine for lazy block patching
     /* 34 */ u32 read_cycles; // in-flight cycles at time of dmg_read call
     /* 38 */ void *hram_base; // dmg->zero_page for inline high RAM access
-    /* 3c */ u32 *frame_cycles_ptr; // pointer to dmg->frame_cycles for HALT optimization
+    /* 3c */ u32 *frame_cycles_ptr; // pointer to dmg->frame_cycles for HALT
 } jit_context;
 
 extern jit_context jit_ctx;

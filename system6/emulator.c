@@ -32,7 +32,7 @@
 #include "input.h"
 #include "lcd_mac.h"
 #include "dispatcher_asm.h"
-#include "lru.h"
+#include "cache.h"
 #include "jit.h"
 #include "settings.h"
 #include "audio_mac.h"
