@@ -23,6 +23,8 @@ extern struct lcd lcd;
 extern struct audio audio;
 extern struct dmg dmg;
 
+extern unsigned char force_draw_sprites;
+
 extern char offscreen_buf[];
 extern Rect offscreen_rect;
 extern BitMap offscreen_bmp;

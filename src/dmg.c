@@ -10,6 +10,8 @@
 #include "audio.h"
 #include "../system6/jit.h"
 
+extern unsigned char force_draw_sprites;
+
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
 #define CYCLES_MIDDLE (CYCLES_LINE_144 / 2)
@@ -359,7 +361,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
                 if (lcdc & LCDC_ENABLE_BG) {
                     lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
                 }
-                if (lcdc & LCDC_ENABLE_OBJ) {
+                if ((lcdc & LCDC_ENABLE_OBJ) || force_draw_sprites) {
                     lcd_render_objs(dmg);
                 }
                 lcd_draw(dmg->lcd);

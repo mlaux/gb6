@@ -61,6 +61,7 @@ struct dmg dmg;
 WindowPtr g_wp;
 unsigned char app_running;
 unsigned char sound_enabled;
+unsigned char force_draw_sprites;
 int screen_depth;
 
 static unsigned long soft_reset_release_tick;
@@ -410,7 +411,8 @@ int LoadRom(Str63 fileName, short vRefNum)
     return false;
   }
 
-  if (MaxBlock() < MEMORY_WARNING_THRESHOLD) {
+  // 2 MB base + 256 KB per 32 KB of ROM
+  if (MaxBlock() < MEMORY_WARNING_THRESHOLD + rom.length * 8) {
     ShowCenteredAlert(
         ALRT_4_LINE,
         "\pI don't have much memory left after", 
@@ -496,6 +498,14 @@ void OnMenuAction(long action)
       ShowKeyMappingsDialog();
     } else if (item == EDIT_PREFERENCES) {
       ShowPreferencesDialog();
+    }
+  }
+
+  else if (menu == MENU_HACKS) {
+    if (item == HACKS_FORCE_DRAW_SPRITES) {
+      force_draw_sprites = !force_draw_sprites;
+      CheckItem(GetMenuHandle(MENU_HACKS), HACKS_FORCE_DRAW_SPRITES,
+          force_draw_sprites);
     }
   }
 }

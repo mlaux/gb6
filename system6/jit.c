@@ -83,6 +83,7 @@ static void sync_cache_pointers(void)
 // Initialize JIT state for a new emulation session
 void jit_init(struct dmg *dmg)
 {
+  set_status_bar("Loading...");
   compiler_init();
 
   if (!arena_init()) {
@@ -144,7 +145,11 @@ int jit_step(struct dmg *dmg)
 
   if (!code) {
     sprintf(buf, "Compiling $%02x:%04x %luk/%luk",
-            jit_ctx.current_rom_bank, jit_regs.d3, arena_remaining() / 1024, arena_size() / 1024);
+      jit_ctx.current_rom_bank, 
+      jit_regs.d3, 
+      arena_remaining() / 1024, 
+      arena_size() / 1024
+    );
     set_status_bar(buf);
     compile_ctx.current_bank = jit_ctx.current_rom_bank;
     block = compile_block(jit_regs.d3, &compile_ctx);
@@ -168,7 +173,8 @@ int jit_step(struct dmg *dmg)
     }
 
     if (block->error) {
-      sprintf(buf, "Error pc=%04x op=%02x", block->failed_address, block->failed_opcode);
+      sprintf(buf, "Error pc=%02x:%04x op=%02x", jit_ctx.current_rom_bank, 
+                block->failed_address, block->failed_opcode);
       set_status_bar(buf);
       jit_halted = 1;
       return 0;
