@@ -67,7 +67,7 @@ extern PixMap offscreen_pixmap;
 
 #define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
 
-#define MEMORY_WARNING_THRESHOLD (2 * 1024 * 1024)
+#define BASE_MEMORY_REQUIRED (3 * 1024 * 512) 
 
 int LoadRom(Str63, short);
 void SetScreenScale(int scale);

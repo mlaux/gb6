@@ -411,8 +411,8 @@ int LoadRom(Str63 fileName, short vRefNum)
     return false;
   }
 
-  // 2 MB base + 256 KB per 32 KB of ROM
-  if (MaxBlock() < MEMORY_WARNING_THRESHOLD + rom.length * 8) {
+  // 1.5 MB base + 128 KB per 16 KB bank of ROM
+  if (MaxBlock() < BASE_MEMORY_REQUIRED + rom.length * 8) {
     ShowCenteredAlert(
         ALRT_4_LINE,
         "\pI don't have much memory left after", 
