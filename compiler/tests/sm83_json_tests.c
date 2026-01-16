@@ -168,11 +168,10 @@ static void setup_runtime_stubs(void)
     // JIT_CTX_DISPATCH: where to jump after block ends
     // Point to an infinite loop so m68k_execute returns
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_DISPATCH, CODE_BASE + 0x800);
-    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_UNUSED_1, 0);
-    m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_UNUSED_2, 0);
     m68k_write_memory_16(CODE_BASE + 0x800, 0x60fe);          // bra.s *
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, CODE_BASE + 0x800);
-    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_HRAM_BASE, 0xff80);
+    // wram_base points to start of WRAM (0xC000-0xDFFF) in 68k address space
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRAM_BASE, 0xc000);
 }
 
 // Set up 68k registers from GB state
@@ -535,8 +534,6 @@ int main(int argc, char *argv[])
 
     test_ctx.dmg = NULL;
     test_ctx.read = test_read;
-    test_ctx.wram_base = (void *) 0xc000;
-    test_ctx.hram_base = (void *) 0xff80;
     test_ctx.single_instruction = 1;  // Compile one instruction at a time for testing
 
     if (directory) {

@@ -867,6 +867,34 @@ void emit_move_b_dn_idx_an(
     emit_word(block, idx_dreg << 12);
 }
 
+// move.b d(An,Dm.w), Dd - load byte from indexed address with 8-bit displacement
+void emit_move_b_disp_idx_an_dn(
+    struct code_block *block,
+    int8_t disp,
+    uint8_t base_areg,
+    uint8_t idx_dreg,
+    uint8_t dest_dreg
+) {
+    // move.b ea, Dn: 00 01 ddd 000 110 aaa (mode 110 = An with index)
+    // extension word: D/A=0 | idx_reg | W/L=0 | 000 | disp8
+    emit_word(block, 0x1030 | (dest_dreg << 9) | base_areg);
+    emit_word(block, (idx_dreg << 12) | ((uint8_t) disp));
+}
+
+// move.b Ds, d(An,Dm.w) - store byte to indexed address with 8-bit displacement
+void emit_move_b_dn_disp_idx_an(
+    struct code_block *block,
+    uint8_t src_dreg,
+    int8_t disp,
+    uint8_t base_areg,
+    uint8_t idx_dreg
+) {
+    // move.b Dn, ea: 00 01 aaa 110 000 sss (mode 110 = An with index)
+    // extension word: D/A=0 | idx_reg | W/L=0 | 000 | disp8
+    emit_word(block, 0x1180 | (base_areg << 9) | src_dreg);
+    emit_word(block, (idx_dreg << 12) | ((uint8_t) disp));
+}
+
 // lea d(An), An - load effective address with 16-bit displacement
 void emit_lea_disp_an_an(
     struct code_block *block,

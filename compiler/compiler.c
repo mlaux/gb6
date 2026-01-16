@@ -23,19 +23,19 @@ void compiler_init(void)
 }
 
 // Reconstruct BC from split format (0x00BB00CC) into D1.w as 0xBBCC
-void compile_bc_to_addr(struct code_block *block)
+void compile_join_bc(struct code_block *block, int dreg)
 {
-    emit_move_l_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D1 = 0x00BB00CC
-    emit_lsr_l_imm_dn(block, 8, REG_68K_D_SCRATCH_1);             // D1 = 0x0000BB00
-    emit_move_b_dn_dn(block, REG_68K_D_BC, REG_68K_D_SCRATCH_1);  // D1 = 0x0000BBCC
+    emit_move_l_dn_dn(block, REG_68K_D_BC, dreg);  // D1 = 0x00BB00CC
+    emit_lsr_l_imm_dn(block, 8, dreg);             // D1 = 0x0000BB00
+    emit_move_b_dn_dn(block, REG_68K_D_BC, dreg);  // D1 = 0x0000BBCC
 }
 
 // Reconstruct DE from split format (0x00DD00EE) into D1.w as 0xDDEE
-void compile_de_to_addr(struct code_block *block)
+void compile_join_de(struct code_block *block, int dreg)
 {
-    emit_move_l_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);  // D1 = 0x00DD00EE
-    emit_lsr_l_imm_dn(block, 8, REG_68K_D_SCRATCH_1);             // D1 = 0x0000DD00
-    emit_move_b_dn_dn(block, REG_68K_D_DE, REG_68K_D_SCRATCH_1);  // D1 = 0x0000DDEE
+    emit_move_l_dn_dn(block, REG_68K_D_DE, dreg);  // D1 = 0x00DD00EE
+    emit_lsr_l_imm_dn(block, 8, dreg);             // D1 = 0x0000DD00
+    emit_move_b_dn_dn(block, REG_68K_D_DE, dreg);  // D1 = 0x0000DDEE
 }
 
 static void compile_ldh_a_u8(struct code_block *block, uint8_t addr)
@@ -239,22 +239,22 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             break;
 
         case 0x02: // ld (bc), a
-            compile_bc_to_addr(block);  // BC -> D1.w
+            compile_join_bc(block, 1);  // BC -> D1.w
             compile_call_dmg_write_a(block);  // dmg_write(dmg, D1.w, A)
             break;
 
         case 0x0a: // ld a, (bc)
-            compile_bc_to_addr(block);  // BC -> D1.w
+            compile_join_bc(block, 1);  // BC -> D1.w
             compile_call_dmg_read_a(block);  // A = dmg_read(dmg, D1.w)
             break;
 
         case 0x12: // ld (de), a
-            compile_de_to_addr(block);  // DE -> D1.w
+            compile_join_de(block, 1);  // DE -> D1.w
             compile_call_dmg_write_a(block);  // dmg_write(dmg, D1.w, A)
             break;
 
         case 0x1a: // ld a, (de)
-            compile_de_to_addr(block);  // DE -> D1.w
+            compile_join_de(block, 1);  // DE -> D1.w
             compile_call_dmg_read_a(block);  // A = dmg_read(dmg, D1.w)
             break;
 
@@ -349,9 +349,9 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             // use add.w so flags are set
             emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_0);
             if (op == 0x09) {
-                compile_bc_to_addr(block);  // D1.w = BC
+                compile_join_bc(block, 1);  // D1.w = BC
             } else {
-                compile_de_to_addr(block);  // D1.w = DE
+                compile_join_de(block, 1);  // D1.w = DE
             }
             emit_add_w_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_SCRATCH_0);  // D3 += D1, sets C
             emit_movea_w_dn_an(block, REG_68K_D_SCRATCH_0, REG_68K_A_HL);  // HL = D3

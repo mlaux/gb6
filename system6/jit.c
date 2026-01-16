@@ -115,7 +115,7 @@ void jit_init(struct dmg *dmg)
   jit_ctx.current_rom_bank = 1; // bank 1 is default after boot
   jit_ctx.dispatcher_return = (void *) get_dispatcher_code();
   jit_ctx.patch_helper = (void *) get_patch_helper_code();
-  jit_ctx.hram_base = dmg->zero_page;
+  jit_ctx.wram_base = dmg->main_ram;
   jit_ctx.frame_cycles_ptr = &dmg->frame_cycles;
   sync_cache_pointers();
 

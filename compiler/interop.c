@@ -155,7 +155,7 @@ void compile_call_ei_di(struct code_block *block, int enabled)
 }
 
 // Slow path for dmg_read16 - addr in D1.w, result in D0.w
-static void compile_slow_dmg_read16(struct code_block *block)
+void compile_slow_dmg_read16(struct code_block *block)
 {
     emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
     emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT);
@@ -220,7 +220,7 @@ void compile_call_dmg_read16(struct code_block *block)
 }
 
 // Slow path for dmg_write16 - addr in D1.w, data in D0.w
-static void compile_slow_dmg_write16(struct code_block *block)
+void compile_slow_dmg_write16(struct code_block *block)
 {
     emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
     emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT);

@@ -179,11 +179,8 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRITE16, STUB_BASE + 0x80);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, 0);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ_CYCLES, 0);
-    // Unused fields (was sp_adjust and gb_sp)
-    // m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_UNUSED_1, 0);
-    // m68k_write_memory_16(JIT_CTX_ADDR + JIT_CTX_UNUSED_2, 0);
-    // hram_base points to start of high RAM (0xff80-0xfffe) in 68k address space
-    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_HRAM_BASE, GB_MEM_BASE + 0xff80);
+    // wram_base points to start of WRAM (0xC000-0xDFFF) in 68k address space
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRAM_BASE, GB_MEM_BASE + 0xc000);
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run

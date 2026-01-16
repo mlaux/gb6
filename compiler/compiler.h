@@ -56,7 +56,7 @@
 #define JIT_CTX_CYCLES        44  // u32: accumulated GB cycles
 #define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
 #define JIT_CTX_READ_CYCLES   52  // u32: in-flight cycles at dmg_read call
-#define JIT_CTX_HRAM_BASE     56  // void *hram_base (dmg->zero_page)
+#define JIT_CTX_WRAM_BASE     56  // void *wram_base (dmg->main_ram)
 #define JIT_CTX_FRAME_CYCLES_PTR 60  // u32 *frame_cycles_ptr (dmg->frame_cycles)
 #define JIT_CTX_TEMP_1 64
 #define JIT_CTX_TEMP_2 68
@@ -106,8 +106,8 @@ void block_free(struct code_block *block);
 void emit_byte(struct code_block *block, uint8_t byte);
 void emit_word(struct code_block *block, uint16_t word);
 
-void compile_bc_to_addr(struct code_block *block);
-void compile_de_to_addr(struct code_block *block);
+void compile_join_bc(struct code_block *block, int dreg);
+void compile_join_de(struct code_block *block, int dreg);
 
 extern int cycles_per_exit;
 
