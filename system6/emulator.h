@@ -32,7 +32,7 @@ extern BitMap offscreen_bmp;
 extern char offscreen_color_buf[];
 extern PixMap offscreen_pixmap;
 
-#define WINDOW_TITLE "\pgb6"
+#define APP_VERSION "1.0.0"
 
 #define WINDOW_X 8
 #define WINDOW_Y 40
@@ -67,7 +67,7 @@ extern PixMap offscreen_pixmap;
 
 #define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
 
-#define BASE_MEMORY_REQUIRED (3 * 1024 * 512) 
+#define BASE_MEMORY_REQUIRED (2 * 1024 * 1024) 
 
 int LoadRom(Str63, short);
 void SetScreenScale(int scale);

@@ -98,6 +98,7 @@ static void build_save_filename(void)
 void InitToolbox(void)
 {
   Handle mbar;
+  MenuHandle apple;
 
   InitGraf(&qd.thePort);
   InitFonts();
@@ -114,7 +115,9 @@ void InitToolbox(void)
 
   mbar = GetNewMBar(MBAR_DEFAULT);
   SetMenuBar(mbar);
-  AppendResMenu(GetMenuHandle(MENU_APPLE), 'DRVR');
+  apple = GetMenuHandle(MENU_APPLE);
+  InsertMenuItem(apple, "\p(Version " APP_VERSION, 1);
+  AppendResMenu(apple, 'DRVR');
   if (!audio_mac_available()) {
     DisableItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND);
   }
@@ -411,8 +414,7 @@ int LoadRom(Str63 fileName, short vRefNum)
     return false;
   }
 
-  // 1.5 MB base + 128 KB per 16 KB bank of ROM
-  if (MaxBlock() < BASE_MEMORY_REQUIRED + rom.length * 8) {
+  if (MaxBlock() < BASE_MEMORY_REQUIRED) {
     ShowCenteredAlert(
         ALRT_4_LINE,
         "\pI don't have much memory left after", 

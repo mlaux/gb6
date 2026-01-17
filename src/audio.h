@@ -15,6 +15,7 @@ struct audio_channel {
     u32 phase_inc;      // phase increment per sample
     u8 volume;          // 4-bit volume (0-15)
     u8 duty;            // duty cycle (0-3)
+    u8 band;            // bandlimit table index (0-3)
     u8 enabled;
 
     // envelope
@@ -23,10 +24,16 @@ struct audio_channel {
     u8 env_pace;
     u8 env_timer;
 
+    // length counter
+    u16 length_counter; // counts up to 64 (pulse/noise) or 256 (wave)
+    u8 length_enable;
+
     // sweep (CH1 only)
     u8 sweep_pace;
     u8 sweep_dir;       // 0 = increase, 1 = decrease
     u8 sweep_step;
+    u8 sweep_timer;
+    u16 sweep_freq;     // shadow frequency for sweep calculation
 };
 
 struct audio {
@@ -46,6 +53,8 @@ struct audio {
     u8 panning;                 // NR51
 
     u16 env_counter;            // sample counter for 64 Hz envelope tick
+    u16 sweep_counter;          // sample counter for 128 Hz sweep tick
+    u16 length_counter;         // sample counter for 256 Hz length tick
 
     // raw register storage for reads
     u8 regs[0x30];

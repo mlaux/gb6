@@ -144,7 +144,7 @@ int jit_step(struct dmg *dmg)
   code = cache_lookup(jit_regs.d3, jit_ctx.current_rom_bank);
 
   if (!code) {
-    sprintf(buf, "Compiling $%02x:%04x %luk/%luk",
+    sprintf(buf, "$%02x:%04x %luk/%luk",
       jit_ctx.current_rom_bank, 
       jit_regs.d3, 
       arena_remaining() / 1024, 
@@ -252,7 +252,7 @@ int jit_step(struct dmg *dmg)
     last_sync = time_in_sync;
     last_report_tick = now;
 
-    sprintf(buf, "%lu FPS, E:%lu, J:%lu%%, S:%lu%%", fps, exits_per_sec, pct_jit, pct_sync);
+    sprintf(buf, "%lu FPS, J:%lu%%, S:%lu%%", fps, pct_jit, pct_sync);
     set_status_bar(buf);
   }
 

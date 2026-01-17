@@ -1,6 +1,11 @@
 #include <string.h>
 #include "audio.h"
 
+// sampling is done at 11127.27 Hz which is half of the Mac's native sample
+// rate. this is so that it can just play every sample twice instead of
+// rescaling. whether the Sound Manager actually implements this optimization,
+// i do not know, but it probably does.
+
 // (131072 * 65536) / (divisor * 11127.27)
 #define PHASE_INC_SQUARE 771971
 // (65536 * 65536) / (divisor * 11127.27)
@@ -8,21 +13,64 @@
 // (4194304 * 65536) / (divisor * 11127.27)
 #define PHASE_INC_NOISE 24703086
 
-// duty cycle patterns (8 steps each)
-// 0 = 12.5%, 1 = 25%, 2 = 50%, 3 = 75%
-static const u8 duty_table[4] = {
-    0x01, // 00000001
-    0x03, // 00000011
-    0x0f, // 00001111
-    0xfc  // 11111100
-};
-
 // for noise channel
 static const u8 divisor_table[8] = { 8, 16, 32, 48, 64, 80, 96, 112 };
 
 // precomputed LFSR output bits
 static u8 lfsr15_bits[4096]; // 32768 bits for 15-bit mode
 static u8 lfsr7_bits[16]; // 128 bits for 7-bit mode
+
+// precomputed bandlimited square wave tables. this sounds better than the
+// basic square wave, but still not great because of the low sample rate.
+// [duty 0-3][band 0-3][sample 0-31]
+// band 0: divisor >= 512 (< 256 Hz), 21 harmonics
+// band 1: divisor 256-511 (256-512 Hz), 11 harmonics
+// band 2: divisor 128-255 (512-1024 Hz), 5 harmonics
+// band 3: divisor < 128 (> 1024 Hz), 3 harmonics
+#define BL_TABLE_SIZE 32
+#define BL_TABLE_SHIFT 11  // phase >> 11 gives 0-31 index
+static const s8 bl_square[4][4][BL_TABLE_SIZE] = {
+    { // duty 0 (12.5%)
+        {   0,  4, 15,  6,  5,  5,  3,  3,  4,  3,  3,  5,  5,  6, 15,  4,
+            0, -4,-15, -6, -5, -5, -3, -3, -4, -3, -3, -5, -5, -6,-15, -4 },
+        {   0,  7, 15, 11,  5,  6,  5,  4,  5,  4,  5,  6,  5, 11, 15,  7,
+            0, -7,-15,-11, -5, -6, -5, -4, -5, -4, -5, -6, -5,-11,-15, -7 },
+        {   0, 10, 15, 14,  9,  5,  4,  6,  6,  6,  4,  5,  9, 14, 15, 10,
+            0,-10,-15,-14, -9, -5, -4, -6, -6, -6, -4, -5, -9,-14,-15,-10 },
+        {   0,  9, 15, 15, 15, 13,  8,  4,  3,  4,  8, 13, 15, 15, 15,  9,
+            0, -9,-15,-15,-15,-13, -8, -4, -3, -4, -8,-13,-15,-15,-15, -9 }
+    },
+    { // duty 1 (25.0%)
+        {   0,  2,  4,  7, 15,  8,  7,  6,  6,  6,  7,  8, 15,  7,  4,  2,
+            0, -2, -4, -7,-15, -8, -7, -6, -6, -6, -7, -8,-15, -7, -4, -2 },
+        {   0,  3,  4, 10, 15, 11,  8,  7,  7,  7,  8, 11, 15, 10,  4,  3,
+            0, -3, -4,-10,-15,-11, -8, -7, -7, -7, -8,-11,-15,-10, -4, -3 },
+        {   0,  3,  7, 12, 15, 15, 12,  8,  6,  8, 12, 15, 15, 12,  7,  3,
+            0, -3, -7,-12,-15,-15,-12, -8, -6, -8,-12,-15,-15,-12, -7, -3 },
+        {   0,  6, 11, 14, 15, 14, 13, 11, 11, 11, 13, 14, 15, 14, 11,  6,
+            0, -6,-11,-14,-15,-14,-13,-11,-11,-11,-13,-14,-15,-14,-11, -6 }
+    },
+    { // duty 2 (50.0%)
+        {   0,  1,  2,  2,  3,  4,  6,  7, 15,  7,  6,  4,  3,  2,  2,  1,
+            0, -1, -2, -2, -3, -4, -6, -7,-15, -7, -6, -4, -3, -2, -2, -1 },
+        {   0,  1,  2,  2,  4,  5,  6, 11, 15, 11,  6,  5,  4,  2,  2,  1,
+            0, -1, -2, -2, -4, -5, -6,-11,-15,-11, -6, -5, -4, -2, -2, -1 },
+        {   0,  2,  3,  3,  3,  6, 10, 13, 15, 13, 10,  6,  3,  3,  3,  2,
+            0, -2, -3, -3, -3, -6,-10,-13,-15,-13,-10, -6, -3, -3, -3, -2 },
+        {   0,  0,  1,  3,  5,  9, 12, 14, 15, 14, 12,  9,  5,  3,  1,  0,
+            0,  0, -1, -3, -5, -9,-12,-14,-15,-14,-12, -9, -5, -3, -1,  0 }
+    },
+    { // duty 3 (75.0%)
+        {   0,  2,  4,  7, 15,  8,  7,  6,  6,  6,  7,  8, 15,  7,  4,  2,
+            0, -2, -4, -7,-15, -8, -7, -6, -6, -6, -7, -8,-15, -7, -4, -2 },
+        {   0,  3,  4, 10, 15, 11,  8,  7,  7,  7,  8, 11, 15, 10,  4,  3,
+            0, -3, -4,-10,-15,-11, -8, -7, -7, -7, -8,-11,-15,-10, -4, -3 },
+        {   0,  3,  7, 12, 15, 15, 12,  8,  6,  8, 12, 15, 15, 12,  7,  3,
+            0, -3, -7,-12,-15,-15,-12, -8, -6, -8,-12,-15,-15,-12, -7, -3 },
+        {   0,  6, 11, 14, 15, 14, 13, 11, 11, 11, 13, 14, 15, 14, 11,  6,
+            0, -6,-11,-14,-15,-14,-13,-11,-11,-11,-13,-14,-15,-14,-11, -6 }
+    }
+};
 
 static void update_phase_inc(struct audio_channel *ch, int base)
 {
@@ -35,6 +83,20 @@ static void update_phase_inc(struct audio_channel *ch, int base)
         divisor = 1;
 
     ch->phase_inc = base / divisor;
+
+    // compute band from divisor
+    // divisor >> 7: 0 = >1024Hz, 1 = 512-1024Hz, 2-3 = 256-512Hz, 4+ = <256Hz
+    int d7 = divisor >> 7;
+    if (d7 >= 4) {
+        ch->band = 0;
+    }
+    else if (d7 >= 2) {
+        ch->band = 1;
+    } else if (d7 >= 1) {
+        ch->band = 2;
+    } else {
+        ch->band = 3;
+    }
 }
 
 static void update_phase_inc_noise(struct audio *audio)
@@ -82,6 +144,53 @@ static void step_envelope(struct audio_channel *ch)
             }
         }
     }
+}
+
+static void step_sweep(struct audio *audio)
+{
+    struct audio_channel *ch = &audio->ch1;
+
+    if (ch->sweep_pace == 0)
+        return;
+
+    if (ch->sweep_timer > 0)
+        ch->sweep_timer--;
+
+    if (ch->sweep_timer == 0) {
+        ch->sweep_timer = ch->sweep_pace;
+
+        if (ch->sweep_step > 0) {
+            u16 delta = ch->sweep_freq >> ch->sweep_step;
+            u16 new_freq;
+
+            if (ch->sweep_dir) {
+                // decrease frequency
+                new_freq = ch->sweep_freq - delta;
+            } else {
+                // increase frequency
+                new_freq = ch->sweep_freq + delta;
+                // overflow check - disable channel if > 2047
+                if (new_freq > 2047) {
+                    ch->enabled = 0;
+                    return;
+                }
+            }
+
+            ch->sweep_freq = new_freq;
+            ch->freq_reg = new_freq;
+            update_phase_inc(ch, PHASE_INC_SQUARE);
+        }
+    }
+}
+
+static void step_length(struct audio_channel *ch, u16 max_length)
+{
+    if (!ch->length_enable)
+        return;
+
+    ch->length_counter++;
+    if (ch->length_counter >= max_length)
+        ch->enabled = 0;
 }
 
 void audio_init(struct audio *audio)
@@ -135,6 +244,7 @@ void audio_write(struct audio *audio, u16 addr, u8 value)
         break;
     case 0xff11:    // NR11 - duty/length
         audio->ch1.duty = (value >> 6) & 0x03;
+        audio->ch1.length_counter = value & 0x3f;
         break;
     case 0xff12:    // NR12 - envelope
         audio->ch1.env_initial = (value >> 4) & 0x0f;
@@ -147,15 +257,23 @@ void audio_write(struct audio *audio, u16 addr, u8 value)
         break;
     case 0xff14:    // NR14 - freq high + trigger
         audio->ch1.freq_reg = (audio->ch1.freq_reg & 0xff) | ((value & 0x07) << 8);
+        audio->ch1.length_enable = (value >> 6) & 0x01;
         update_phase_inc(&audio->ch1, PHASE_INC_SQUARE);
         if (value & 0x80) {
             trigger_non_wave(&audio->ch1);
+            // initialize sweep shadow frequency
+            audio->ch1.sweep_freq = audio->ch1.freq_reg;
+            audio->ch1.sweep_timer = audio->ch1.sweep_pace;
+            // reset length if expired
+            if (audio->ch1.length_counter >= 64)
+                audio->ch1.length_counter = 0;
         }
         break;
 
     // CH2 - square (no sweep)
     case 0xff16:    // NR21 - duty/length
         audio->ch2.duty = (value >> 6) & 0x03;
+        audio->ch2.length_counter = value & 0x3f;
         break;
     case 0xff17:    // NR22 - envelope
         audio->ch2.env_initial = (value >> 4) & 0x0f;
@@ -168,15 +286,21 @@ void audio_write(struct audio *audio, u16 addr, u8 value)
         break;
     case 0xff19:    // NR24 - freq high + trigger
         audio->ch2.freq_reg = (audio->ch2.freq_reg & 0xff) | ((value & 0x07) << 8);
+        audio->ch2.length_enable = (value >> 6) & 0x01;
         update_phase_inc(&audio->ch2, PHASE_INC_SQUARE);
         if (value & 0x80) {
             trigger_non_wave(&audio->ch2);
+            if (audio->ch2.length_counter >= 64)
+                audio->ch2.length_counter = 0;
         }
         break;
 
     // CH3 - wave
     case 0xff1a:    // NR30 - DAC enable
         audio->ch3.enabled = (value & 0x80) ? 1 : 0;
+        break;
+    case 0xff1b:    // NR31 - length
+        audio->ch3.length_counter = value;
         break;
     case 0xff1c:    // NR32 - volume
         // volume code: 0=mute, 1=100%, 2=50%, 3=25%
@@ -188,15 +312,21 @@ void audio_write(struct audio *audio, u16 addr, u8 value)
         break;
     case 0xff1e:    // NR34 - freq high + trigger
         audio->ch3.freq_reg = (audio->ch3.freq_reg & 0xff) | ((value & 0x07) << 8);
+        audio->ch3.length_enable = (value >> 6) & 0x01;
         update_phase_inc(&audio->ch3, PHASE_INC_WAVE);
         if (value & 0x80) {
             audio->ch3.enabled = 1;
             audio->ch3.phase = 0;
             // wave doesn't use envelope
+            if (audio->ch3.length_counter >= 256)
+                audio->ch3.length_counter = 0;
         }
         break;
 
     // CH4 - noise
+    case 0xff20:    // NR41 - length
+        audio->ch4.length_counter = value & 0x3f;
+        break;
     case 0xff21:    // NR42 - envelope
         audio->ch4.env_initial = (value >> 4) & 0x0f;
         audio->ch4.env_dir = (value >> 3) & 0x01;
@@ -209,8 +339,11 @@ void audio_write(struct audio *audio, u16 addr, u8 value)
         update_phase_inc_noise(audio);
         break;
     case 0xff23:    // NR44 - trigger
+        audio->ch4.length_enable = (value >> 6) & 0x01;
         if (value & 0x80) {
             trigger_non_wave(&audio->ch4);
+            if (audio->ch4.length_counter >= 64)
+                audio->ch4.length_counter = 0;
         }
         break;
 
@@ -256,17 +389,17 @@ u8 audio_read(struct audio *audio, u16 addr)
     return audio->regs[addr - 0xff10];
 }
 
-static s8 generate_square(struct audio_channel *ch, u8 duty_pattern)
+static s8 generate_square(struct audio_channel *ch)
 {
     if (!ch->enabled || ch->volume == 0)
         return 0;
 
-    // phase is 16.16 fixed point, use upper 3 bits of low 16 for duty position
-    int duty_pos = (ch->phase >> 13) & 0x07;
-    int high = (duty_pattern >> (7 - duty_pos)) & 0x01;
+    // phase is 16.16 fixed point, use upper 5 bits for table index
+    int idx = (ch->phase >> BL_TABLE_SHIFT) & (BL_TABLE_SIZE - 1);
+    s8 sample = bl_square[ch->duty][ch->band][idx];
 
-    // output range: -volume to +volume
-    return high ? ch->volume : -(s8)ch->volume;
+    // scale by volume
+    return (sample * ch->volume) >> 4;
 }
 
 static s8 generate_wave(struct audio *audio)
@@ -327,8 +460,8 @@ void audio_generate(struct audio *audio, u8 *buffer, int samples)
     for (k = 0; k < samples; k++) {
         s16 mix = 0;
 
-        mix += generate_square(&audio->ch1, duty_table[audio->ch1.duty]);
-        mix += generate_square(&audio->ch2, duty_table[audio->ch2.duty]);
+        mix += generate_square(&audio->ch1);
+        mix += generate_square(&audio->ch2);
         mix += generate_wave(audio);
         mix += generate_noise(audio);
 
@@ -347,10 +480,28 @@ void audio_generate(struct audio *audio, u8 *buffer, int samples)
             step_envelope(&audio->ch4);
         }
 
+        // sweep tick at 128 Hz, 11127 / 128 = 87 samples
+        audio->sweep_counter++;
+        if (audio->sweep_counter >= 87) {
+            audio->sweep_counter = 0;
+            step_sweep(audio);
+        }
+
+        // length tick at 256 Hz, 11127 / 256 = 43 samples
+        audio->length_counter++;
+        if (audio->length_counter >= 43) {
+            audio->length_counter = 0;
+            step_length(&audio->ch1, 64);
+            step_length(&audio->ch2, 64);
+            step_length(&audio->ch3, 256);
+            step_length(&audio->ch4, 64);
+        }
+
         int master = audio->master_vol_right + 1;
         // >>3 would be "most correct" in terms of keeping the original scale
         // but this scales to -106 - 104 to make it louder
         mix = (mix * master) >> 2;
+        // direct to unsigned bc it's what sound manager wants
         buffer[k] = (u8) (mix + 128);
     }
 }
