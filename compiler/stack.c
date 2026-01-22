@@ -353,7 +353,7 @@ int compile_stack_op(
             int8_t offset = (int8_t) READ_BYTE(*src_ptr);
             (*src_ptr)++;
 
-            // Load gb_sp from context (not A3, which may be native pointer)
+            // Load gb_sp from context, not A3, might be native pointer
             emit_move_w_disp_an_dn(block, JIT_CTX_GB_SP, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
 
             // Compute HL = GB_SP + sign_extended(offset)
