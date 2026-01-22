@@ -10,6 +10,9 @@
 #include "lcd_mac.h"
 #include "settings.h"
 
+// packed byte bits:  [7-6]  [5-4]  [3-2]  [1-0]
+// GB pixel:           p0     p1     p2     p3
+
 // lookup tables for 2x dithered rendering
 // index = 4 packed GB pixels (2 bits each), output = 8 screen pixels (1bpp)
 static unsigned char dither_row0[256];
@@ -21,8 +24,12 @@ static unsigned char dither_row1[256];
 static unsigned char thresh_hi[256];
 static unsigned char thresh_lo[256];
 
-// pre-mapped color indices for current screen CLUT
-static unsigned char gray_index[4];
+// LUTs for indexed color modes - map packed byte directly to screen pixels
+// 1x: 4 pixels per packed byte
+static unsigned long color_lut_1x[256];
+// 2x: 8 pixels per packed byte (each GB pixel doubled), split into two 32-bit values
+static unsigned long color_lut_2x_lo[256];  // pixels 0,0,1,1
+static unsigned long color_lut_2x_hi[256];  // pixels 2,2,3,3
 
 static const RGBColor palettes[][4] = {
   // blk-aqu4
@@ -72,6 +79,7 @@ void init_indexed_lut(WindowPtr wp)
 {
   int k;
   PaletteHandle pal;
+  unsigned char gray_index[4];
 
   pal = NewPalette(4, nil, pmTolerant, 0);
 
@@ -82,30 +90,56 @@ void init_indexed_lut(WindowPtr wp)
   SetPalette(wp, pal, true);
   ActivatePalette(wp);
 
+  // get mapped color indices for current screen CLUT
   for (k = 0; k < 4; k++) {
     gray_index[k] = Entry2Index(k);
+  }
+
+  // build color LUTs for fast indexed rendering
+  for (k = 0; k < 256; k++) {
+    unsigned char c0 = gray_index[(k >> 6) & 3];
+    unsigned char c1 = gray_index[(k >> 4) & 3];
+    unsigned char c2 = gray_index[(k >> 2) & 3];
+    unsigned char c3 = gray_index[k & 3];
+
+    // 1x: 4 consecutive pixels
+    color_lut_1x[k] = ((unsigned long)c0 << 24) | ((unsigned long)c1 << 16) |
+                      ((unsigned long)c2 << 8) | c3;
+
+    // 2x: each pixel doubled horizontally
+    color_lut_2x_lo[k] = ((unsigned long)c0 << 24) | ((unsigned long)c0 << 16) |
+                         ((unsigned long)c1 << 8) | c1;
+    color_lut_2x_hi[k] = ((unsigned long)c2 << 24) | ((unsigned long)c2 << 16) |
+                         ((unsigned long)c3 << 8) | c3;
   }
 }
 
 // 1x rendering, >= 2 is black, doesn't look great but it's fine
-// src is now packed: 4 pixels per byte, 40 bytes per row
 static void lcd_draw_1x_copybits(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
   unsigned char *dst = (unsigned char *) offscreen_buf;
+  int scx_offset = lcd_read(lcd_ptr, REG_SCX) & 7;
+  Rect srcRect;
 
   for (gy = 0; gy < 144; gy++) {
     int gx;
-    for (gx = 0; gx < 40; gx += 2) {
+    for (gx = 0; gx < 42; gx += 2) {
       // 2 packed bytes = 8 pixels -> 1 output byte
       *dst++ = thresh_hi[src[0]] | thresh_lo[src[1]];
       src += 2;
     }
   }
 
+  // source rect is offset by scroll amount, destination is full window
+  srcRect.top = 0;
+  srcRect.left = scx_offset;
+  srcRect.bottom = 144;
+  srcRect.right = scx_offset + 160;
+
   SetPort(g_wp);
-  CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+  CopyBits(&offscreen_bmp, &g_wp->portBits, &srcRect, &offscreen_rect, srcCopy, NULL);
 }
 
 static void lcd_draw_1x_direct(struct lcd *lcd_ptr)
@@ -115,6 +149,8 @@ static void lcd_draw_1x_direct(struct lcd *lcd_ptr)
   unsigned char *dst;
   int screen_rb;
   Point topLeft;
+  int scx_offset = lcd_read(lcd_ptr, REG_SCX) & 7;
+  int bit_offset = scx_offset & 7;
 
   SetPort(g_wp);
   topLeft.h = 0;
@@ -126,13 +162,31 @@ static void lcd_draw_1x_direct(struct lcd *lcd_ptr)
       + (topLeft.v * screen_rb)
       + (topLeft.h >> 3);
 
+  // for 1x mode, scx_offset is 0-7 pixels
+  // each output byte = thresh_hi[src[2n]] | thresh_lo[src[2n+1]]
+  // with bit_offset, we need to combine bits across thresholded byte boundaries
+
   for (gy = 0; gy < 144; gy++) {
     unsigned char *row = dst;
     int gx;
-    for (gx = 0; gx < 40; gx += 2) {
-      *row++ = thresh_hi[src[0]] | thresh_lo[src[1]];
-      src += 2;
+
+    if (bit_offset == 0) {
+      // no shift needed, direct threshold
+      for (gx = 0; gx < 20; gx++) {
+        row[gx] = thresh_hi[src[gx * 2]] | thresh_lo[src[gx * 2 + 1]];
+      }
+    } else {
+      // need to shift - compute 21 thresholded bytes, combine with offset
+      // inline the threshold computation to avoid temp buffer
+      unsigned char prev = thresh_hi[src[0]] | thresh_lo[src[1]];
+      for (gx = 0; gx < 20; gx++) {
+        unsigned char next = thresh_hi[src[(gx + 1) * 2]] | thresh_lo[src[(gx + 1) * 2 + 1]];
+        row[gx] = (prev << bit_offset) | (next >> (8 - bit_offset));
+        prev = next;
+      }
     }
+
+    src += 42;
     dst += screen_rb;
   }
 }
@@ -141,8 +195,10 @@ static void lcd_draw_1x_indexed(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
-  unsigned char *dst = (unsigned char *) offscreen_color_buf;
+  unsigned long *dst = (unsigned long *) offscreen_color_buf;
   CGrafPtr port;
+  int scx_offset = lcd_read(lcd_ptr, REG_SCX) & 7;
+  Rect srcRect;
 
   if (screen_depth == 1) {
     return;
@@ -150,40 +206,43 @@ static void lcd_draw_1x_indexed(struct lcd *lcd_ptr)
 
   for (gy = 0; gy < 144; gy++) {
     int gx;
-    for (gx = 0; gx < 40; gx++) {
-      // unpack 4 pixels from each byte
-      unsigned char packed = *src++;
-      *dst++ = gray_index[(packed >> 6) & 3];
-      *dst++ = gray_index[(packed >> 4) & 3];
-      *dst++ = gray_index[(packed >> 2) & 3];
-      *dst++ = gray_index[packed & 3];
+    for (gx = 0; gx < 42; gx++) {
+      // LUT maps packed byte directly to 4 color pixels
+      *dst++ = color_lut_1x[*src++];
     }
   }
+
+  // source rect is offset by scroll amount, destination is full window
+  srcRect.top = 0;
+  srcRect.left = scx_offset;
+  srcRect.bottom = 144;
+  srcRect.right = scx_offset + 160;
 
   SetPort(g_wp);
   port = (CGrafPtr) g_wp;
   CopyBits(
       (BitMap *) &offscreen_pixmap,
       (BitMap *) *port->portPixMap,
-      &offscreen_rect, &offscreen_rect, srcCopy, NULL
+      &srcRect, &offscreen_rect, srcCopy, NULL
   );
 }
 
 // might work better for color Macs with more advanced video hardware.
 // direct rendering was slower than CopyBits on my IIfx
-// src is now packed: 4 pixels per byte, so we can use it directly as dither LUT index
 static void lcd_draw_2x_copybits(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
   unsigned char *dst = (unsigned char *) offscreen_buf;
+  int scx_offset = lcd_read(lcd_ptr, REG_SCX) & 7;
+  Rect srcRect;
 
   for (gy = 0; gy < 144; gy++) {
     unsigned char *row0 = dst;
-    unsigned char *row1 = dst + 40;
+    unsigned char *row1 = dst + 42;
     int gx;
 
-    for (gx = 0; gx < 40; gx++) {
+    for (gx = 0; gx < 42; gx++) {
       // packed byte is already the LUT index
       unsigned char idx = *src++;
       *row0++ = dither_row0[idx];
@@ -191,11 +250,17 @@ static void lcd_draw_2x_copybits(struct lcd *lcd_ptr)
     }
 
     // advance 2 screen rows at a time
-    dst += 80;
+    dst += 84;
   }
 
+  // source rect is offset by scroll amount, destination is full window
+  srcRect.top = 0;
+  srcRect.left = scx_offset * 2;
+  srcRect.bottom = 288;
+  srcRect.right = scx_offset * 2 + 320;
+
   SetPort(g_wp);
-  CopyBits(&offscreen_bmp, &g_wp->portBits, &offscreen_rect, &offscreen_rect, srcCopy, NULL);
+  CopyBits(&offscreen_bmp, &g_wp->portBits, &srcRect, &offscreen_rect, srcCopy, NULL);
 }
 
 static void lcd_draw_2x_direct(struct lcd *lcd_ptr)
@@ -205,6 +270,9 @@ static void lcd_draw_2x_direct(struct lcd *lcd_ptr)
   unsigned char *dst;
   int screen_rb;
   Point topLeft;
+  int scx_offset = lcd_read(lcd_ptr, REG_SCX) & 7;
+  int bit_offset = (scx_offset * 2) & 7;
+  int byte_offset = (scx_offset * 2) >> 3;
 
   // get window's screen position
   SetPort(g_wp);
@@ -224,13 +292,25 @@ static void lcd_draw_2x_direct(struct lcd *lcd_ptr)
     unsigned char *row1 = dst + screen_rb;
     int gx;
 
-    for (gx = 0; gx < 40; gx++) {
-      unsigned char idx = *src++;
-      *row0++ = dither_row0[idx];
-      *row1++ = dither_row1[idx];
+    if (bit_offset == 0) {
+      for (gx = 0; gx < 40; gx++) {
+        unsigned char idx = src[byte_offset + gx];
+        row0[gx] = dither_row0[idx];
+        row1[gx] = dither_row1[idx];
+      }
+    } else {
+      for (gx = 0; gx < 40; gx++) {
+        unsigned char idx0 = src[byte_offset + gx];
+        unsigned char idx1 = src[byte_offset + gx + 1];
+        row0[gx] = (dither_row0[idx0] << bit_offset) |
+                   (dither_row0[idx1] >> (8 - bit_offset));
+        row1[gx] = (dither_row1[idx0] << bit_offset) |
+                   (dither_row1[idx1] >> (8 - bit_offset));
+      }
     }
 
-    dst += screen_rb * 2; // advance 2 screen rows
+    src += 42;
+    dst += screen_rb * 2;
   }
 }
 
@@ -238,52 +318,51 @@ static void lcd_draw_2x_indexed(struct lcd *lcd_ptr)
 {
   int gy;
   unsigned char *src = lcd_ptr->pixels;
-  unsigned char *dst = (unsigned char *) offscreen_color_buf;
+  unsigned long *dst = (unsigned long *) offscreen_color_buf;
   CGrafPtr port;
+  int scx_offset = lcd_read(lcd_ptr, REG_SCX) & 7;
+  Rect srcRect;
 
   if (screen_depth == 1) {
     return;
   }
 
   for (gy = 0; gy < 144; gy++) {
-    unsigned char *row0 = dst;
-    unsigned char *row1 = dst + 320;
+    // row stride in longs: 336 bytes / 4 = 84 longs
+    unsigned long *row0 = dst;
+    unsigned long *row1 = dst + 84;
     int gx;
 
-    for (gx = 0; gx < 40; gx++) {
-      // unpack 4 pixels from each byte, double each for 2x scaling
-      unsigned char packed = *src++;
-      unsigned char c;
+    for (gx = 0; gx < 42; gx++) {
+      // LUT maps packed byte to 8 doubled pixels (two 32-bit values)
+      unsigned char idx = *src++;
+      unsigned long lo = color_lut_2x_lo[idx];
+      unsigned long hi = color_lut_2x_hi[idx];
 
-      c = gray_index[(packed >> 6) & 3];
-      row0[0] = row0[1] = c;
-      row1[0] = row1[1] = c;
+      // row0:  p0 p0  p1 p1  p2 p2  p3 p3
+      // row1:  p0 p0  p1 p1  p2 p2  p3 p3
+      row0[0] = lo; row0[1] = hi;
+      row1[0] = lo; row1[1] = hi;
 
-      c = gray_index[(packed >> 4) & 3];
-      row0[2] = row0[3] = c;
-      row1[2] = row1[3] = c;
-
-      c = gray_index[(packed >> 2) & 3];
-      row0[4] = row0[5] = c;
-      row1[4] = row1[5] = c;
-
-      c = gray_index[packed & 3];
-      row0[6] = row0[7] = c;
-      row1[6] = row1[7] = c;
-
-      row0 += 8;
-      row1 += 8;
+      row0 += 2;
+      row1 += 2;
     }
 
-    dst += 640;
+    dst += 168;  // 2 rows * 84 longs per row
   }
+
+  // source rect is offset by scroll amount, destination is full window
+  srcRect.top = 0;
+  srcRect.left = scx_offset * 2;
+  srcRect.bottom = 288;
+  srcRect.right = scx_offset * 2 + 320;
 
   SetPort(g_wp);
   port = (CGrafPtr) g_wp;
   CopyBits(
       (BitMap *) &offscreen_pixmap,
       (BitMap *) *port->portPixMap,
-      &offscreen_rect, &offscreen_rect, srcCopy, NULL
+      &srcRect, &offscreen_rect, srcCopy, NULL
   );
 }
 

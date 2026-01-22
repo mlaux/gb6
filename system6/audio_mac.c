@@ -1,6 +1,19 @@
 /* Game Boy emulator for 68k Macs
    audio_mac.c - Sound Manager integration using SndPlayDoubleBuffer */
 
+// this generates 185 samples per 1/60 sec. the samples are generated at interrupt
+// time based on when the Sound Manager needs them - sampling the state of the
+// GB's audio registers completely desynchronized from the game execution. this
+// means the tempo of the music varies and notes can also be missed, but IMO this
+// is still less jarring than the drop outs that would happen if the sample
+// generation was coupled to the actual GB execution.
+
+// i'm kind of thinking of refactoring to prepare the samples synchronized to the GB
+// cycles (accumulate samples until it has 185, then submit, or something fancier
+// with a ring buffer), but don't want to deal with the fact that the Sound Manager
+// could "run out" before it has 185 ready - would be harder to listen to than
+// the current solution
+
 #include <Sound.h>
 #include <Memory.h>
 #include <Gestalt.h>
@@ -42,9 +55,6 @@ static MyDoubleBuffer dbl_buffers[2];
 //     u8 hi = VIA1_T1CH;
 //     return (hi << 8) | lo;
 // }
-
-// forward declaration
-static pascal void DoubleBackProc(SndChannelPtr chan, SndDoubleBufferPtr buf);
 
 static int HasASC(void)
 {

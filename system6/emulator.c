@@ -70,13 +70,13 @@ static char save_filename[32];
 // for GetFInfo/SetFInfo
 static Str63 save_filename_p;
 
-// 2x scaled: 320x288 @ 1bpp = 40 bytes per row
-char offscreen_buf[40 * 288];
-Rect offscreen_rect = { 0, 0, 288, 320 };
+// 2x scaled: 336x288 @ 1bpp = 42 bytes per row (168 GB pixels for scroll offset)
+char offscreen_buf[42 * 288];
+Rect offscreen_rect = { 0, 0, 288, 320 };  // destination size (window)
 BitMap offscreen_bmp;
 
-// color/grayscale mode: 320x288 @ 8bpp
-char offscreen_color_buf[320 * 288];
+// color/grayscale mode: 336x288 @ 8bpp (168 GB pixels for scroll offset)
+char offscreen_color_buf[336 * 288];
 PixMap offscreen_pixmap;
 CTabHandle offscreen_ctab;
 
@@ -184,12 +184,16 @@ void InitColorOffscreen(void)
   screenPM = (*mainDev)->gdPMap;
   offscreen_ctab = (*screenPM)->pmTable;
 
-  width = (screen_scale == 1) ? 160 : 320;
+  // buffer width is wider than display for scroll offset (168 or 336)
+  width = (screen_scale == 1) ? 168 : 336;
 
   // PixMap setup - always 8bpp, CopyBits handles depth conversion
   offscreen_pixmap.baseAddr = offscreen_color_buf;
   offscreen_pixmap.rowBytes = width | 0x8000;  // high bit = PixMap flag
-  offscreen_pixmap.bounds = offscreen_rect;
+  offscreen_pixmap.bounds.top = 0;
+  offscreen_pixmap.bounds.left = 0;
+  offscreen_pixmap.bounds.bottom = (screen_scale == 1) ? 144 : 288;
+  offscreen_pixmap.bounds.right = width;
   offscreen_pixmap.pmVersion = 0;
   offscreen_pixmap.packType = 0;
   offscreen_pixmap.packSize = 0;
@@ -279,8 +283,12 @@ void StartEmulation(void)
   cpu.dmg = &dmg;
 
   offscreen_bmp.baseAddr = offscreen_buf;
-  offscreen_bmp.bounds = offscreen_rect;
-  offscreen_bmp.rowBytes = width / 8;
+  // bounds is full buffer size (168 or 336 pixels wide for scroll offset handling)
+  offscreen_bmp.bounds.top = 0;
+  offscreen_bmp.bounds.left = 0;
+  offscreen_bmp.bounds.bottom = height;
+  offscreen_bmp.bounds.right = (width == 320) ? 336 : 168;
+  offscreen_bmp.rowBytes = (width == 320) ? 42 : 21;
   if (screen_depth > 1) {
     InitColorOffscreen();
     // init even if indexed isn;t currently selected so it's correct
@@ -334,10 +342,18 @@ void SetScreenScale(int scale)
 
   offscreen_rect.right = width;
   offscreen_rect.bottom = height;
-  offscreen_bmp.bounds = offscreen_rect;
-  offscreen_bmp.rowBytes = width / 8;
-  offscreen_pixmap.bounds = offscreen_rect;
-  offscreen_pixmap.rowBytes = width | 0x8000;
+  // bmp bounds is full buffer size (168 or 336 pixels wide for scroll offset)
+  offscreen_bmp.bounds.top = 0;
+  offscreen_bmp.bounds.left = 0;
+  offscreen_bmp.bounds.bottom = height;
+  offscreen_bmp.bounds.right = (width == 320) ? 336 : 168;
+  offscreen_bmp.rowBytes = (width == 320) ? 42 : 21;
+  // pixmap also uses wider buffer
+  offscreen_pixmap.bounds.top = 0;
+  offscreen_pixmap.bounds.left = 0;
+  offscreen_pixmap.bounds.bottom = height;
+  offscreen_pixmap.bounds.right = (width == 320) ? 336 : 168;
+  offscreen_pixmap.rowBytes = ((width == 320) ? 336 : 168) | 0x8000;
 
   if (g_wp) {
     Rect newBounds;

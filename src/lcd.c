@@ -14,8 +14,9 @@ static u8 tile_decode_packed[256];
 // Base LUT with color indices 0-3 (palette-independent)
 static u8 tile_decode_base[256][4];
 
-// Packed pixel buffer: 4 pixels per byte, 40 bytes per row
-static u8 pixels[40 * 144];
+// Packed pixel buffer: 4 pixels per byte, 42 bytes per row (168 pixels)
+// Renders 21 tiles starting at tile-aligned position for fast path always
+static u8 pixels[42 * 144];
 
 void lcd_init_lut(void)
 {
@@ -148,180 +149,71 @@ void lcd_render_background(struct dmg *dmg, int lcdc, int window_enabled)
     int unsigned_mode = lcdc & LCDC_BG_TILE_DATA;
     int tile_base_off = unsigned_mode ? 0 : 0x1000;
 
+    // scx offset within buffer - sprites and display need this
+    int scx_offset = scx & 7;
+
     int sy;
     for (sy = 0; sy < 144; sy++) {
-        u8 *row = out + sy * 40;
+        u8 *row = out + sy * 42;
         int window_active = window_enabled && sy >= wy && wx < 160;
-        int bg_end_x = window_active ? (wx > 0 ? wx : 0) : 160;
 
-        // render background portion
-        if (bg_end_x > 0) {
-            int bg_y = (sy + scy) & 0xff;
-            int tile_row = bg_y >> 3;
-            int row_in_tile = bg_y & 7;
-            int start_bit = scx & 7;
-            int sx = 0;
-            int bg_x = scx;
+        // always render 21 full tiles starting at tile-aligned position
+        int bg_y = (sy + scy) & 0xff;
+        int tile_row = bg_y >> 3;
+        int row_in_tile = bg_y & 7;
+        int bg_x = scx & ~7; // tile-aligned start
 
-            // fast path: when scx is 4-pixel aligned, output stays byte-aligned
-            if ((scx & 3) == 0) {
-                // handle partial first tile if SCX not 8-aligned (but is 4-aligned)
-                if (start_bit != 0) {
-                    int tile_col = (bg_x >> 3) & 31;
-                    int pixels_first = 8 - start_bit; // will be 4 since scx % 4 == 0
+        int tile;
+        for (tile = 0; tile < 21; tile++) {
+            int tile_col = (bg_x >> 3) & 31;
+            int tile_idx = vram[bg_map_off + tile_row * 32 + tile_col];
+            int tile_off = unsigned_mode
+                ? tile_base_off + 16 * tile_idx
+                : tile_base_off + 16 * (signed char) tile_idx;
 
-                    int tile_idx = vram[bg_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
+            u8 data1 = vram[tile_off + row_in_tile * 2];
+            u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
 
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    // write just the low nibble (pixels 4-7) to first output byte
-                    int idx_lo = ((data1 & 0x0f) << 4) | (data2 & 0x0f);
-                    row[0] = tile_decode_packed[idx_lo];
-                    sx = 4;
-                    bg_x = (scx + 4) & 0xff;
-                }
-
-                // render full aligned tiles (8 pixels = 2 packed bytes each)
-                while (sx + 8 <= bg_end_x) {
-                    int tile_col = (bg_x >> 3) & 31;
-                    int tile_idx = vram[bg_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
-
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    render_tile_row_packed(row + (sx >> 2), data1, data2);
-                    sx += 8;
-                    bg_x = (bg_x + 8) & 0xff;
-                }
-
-                // handle partial last tile before window
-                if (sx < bg_end_x) {
-                    int tile_col = (bg_x >> 3) & 31;
-                    int pixels_last = bg_end_x - sx;
-                    int tile_idx = vram[bg_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
-
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    // pixels_last will be 4 (one nibble) since we're 4-aligned
-                    int idx_hi = (data1 & 0xf0) | (data2 >> 4);
-                    row[sx >> 2] = tile_decode_packed[idx_hi];
-                }
-            } else {
-                // slow path: scx not 4-aligned, use per-pixel rendering
-                while (sx < bg_end_x) {
-                    int tile_col = (bg_x >> 3) & 31;
-                    int pixel_in_tile = bg_x & 7;
-                    int pixels_in_tile = 8 - pixel_in_tile;
-                    if (sx + pixels_in_tile > bg_end_x) {
-                        pixels_in_tile = bg_end_x - sx;
-                    }
-
-                    int tile_idx = vram[bg_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
-
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    render_partial_start(row, data1, data2, pixel_in_tile, pixels_in_tile, sx);
-                    sx += pixels_in_tile;
-                    bg_x = (bg_x + pixels_in_tile) & 0xff;
-                }
-            }
+            render_tile_row_packed(row + tile * 2, data1, data2);
+            bg_x = (bg_x + 8) & 0xff;
         }
 
-        // render window portion
+        // overlay window if active
         if (window_active) {
             int win_y = sy - wy;
-            int tile_row = win_y >> 3;
-            int row_in_tile = win_y & 7;
-            int sx = wx > 0 ? wx : 0;
+            int win_tile_row = win_y >> 3;
+            int win_row_in_tile = win_y & 7;
+            // window screen position, adjusted for buffer offset
+            int win_start = (wx > 0 ? wx : 0) + scx_offset;
+            int win_end = 160 + scx_offset;
             int win_x = wx < 0 ? -wx : 0;
 
-            // check if output position is 4-pixel aligned for fast path
-            if ((sx & 3) == 0 && (win_x & 3) == 0) {
-                // fast path: both screen position and window offset are 4-aligned
-                int start_bit = win_x & 7;
-                if (start_bit != 0) {
-                    // win_x is 4-aligned but not 8-aligned
-                    int tile_col = (win_x >> 3) & 31;
-                    int tile_idx = vram[win_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
+            // render window tiles over the background
+            while (win_start < win_end) {
+                int tile_col = (win_x >> 3) & 31;
+                int pixel_in_tile = win_x & 7;
+                int tile_idx = vram[win_map_off + win_tile_row * 32 + tile_col];
+                int tile_off = unsigned_mode
+                    ? tile_base_off + 16 * tile_idx
+                    : tile_base_off + 16 * (signed char) tile_idx;
 
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
+                u8 data1 = vram[tile_off + win_row_in_tile * 2];
+                u8 data2 = vram[tile_off + win_row_in_tile * 2 + 1];
 
-                    int idx_lo = ((data1 & 0x0f) << 4) | (data2 & 0x0f);
-                    row[sx >> 2] = tile_decode_packed[idx_lo];
-                    sx += 4;
-                    win_x += 4;
-                }
-
-                // render full aligned window tiles
-                while (sx + 8 <= 160) {
-                    int tile_col = (win_x >> 3) & 31;
-                    int tile_idx = vram[win_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
-
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    render_tile_row_packed(row + (sx >> 2), data1, data2);
-                    sx += 8;
+                if (pixel_in_tile == 0 && (win_start & 3) == 0 && win_start + 8 <= win_end) {
+                    // full tile, buffer position is 4-aligned
+                    render_tile_row_packed(row + (win_start >> 2), data1, data2);
+                    win_start += 8;
                     win_x += 8;
-                }
-
-                // handle partial last window tile
-                if (sx < 160) {
-                    int tile_col = (win_x >> 3) & 31;
-                    int tile_idx = vram[win_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
-
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    int idx_hi = (data1 & 0xf0) | (data2 >> 4);
-                    row[sx >> 2] = tile_decode_packed[idx_hi];
-                }
-            } else {
-                // slow path: not aligned, use per-pixel rendering
-                while (sx < 160) {
-                    int tile_col = (win_x >> 3) & 31;
-                    int pixel_in_tile = win_x & 7;
-                    int pixels_in_tile = 8 - pixel_in_tile;
-                    if (sx + pixels_in_tile > 160) {
-                        pixels_in_tile = 160 - sx;
+                } else {
+                    // partial tile (start or end of window)
+                    int pixels_to_draw = 8 - pixel_in_tile;
+                    if (win_start + pixels_to_draw > win_end) {
+                        pixels_to_draw = win_end - win_start;
                     }
-
-                    int tile_idx = vram[win_map_off + tile_row * 32 + tile_col];
-                    int tile_off = unsigned_mode
-                        ? tile_base_off + 16 * tile_idx
-                        : tile_base_off + 16 * (signed char) tile_idx;
-
-                    u8 data1 = vram[tile_off + row_in_tile * 2];
-                    u8 data2 = vram[tile_off + row_in_tile * 2 + 1];
-
-                    render_partial_start(row, data1, data2, pixel_in_tile, pixels_in_tile, sx);
-                    sx += pixels_in_tile;
-                    win_x += pixels_in_tile;
+                    render_partial_start(row, data1, data2, pixel_in_tile, pixels_to_draw, win_start);
+                    win_start += pixels_to_draw;
+                    win_x += pixels_to_draw;
                 }
             }
         }
@@ -335,6 +227,9 @@ void lcd_render_objs(struct dmg *dmg)
     int tall = lcd_isset(dmg->lcd, REG_LCDC, LCDC_OBJ_SIZE);
     u8 *vram = dmg->video_ram;
     u8 *pixels = dmg->lcd->pixels;
+
+    // sprites are rendered at screen position + scx offset within the wider buffer
+    int scx_offset = lcd_read(dmg->lcd, REG_SCX) & 7;
 
     int k;
     for (k = 39; k >= 0; k--, oam--) {
@@ -377,7 +272,7 @@ void lcd_render_objs(struct dmg *dmg)
             int x_start = lcd_x < 0 ? -lcd_x : 0;
             int x_end = lcd_x + 8 > 160 ? 160 - lcd_x : 8;
 
-            u8 *row = pixels + row_y * 40;
+            u8 *row = pixels + row_y * 42;
             int x;
             if (mirror_x) {
                 // mirrored: read bits from LSB to MSB
@@ -388,7 +283,7 @@ void lcd_render_objs(struct dmg *dmg)
                     data1 >>= 1;
                     data2 >>= 1;
                     if (col_index) {
-                        int px = lcd_x + x;
+                        int px = lcd_x + x + scx_offset;
                         int byte_idx = px >> 2;
                         int bit_idx = px & 3;
                         row[byte_idx] = packed_set_pixel(row[byte_idx], bit_idx, pal[col_index]);
@@ -403,7 +298,7 @@ void lcd_render_objs(struct dmg *dmg)
                     data1 <<= 1;
                     data2 <<= 1;
                     if (col_index) {
-                        int px = lcd_x + x;
+                        int px = lcd_x + x + scx_offset;
                         int byte_idx = px >> 2;
                         int bit_idx = px & 3;
                         row[byte_idx] = packed_set_pixel(row[byte_idx], bit_idx, pal[col_index]);

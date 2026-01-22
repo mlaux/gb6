@@ -47,7 +47,7 @@
 struct lcd {
     u8 oam[0xa0];
     u8 regs[0x0c];
-    u8 *pixels; // the actual 160x144 visible area
+    u8 *pixels; // 168x144 packed buffer (42 bytes/row) for scroll offset handling
 };
 
 void lcd_new(struct lcd *lcd);
