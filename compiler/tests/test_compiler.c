@@ -387,9 +387,14 @@ int main(int argc, char *argv[])
     test_ctx.dmg = NULL;
     test_ctx.read = test_read;
 
-    register_exec_tests();
+    register_load_tests();
+    register_alu_tests();
+    register_branch_tests();
+    register_cb_tests();
+    register_stack_tests();
+    register_timing_tests();
 
-    printf("all tests passed\n");
+    printf("\nall tests passed\n");
 
     return 0;
 }

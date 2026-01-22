@@ -80,7 +80,12 @@ uint32_t get_areg(int reg);
 uint8_t get_mem_byte(uint16_t addr);
 void set_mem_byte(uint16_t addr, uint8_t value);
 
-void register_exec_tests(void);
+void register_load_tests(void);
+void register_alu_tests(void);
+void register_branch_tests(void);
+void register_cb_tests(void);
+void register_stack_tests(void);
+void register_timing_tests(void);
 
 #define GLOBALS_BASE 0x4000 // random variables
 #define U16_INTERRUPTS_ENABLED 0x4000
