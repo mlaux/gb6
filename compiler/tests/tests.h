@@ -84,5 +84,15 @@ void register_exec_tests(void);
 
 #define GLOBALS_BASE 0x4000 // random variables
 #define U16_INTERRUPTS_ENABLED 0x4000
+#define FRAME_CYCLES_ADDR 0x4004  // u32 frame_cycles value
+
+// Set frame_cycles for HALT/LY wait tests
+void set_frame_cycles(uint32_t cycles);
+
+// Get the accumulated cycle count (D2)
+uint32_t get_cycle_count(void);
+
+// Run a single block with specified frame_cycles value (for HALT/LY wait tests)
+void run_block_with_frame_cycles(uint8_t *gb_rom, uint32_t frame_cycles);
 
 #endif

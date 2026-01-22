@@ -88,6 +88,7 @@ void init_indexed_lut(WindowPtr wp)
 }
 
 // 1x rendering, >= 2 is black, doesn't look great but it's fine
+// src is now packed: 4 pixels per byte, 40 bytes per row
 static void lcd_draw_1x_copybits(struct lcd *lcd_ptr)
 {
   int gy;
@@ -96,11 +97,10 @@ static void lcd_draw_1x_copybits(struct lcd *lcd_ptr)
 
   for (gy = 0; gy < 144; gy++) {
     int gx;
-    for (gx = 0; gx < 160; gx += 8) {
-      unsigned char idx0 = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
-      unsigned char idx1 = (src[4] << 6) | (src[5] << 4) | (src[6] << 2) | src[7];
-      src += 8;
-      *dst++ = thresh_hi[idx0] | thresh_lo[idx1];
+    for (gx = 0; gx < 40; gx += 2) {
+      // 2 packed bytes = 8 pixels -> 1 output byte
+      *dst++ = thresh_hi[src[0]] | thresh_lo[src[1]];
+      src += 2;
     }
   }
 
@@ -129,11 +129,9 @@ static void lcd_draw_1x_direct(struct lcd *lcd_ptr)
   for (gy = 0; gy < 144; gy++) {
     unsigned char *row = dst;
     int gx;
-    for (gx = 0; gx < 160; gx += 8) {
-      unsigned char idx0 = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
-      unsigned char idx1 = (src[4] << 6) | (src[5] << 4) | (src[6] << 2) | src[7];
-      src += 8;
-      *row++ = thresh_hi[idx0] | thresh_lo[idx1];
+    for (gx = 0; gx < 40; gx += 2) {
+      *row++ = thresh_hi[src[0]] | thresh_lo[src[1]];
+      src += 2;
     }
     dst += screen_rb;
   }
@@ -152,8 +150,13 @@ static void lcd_draw_1x_indexed(struct lcd *lcd_ptr)
 
   for (gy = 0; gy < 144; gy++) {
     int gx;
-    for (gx = 0; gx < 160; gx++) {
-      *dst++ = gray_index[*src++];
+    for (gx = 0; gx < 40; gx++) {
+      // unpack 4 pixels from each byte
+      unsigned char packed = *src++;
+      *dst++ = gray_index[(packed >> 6) & 3];
+      *dst++ = gray_index[(packed >> 4) & 3];
+      *dst++ = gray_index[(packed >> 2) & 3];
+      *dst++ = gray_index[packed & 3];
     }
   }
 
@@ -168,6 +171,7 @@ static void lcd_draw_1x_indexed(struct lcd *lcd_ptr)
 
 // might work better for color Macs with more advanced video hardware.
 // direct rendering was slower than CopyBits on my IIfx
+// src is now packed: 4 pixels per byte, so we can use it directly as dither LUT index
 static void lcd_draw_2x_copybits(struct lcd *lcd_ptr)
 {
   int gy;
@@ -179,11 +183,9 @@ static void lcd_draw_2x_copybits(struct lcd *lcd_ptr)
     unsigned char *row1 = dst + 40;
     int gx;
 
-    for (gx = 0; gx < 160; gx += 4) {
-      // pack 4 GB pixels into LUT index
-      unsigned char idx = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
-      src += 4;
-
+    for (gx = 0; gx < 40; gx++) {
+      // packed byte is already the LUT index
+      unsigned char idx = *src++;
       *row0++ = dither_row0[idx];
       *row1++ = dither_row1[idx];
     }
@@ -222,11 +224,8 @@ static void lcd_draw_2x_direct(struct lcd *lcd_ptr)
     unsigned char *row1 = dst + screen_rb;
     int gx;
 
-    for (gx = 0; gx < 160; gx += 4) {
-      // pack 4 GB pixels into LUT index
-      unsigned char idx = (src[0] << 6) | (src[1] << 4) | (src[2] << 2) | src[3];
-      src += 4;
-
+    for (gx = 0; gx < 40; gx++) {
+      unsigned char idx = *src++;
       *row0++ = dither_row0[idx];
       *row1++ = dither_row1[idx];
     }
@@ -251,12 +250,29 @@ static void lcd_draw_2x_indexed(struct lcd *lcd_ptr)
     unsigned char *row1 = dst + 320;
     int gx;
 
-    for (gx = 0; gx < 160; gx++) {
-      unsigned char c = gray_index[*src++];
+    for (gx = 0; gx < 40; gx++) {
+      // unpack 4 pixels from each byte, double each for 2x scaling
+      unsigned char packed = *src++;
+      unsigned char c;
+
+      c = gray_index[(packed >> 6) & 3];
       row0[0] = row0[1] = c;
       row1[0] = row1[1] = c;
-      row0 += 2;
-      row1 += 2;
+
+      c = gray_index[(packed >> 4) & 3];
+      row0[2] = row0[3] = c;
+      row1[2] = row1[3] = c;
+
+      c = gray_index[(packed >> 2) & 3];
+      row0[4] = row0[5] = c;
+      row1[4] = row1[5] = c;
+
+      c = gray_index[packed & 3];
+      row0[6] = row0[7] = c;
+      row1[6] = row1[7] = c;
+
+      row0 += 8;
+      row1 += 8;
     }
 
     dst += 640;

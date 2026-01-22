@@ -32,7 +32,7 @@ extern BitMap offscreen_bmp;
 extern char offscreen_color_buf[];
 extern PixMap offscreen_pixmap;
 
-#define APP_VERSION "1.0.0"
+#define APP_VERSION "1.0.1"
 
 #define WINDOW_X 8
 #define WINDOW_Y 40

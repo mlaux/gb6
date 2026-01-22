@@ -28,6 +28,9 @@ typedef struct {
     /* 3c */ u32 *frame_cycles_ptr; // pointer to dmg->frame_cycles for HALT
     /* 40 */ u32 temp1;
     /* 44 */ u32 temp2;
+    /* 48 */ u16 gb_sp;       // GB stack pointer value (always valid)
+    /* 4a */ u16 _pad2;
+    /* 4c */ long sp_adjust;   // non-zero if A3 points to WRAM (0xC000 - wram_base)
 } jit_context;
 
 extern jit_context jit_ctx;

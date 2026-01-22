@@ -181,6 +181,9 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ_CYCLES, 0);
     // wram_base points to start of WRAM (0xC000-0xDFFF) in 68k address space
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRAM_BASE, GB_MEM_BASE + 0xc000);
+    // frame_cycles pointer for HALT/LY wait tests
+    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_FRAME_CYCLES_PTR, FRAME_CYCLES_ADDR);
+    m68k_write_memory_32(FRAME_CYCLES_ADDR, 0);
 }
 
 // Initialize Musashi, copy code to memory, set up stack, run
@@ -311,6 +314,63 @@ uint8_t get_mem_byte(uint16_t addr)
 void set_mem_byte(uint16_t addr, uint8_t value)
 {
     mem[addr] = value;
+}
+
+void set_frame_cycles(uint32_t cycles)
+{
+    m68k_write_memory_32(FRAME_CYCLES_ADDR, cycles);
+}
+
+uint32_t get_cycle_count(void)
+{
+    return m68k_get_reg(NULL, M68K_REG_D0 + REG_68K_D_CYCLE_COUNT);
+}
+
+// Run a single block with specified frame_cycles value
+// Used for testing HALT and LY wait patterns
+void run_block_with_frame_cycles(uint8_t *gb_rom, uint32_t frame_cycles)
+{
+    int k;
+
+    memset(mem, 0, MEM_SIZE);
+    setup_runtime_stubs();
+
+    // Set frame_cycles before execution
+    m68k_write_memory_32(FRAME_CYCLES_ADDR, frame_cycles);
+
+    // Compile block at address 0
+    test_gb_rom = gb_rom;
+    struct code_block *block = compile_block(0, test_compile_ctx);
+
+    // Copy code to CODE_BASE
+    memcpy(mem + CODE_BASE, block->code, block->length);
+
+    // Set up trap at address 0 for when block returns
+    m68k_write_memory_32(STACK_BASE - 4, 0);
+    m68k_write_memory_16(0, 0x60fe);  // bra.s *
+
+    m68k_pulse_reset();
+
+    m68k_set_reg(M68K_REG_SP, STACK_BASE - 4);
+    m68k_set_reg(M68K_REG_ISP, STACK_BASE);
+    m68k_set_reg(M68K_REG_PC, CODE_BASE);
+
+    for (k = 0; k < 8; k++) {
+        m68k_set_reg(M68K_REG_D0 + k, 0);
+    }
+    for (k = 0; k < 7; k++) {
+        m68k_set_reg(M68K_REG_A0 + k, 0);
+    }
+
+    // Set A4 to runtime context
+    m68k_set_reg(M68K_REG_A4, JIT_CTX_ADDR);
+
+    // Initialize GB stack pointer (A3 = base + SP)
+    m68k_set_reg(M68K_REG_A3, GB_MEM_BASE + DEFAULT_GB_SP);
+
+    m68k_execute(1000);
+
+    block_free(block);
 }
 
 int main(int argc, char *argv[])

@@ -105,6 +105,7 @@ void jit_init(struct dmg *dmg)
   compile_ctx.read = dmg_read;
   compile_ctx.cache_store = cache_store;
   compile_ctx.alloc = arena_alloc;
+  compile_ctx.wram_base = dmg->main_ram;
 
   jit_ctx.dmg = dmg;
   jit_ctx.read_func = dmg_read;
@@ -117,6 +118,8 @@ void jit_init(struct dmg *dmg)
   jit_ctx.patch_helper = (void *) get_patch_helper_code();
   jit_ctx.wram_base = dmg->main_ram;
   jit_ctx.frame_cycles_ptr = &dmg->frame_cycles;
+  jit_ctx.gb_sp = 0xfffe;  // initial SP (HRAM, slow mode)
+  jit_ctx.sp_adjust = 0;   // slow mode - A3 holds GB SP
   sync_cache_pointers();
 
   jit_regs.d3 = 0x100; // initial PC
@@ -215,9 +218,17 @@ int jit_step(struct dmg *dmg)
           dmg->interrupt_request_mask &= ~(1 << k);
           dmg->interrupt_enable = 0;
 
-          // push PC to stack
-          jit_regs.a3 -= 2;
-          dmg_write16(dmg, jit_regs.a3, jit_regs.d3);
+          // push PC to stack using gb_sp (always valid GB address)
+          jit_ctx.gb_sp -= 2;
+          dmg_write16(dmg, jit_ctx.gb_sp, jit_regs.d3);
+          // keep A3 in sync
+          if (jit_ctx.sp_adjust != 0) {
+            // fast mode: A3 is native pointer
+            jit_regs.a3 = (u32) jit_ctx.gb_sp - jit_ctx.sp_adjust;
+          } else {
+            // slow mode: A3 holds GB SP directly
+            jit_regs.a3 = jit_ctx.gb_sp;
+          }
 
           // Jump to handler
           jit_regs.d3 = handlers[k];

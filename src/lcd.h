@@ -94,8 +94,6 @@ static inline void lcd_set_mode(struct lcd *lcd, int mode)
     lcd_write(lcd, REG_STAT, (val & 0xfc) | mode);
 }
 
-void lcd_put_pixel(struct lcd *lcd, u8 x, u8 y, u8 value);
-
 int lcd_step(struct lcd *lcd);
 
 // output the pixels to the screen

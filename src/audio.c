@@ -13,6 +13,13 @@
 // (4194304 * 65536) / (divisor * 11127.27)
 #define PHASE_INC_NOISE 24703086
 
+static const u8 duty_table[4] = {
+    0x01, // 00000001
+    0x03, // 00000011
+    0x0f, // 00001111
+    0xfc, // 11111100
+};
+
 // for noise channel
 static const u8 divisor_table[8] = { 8, 16, 32, 48, 64, 80, 96, 112 };
 
@@ -389,11 +396,16 @@ u8 audio_read(struct audio *audio, u16 addr)
     return audio->regs[addr - 0xff10];
 }
 
-static s8 generate_square(struct audio_channel *ch)
+static s8 generate_square(struct audio_channel *ch /*, u8 duty_pattern */)
 {
     if (!ch->enabled || ch->volume == 0)
         return 0;
 
+    // int duty_pos = (ch->phase >> 13) & 0x07;
+    // int high = (duty_pattern >> (7 - duty_pos)) & 1;
+
+    // return high ? ch->volume : -(s8) ch->volume;
+    
     // phase is 16.16 fixed point, use upper 5 bits for table index
     int idx = (ch->phase >> BL_TABLE_SHIFT) & (BL_TABLE_SIZE - 1);
     s8 sample = bl_square[ch->duty][ch->band][idx];
@@ -460,8 +472,8 @@ void audio_generate(struct audio *audio, u8 *buffer, int samples)
     for (k = 0; k < samples; k++) {
         s16 mix = 0;
 
-        mix += generate_square(&audio->ch1);
-        mix += generate_square(&audio->ch2);
+        mix += generate_square(&audio->ch1 /* , duty_table[audio->ch1.duty] */);
+        mix += generate_square(&audio->ch2 /* , duty_table[audio->ch1.duty] */);
         mix += generate_wave(audio);
         mix += generate_noise(audio);
 
