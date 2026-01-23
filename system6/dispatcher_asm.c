@@ -72,7 +72,7 @@ static void dispatcher_code_asm(void)
 
         : // no outputs
         : [cycles] "m" (cycles_per_exit)
-        : "d0", "d1", "a0", "cc", "memory"
+        : "d0", "a0", "cc", "memory"
     );
 }
 
@@ -172,7 +172,7 @@ static void patch_helper_code_asm(void)
     ".Lpatch_no_patch:\n\t"
         "jmp (%%a1)\n\t"
 
-        ::: "d1", "a0", "a1", "cc", "memory"
+        ::: "d0", "a0", "a1", "cc", "memory"
     );
 }
 
