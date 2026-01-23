@@ -115,8 +115,8 @@ void jit_init(struct dmg *dmg)
   jit_ctx.write16_func = dmg_write16;
   jit_ctx.ei_di_func = dmg_ei_di;
   jit_ctx.current_rom_bank = 1; // bank 1 is default after boot
-  jit_ctx.dispatcher_return = (void *) get_dispatcher_code();
-  jit_ctx.patch_helper = (void *) get_patch_helper_code();
+  jit_ctx.dispatcher_return = get_dispatcher_code();
+  jit_ctx.patch_helper = get_patch_helper_code();
   jit_ctx.wram_base = dmg->main_ram;
   jit_ctx.frame_cycles_ptr = &dmg->frame_cycles;
   jit_ctx.gb_sp = 0xfffe;  // initial SP (HRAM, slow mode)
@@ -196,6 +196,7 @@ int jit_step(struct dmg *dmg)
       // 040 needs it here too because the caches are copy-back, so the code that
       // was just compiled isn't necessarily in main memory yet, and it won't
       // look in the data cache for instructions, just the instruction cache.
+      // see Apple Technical Note HW06: Cache As Cache Can
       FlushCodeCache();
     }
   }
