@@ -16,6 +16,7 @@
 #include "emulator.h"
 #include "debug.h"
 #include "arena.h"
+#include "cpu_cache.h"
 
 static u32 time_in_jit = 0;
 static u32 time_in_sync = 0;
@@ -190,6 +191,13 @@ int jit_step(struct dmg *dmg)
     }
     sync_cache_pointers();
     code = block->code;
+    if (TrapAvailable(_CacheFlush)) {
+      // for 68040. 68030 needed a cache flush when blocks were patched, but
+      // 040 needs it here too because the caches are copy-back, so the code that
+      // was just compiled isn't necessarily in main memory yet, and it won't
+      // look in the data cache for instructions, just the instruction cache.
+      FlushCodeCache();
+    }
   }
 
   t1 = TickCount();

@@ -24,6 +24,7 @@ add_application(Emulator
     ../compiler/instructions.c
     ../compiler/stack.c
     arena.c
+    cpu_cache.c
     dialogs.c
     debug.c
     dispatcher_asm.c

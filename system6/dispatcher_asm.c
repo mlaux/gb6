@@ -1,5 +1,4 @@
-#include <OSUtils.h>
-
+#include "cpu_cache.h"
 #include "dispatcher_asm.h"
 #include "settings.h"
 
@@ -149,40 +148,18 @@ static unsigned char patch_helper_code[] = {
     0x4e, 0xd1                    // 106: jmp (a1)
 };
 
-#define _Unimplemented 0xa89f
-#define _CacheFlush 0xa0bd
-
-// from Inside Macintosh: OS Utilities
-// "Determining If a System Software Routine is Available"
-Boolean TrapAvailable(short trapWord)
-{
-  TrapType trType;
-
-  /* determine whether it is an Operating System or Toolbox routine */
-  if ((trapWord & 0x0800) == 0) {
-    trType = OSTrap;
-  } else {
-    trType = ToolTrap;
-  }
-
-  /* filter cases where older systems mask with $1FF rather than $3FF */
-  if (
-    trType == ToolTrap
-      && (trapWord & 0x03ff) >= 0x200
-      && GetToolboxTrapAddress(0xa86e) == GetToolboxTrapAddress(0xaa6e)
-  ) {
-      return false;
-  }
-
-  return NGetTrapAddress(trapWord, trType) != GetToolboxTrapAddress(_Unimplemented);
-}
-
 unsigned char *get_dispatcher_code(void)
 {
     dispatcher_code[2] = (cycles_per_exit >> 24) & 0xff;
     dispatcher_code[3] = (cycles_per_exit >> 16) & 0xff;
     dispatcher_code[4] = (cycles_per_exit >>  8) & 0xff;
     dispatcher_code[5] = (cycles_per_exit      ) & 0xff;
+
+    if (TrapAvailable(_CacheFlush)) {
+      // probably ok bc this only happens once before the dispatcher code
+      // is executed, but just in case...
+      FlushCodeCache();
+    }
     return dispatcher_code;
 }
 
