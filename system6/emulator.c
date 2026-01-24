@@ -17,6 +17,7 @@
 #include <Files.h>
 #include <SegLoad.h>
 #include <Palettes.h>
+#include <Retrace.h>
 
 #include "emulator.h"
 
@@ -62,7 +63,15 @@ WindowPtr g_wp;
 unsigned char app_running;
 unsigned char sound_enabled;
 unsigned char force_draw_sprites;
+unsigned char limit_fps = 1;
 int screen_depth;
+
+static u32 last_frame_count;
+
+// VBL sync for frame limiting
+static volatile int vbl_flag;
+static VBLTask vbl_task;
+static int vbl_installed;
 
 static unsigned long soft_reset_release_tick;
 
@@ -95,6 +104,43 @@ static void build_save_filename(void)
   memcpy(&save_filename_p[1], save_filename, len);
 }
 
+static pascal void VBLHandler(void)
+{
+  VBLTaskPtr task;
+
+  // A0 points to the VBLTask structure
+  asm volatile("move.l %%a0, %0" : "=g"(task));
+
+  vbl_flag = 1;
+  task->vblCount = 1;  // reschedule for next VBL
+}
+
+static void InstallVBL(void)
+{
+  if (vbl_installed)
+    return;
+
+  vbl_task.qType = vType;
+  vbl_task.vblAddr = VBLHandler;
+  vbl_task.vblCount = 1;
+  vbl_task.vblPhase = 0;
+
+  if (VInstall((QElemPtr)&vbl_task) == noErr) {
+    vbl_installed = 1;
+    vbl_flag = 0;
+  }
+}
+
+static void RemoveVBL(void)
+{
+  if (!vbl_installed)
+    return;
+
+  VRemove((QElemPtr)&vbl_task);
+  vbl_installed = 0;
+}
+
+
 void InitToolbox(void)
 {
   Handle mbar;
@@ -122,6 +168,7 @@ void InitToolbox(void)
     DisableItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND);
   }
   UpdateScaleMenuChecks();
+  CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
   DrawMenuBar();
 
   app_running = 1;
@@ -213,6 +260,7 @@ void StopEmulation(void)
     return;
   }
 
+  RemoveVBL();
   audio_mac_shutdown();
   jit_cleanup();
 
@@ -300,6 +348,10 @@ void StartEmulation(void)
 
   if (audio_mac_init(&audio) && sound_enabled) {
     audio_mac_start();
+  }
+
+  if (limit_fps) {
+    InstallVBL();
   }
 
   DisableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
@@ -508,6 +560,14 @@ void OnMenuAction(long action)
         audio_mac_stop();
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND, sound_enabled);
+    } else if (item == EDIT_LIMIT_FPS) {
+      limit_fps = !limit_fps;
+      if (limit_fps) {
+        InstallVBL();
+      } else {
+        RemoveVBL();
+      }
+      CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
     } else if (item == EDIT_SCALE_1X) {
       SetScreenScale(1);
     } else if (item == EDIT_SCALE_2X) {
@@ -648,9 +708,9 @@ int main(int argc, char *argv[])
     StartEmulation();
   }
 
-  while (app_running) {
-    unsigned int now;
+  last_frame_count = 0;
 
+  while (app_running) {
     if (!ProcessEvents()) {
       break;
     }
@@ -658,6 +718,20 @@ int main(int argc, char *argv[])
     if (g_wp) {
       CheckSoftResetRelease();
       jit_step(&dmg);
+
+      if (limit_fps && dmg.frames_rendered != last_frame_count) {
+        last_frame_count = dmg.frames_rendered;
+
+        if (sound_enabled) {
+          // use audio buffer fill level as frame pacer
+          audio_mac_wait_if_ahead();
+        } else {
+          // wait for VBL interrupt to fire
+          while (!vbl_flag)
+            ;
+          vbl_flag = 0;
+        }
+      }
     }
   }
   audio_mac_shutdown();

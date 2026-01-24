@@ -1,9 +1,18 @@
 /* Game Boy emulator for 68k Macs
    audio_mac.c - Sound Manager integration using SndPlayDoubleBuffer */
 
-// audio samples are generated synchronized to GB execution via audio_mac_sync(),
-// which is called from dmg_sync_hw. Samples accumulate in a ring buffer. the
-// Sound Manager callback reads from the ring buffer at interrupt time
+// this generates 185 samples per 1/60 sec. the samples are generated at interrupt
+// time based on when the Sound Manager needs them - sampling the state of the
+// GB's audio registers completely desynchronized from the game execution. this
+// means the tempo of the music varies and notes can also be missed, but IMO this
+// is still less jarring than the drop outs that would happen if the sample
+// generation was coupled to the actual GB execution.
+
+// i'm kind of thinking of refactoring to prepare the samples synchronized to the GB
+// cycles (accumulate samples until it has 185, then submit, or something fancier
+// with a ring buffer), but don't want to deal with the fact that the Sound Manager
+// could "run out" before it has 185 ready - would be harder to listen to than
+// the current solution
 
 #include <Sound.h>
 #include <Memory.h>
@@ -14,21 +23,8 @@
 #include "../src/audio.h"
 
 // 1 frame worth of samples at 11127 Hz / 60 fps
-#define BUFFER_SAMPLES 512
+#define BUFFER_SAMPLES 185
 #define SAMPLE_RATE_FIXED 0x2b7745d1
-
-// ring buffer - must be power of 2 for masking
-#define RING_SIZE 1024
-#define RING_MASK (RING_SIZE - 1)
-
-static unsigned char ring_buffer[RING_SIZE];
-static volatile int ring_write;  // main loop writes here
-static volatile int ring_read;   // interrupt reads here
-
-// cycles per sample: 4194304 / 11127 = about 377
-#define CYCLES_PER_SAMPLE 377
-
-static int cycle_accum;
 
 static SndChannelPtr snd_channel;
 static struct audio *g_audio;
@@ -77,59 +73,16 @@ int audio_mac_available(void)
     return HasASC();
 }
 
-// called from main loop (dmg_sync_hw) to generate samples into ring buffer
-void audio_mac_sync(int cycles)
-{
-    int samples_needed, avail, chunk;
-
-    if (!g_audio || !audio_inited)
-        return;
-
-    cycle_accum += cycles;
-    samples_needed = cycle_accum / CYCLES_PER_SAMPLE;
-
-    if (samples_needed == 0)
-        return;
-
-    cycle_accum -= samples_needed * CYCLES_PER_SAMPLE;
-
-    // check available space in ring buffer
-    avail = (ring_read - ring_write - 1) & RING_MASK;
-    if (samples_needed > avail)
-        samples_needed = avail; // drop excess rather than overwrite
-
-    if (samples_needed == 0)
-        return;
-
-    // generate in up to 2 chunks to handle wrap-around
-    chunk = RING_SIZE - ring_write;
-    if (chunk > samples_needed)
-        chunk = samples_needed;
-
-    audio_generate(g_audio, &ring_buffer[ring_write], chunk);
-    ring_write = (ring_write + chunk) & RING_MASK;
-
-    if (chunk < samples_needed) {
-        audio_generate(g_audio, ring_buffer, samples_needed - chunk);
-        ring_write = samples_needed - chunk;
-    }
-}
-
-// read samples from ring buffer into Sound Manager buffer (interrupt time)
 static void FillBuffer(unsigned char *p)
 {
-    int avail, k;
+    int k;
 
-    for (k = 0; k < BUFFER_SAMPLES; k++) {
-        avail = (ring_write - ring_read) & RING_MASK;
-        if (avail > 0) {
-            p[k] = ring_buffer[ring_read];
-            ring_read = (ring_read + 1) & RING_MASK;
-        } else {
-            // underrun - output silence
-            p[k] = 0x80;
-        }
+    if (!g_audio) {
+        memset(p, 0x80, BUFFER_SAMPLES);
+        return;
     }
+
+    audio_generate(g_audio, p, BUFFER_SAMPLES);
 }
 
 // called at interrupt time when a buffer is exhausted
@@ -203,14 +156,9 @@ void audio_mac_start(void)
     if (!audio_inited || !snd_channel)
         return;
 
-    // reset ring buffer state
-    ring_read = 0;
-    ring_write = 0;
-    cycle_accum = 0;
-
-    // pre-fill both buffers with silence (ring buffer is empty at start)
-    memset(dbl_buffers[0].dbSoundData, 0x80, BUFFER_SAMPLES);
-    memset(dbl_buffers[1].dbSoundData, 0x80, BUFFER_SAMPLES);
+    // pre-fill both buffers
+    FillBuffer(dbl_buffers[0].dbSoundData);
+    FillBuffer(dbl_buffers[1].dbSoundData);
 
     SndPlayDoubleBuffer(snd_channel, &dbl_header);
 }
@@ -229,21 +177,6 @@ void audio_mac_stop(void)
 
     cmd.cmd = flushCmd;
     SndDoImmediate(snd_channel, &cmd);
-}
-
-void audio_mac_wait_if_ahead(void)
-{
-    int fill;
-
-    if (!audio_inited)
-        return;
-
-    // wait while buffer is more than 3/4 full
-    while (1) {
-        fill = (ring_write - ring_read) & RING_MASK;
-        if (fill < RING_SIZE * 3 / 4)
-            break;
-    }
 }
 
 void audio_mac_shutdown(void)

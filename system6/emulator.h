@@ -58,10 +58,11 @@ extern PixMap offscreen_pixmap;
 #define FILE_QUIT 7
 
 #define EDIT_SOUND 1
-#define EDIT_SCALE_1X 4
-#define EDIT_SCALE_2X 5
-#define EDIT_PREFERENCES 7
-#define EDIT_KEY_MAPPINGS 8
+#define EDIT_LIMIT_FPS 2
+#define EDIT_SCALE_1X 5
+#define EDIT_SCALE_2X 6
+#define EDIT_PREFERENCES 8
+#define EDIT_KEY_MAPPINGS 9
 
 #define HACKS_FORCE_DRAW_SPRITES 1
 

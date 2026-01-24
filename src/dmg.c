@@ -9,6 +9,7 @@
 #include "types.h"
 #include "audio.h"
 #include "../system6/jit.h"
+#include "../system6/audio_mac.h"
 
 extern unsigned char force_draw_sprites;
 
@@ -336,6 +337,9 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
     dmg->total_cycles += cycles;
     dmg->frame_cycles += cycles;
+
+    // generate audio samples synchronized to GB execution
+    audio_mac_sync(cycles);
 
     int lyc_cycles = lcd_read(dmg->lcd, REG_LYC) * CYCLES_PER_LINE;
 

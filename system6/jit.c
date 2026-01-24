@@ -272,7 +272,7 @@ int jit_step(struct dmg *dmg)
     last_sync = time_in_sync;
     last_report_tick = now;
 
-    sprintf(buf, "%lu FPS, J:%lu%%, S:%lu%%", fps, pct_jit, pct_sync);
+    sprintf(buf, "%lu fr/%lu tk = %lu", frames_delta, elapsed, fps);
     set_status_bar(buf);
   }
 
