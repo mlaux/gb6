@@ -21,9 +21,9 @@ int keyMappings[8];
 
 int frame_skip;
 int video_mode;
-int screen_scale = 2;
+int screen_scale;
 
-static int cyclesValues[3] = { 456, 7296, 70224 };
+static int cyclesValues[2] = { 70224, 7296 };
 
 const char *keyNames[128] = {
   "\pA",        // 0x00
@@ -307,23 +307,30 @@ void LoadPreferences(void)
 {
   Handle h;
   int *prefs;
+  int incompatibleDirect, incompatibleIndexed;
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
-  if (h != nil && GetHandleSize(h) >= sizeof(int) * 2) {
-    prefs = (int *)*h;
+  if (h != nil && GetHandleSize(h) >= sizeof(int) * 6) {
+    prefs = (int *) *h;
     cycles_per_exit = prefs[0];
     frame_skip = prefs[1];
     video_mode = prefs[2];
+    screen_scale = prefs[3];
+    sound_enabled = prefs[4];
+    limit_fps = prefs[5];
   } else {
-    cycles_per_exit = cyclesValues[2];
+    cycles_per_exit = cyclesValues[0];
     frame_skip = 4;
     video_mode = VIDEO_DITHER_COPYBITS;
+    screen_scale = 2;
+    sound_enabled = 0;
+    limit_fps = 0;
   }
 
   // validate video_mode for current screen depth
-  int incompatibleDirect = 
+  incompatibleDirect =
     video_mode == VIDEO_DITHER_DIRECT && screen_depth > 1;
-  int incompatibleIndexed = 
+  incompatibleIndexed =
     video_mode == VIDEO_INDEXED && screen_depth == 1;
   if (incompatibleDirect || incompatibleIndexed) {
     video_mode = VIDEO_DITHER_COPYBITS;
@@ -334,25 +341,27 @@ void SavePreferences(void)
 {
   Handle h;
   int *prefs;
+  Size needed = sizeof(int) * 6;
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
   if (h == nil) {
-    h = NewHandle(sizeof(int) * 3);
+    h = NewHandle(needed);
     if (h == nil) {
       return;
     }
-    prefs = (int *) *h;
-    prefs[0] = cycles_per_exit;
-    prefs[1] = frame_skip;
-    prefs[2] = video_mode;
     AddResource(h, RES_PREFS_TYPE, RES_PREFS_ID, "\pPreferences");
-  } else {
-    prefs = (int *) *h;
-    prefs[0] = cycles_per_exit;
-    prefs[1] = frame_skip;
-    prefs[2] = video_mode;
-    ChangedResource(h);
+  } else if (GetHandleSize(h) < needed) {
+    SetHandleSize(h, needed);
   }
+
+  prefs = (int *) *h;
+  prefs[0] = cycles_per_exit;
+  prefs[1] = frame_skip;
+  prefs[2] = video_mode;
+  prefs[3] = screen_scale;
+  prefs[4] = sound_enabled;
+  prefs[5] = limit_fps;
+  ChangedResource(h);
   WriteResource(h);
 }
 
@@ -510,34 +519,34 @@ void ShowPreferencesDialog(void)
   short type;
 
   // map current settings to dialog items
-  cyclesItem = 4;
-  for (k = 0; k < 3; k++) {
+  cyclesItem = 3;
+  for (k = 0; k < 2; k++) {
     if (cycles_per_exit == cyclesValues[k]) {
       cyclesItem = 3 + k;
       break;
     }
   }
-  videoModeItem = 6 + video_mode;
-  frameSkipItem = 9 + frame_skip;
+  videoModeItem = 5 + video_mode;
+  frameSkipItem = 8 + frame_skip;
 
   CenterDialog(GetResource('DLOG', DLOG_PREFERENCES));
 
   dp = GetNewDialog(DLOG_PREFERENCES, 0L, (WindowPtr) -1L);
-  GetDialogItem(dp, 19, &type, &handle, &rect);
-  SetDialogItem(dp, 19, type, (Handle) FrameSaveButton, &rect);
+  GetDialogItem(dp, 18, &type, &handle, &rect);
+  SetDialogItem(dp, 18, type, (Handle) FrameSaveButton, &rect);
 
   // set initial radio button states
-  SetRadioGroup(dp, 3, 5, cyclesItem);
-  SetRadioGroup(dp, 6, 8, videoModeItem);
-  SetRadioGroup(dp, 9, 13, frameSkipItem);
+  SetRadioGroup(dp, 3, 4, cyclesItem);
+  SetRadioGroup(dp, 5, 7, videoModeItem);
+  SetRadioGroup(dp, 8, 12, frameSkipItem);
 
   // disable incompatible video modes
   if (screen_depth > 1) {
-    GetDialogItem(dp, 7, &type, &handle, &rect);
+    GetDialogItem(dp, 6, &type, &handle, &rect);
     HiliteControl((ControlHandle) handle, 255);
   }
   if (screen_depth == 1) {
-    GetDialogItem(dp, 8, &type, &handle, &rect);
+    GetDialogItem(dp, 7, &type, &handle, &rect);
     HiliteControl((ControlHandle) handle, 255);
   }
 
@@ -546,22 +555,22 @@ void ShowPreferencesDialog(void)
   do {
     ModalDialog(NULL, &itemHit);
 
-    if (itemHit >= 3 && itemHit <= 5) {
+    if (itemHit >= 3 && itemHit <= 4) {
       cyclesItem = itemHit;
-      SetRadioGroup(dp, 3, 5, cyclesItem);
-    } else if (itemHit >= 6 && itemHit <= 8) {
+      SetRadioGroup(dp, 3, 4, cyclesItem);
+    } else if (itemHit >= 5 && itemHit <= 7) {
       videoModeItem = itemHit;
-      SetRadioGroup(dp, 6, 8, videoModeItem);
-    } else if (itemHit >= 9 && itemHit <= 13) {
+      SetRadioGroup(dp, 5, 7, videoModeItem);
+    } else if (itemHit >= 8 && itemHit <= 12) {
       frameSkipItem = itemHit;
-      SetRadioGroup(dp, 9, 13, frameSkipItem);
+      SetRadioGroup(dp, 8, 12, frameSkipItem);
     }
   } while (itemHit != ok && itemHit != cancel);
 
   if (itemHit == ok) {
     cycles_per_exit = cyclesValues[cyclesItem - 3];
-    video_mode = videoModeItem - 6;
-    frame_skip = frameSkipItem - 9;
+    video_mode = videoModeItem - 5;
+    frame_skip = frameSkipItem - 8;
     SavePreferences();
   }
 

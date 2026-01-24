@@ -11,12 +11,13 @@
 #include "../system6/jit.h"
 #include "../system6/audio_mac.h"
 
-extern unsigned char force_draw_sprites;
-
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
 #define CYCLES_MIDDLE (CYCLES_LINE_144 / 2)
 #define CYCLES_LINE_144 (CYCLES_PER_FRAME - (10 * CYCLES_PER_LINE))
+
+// TAC clock select -> cycles per TIMA increment
+static const u16 timer_divisors[] = { 1024, 16, 64, 256 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
 {
@@ -333,13 +334,26 @@ void dmg_write16(void *_dmg, u16 address, u16 data)
 // HALT, because HALT will skip directly to line 144
 void dmg_sync_hw(struct dmg *dmg, int cycles)
 {
-    int ly, lyc;
-
     dmg->total_cycles += cycles;
     dmg->frame_cycles += cycles;
 
     // generate audio samples synchronized to GB execution
     audio_mac_sync(cycles);
+
+    // TIMA timer
+    if (dmg->timer_control & TIMER_CONTROL_ENABLED) {
+        u16 divisor = timer_divisors[dmg->timer_control & 3];
+        dmg->timer_cycles += cycles;
+        while (dmg->timer_cycles >= divisor) {
+            dmg->timer_cycles -= divisor;
+            dmg->timer_count++;
+            if (dmg->timer_count == 0) {
+                // overflow: reload from TMA and request interrupt
+                dmg->timer_count = dmg->timer_mod;
+                dmg_request_interrupt(dmg, INT_TIMER);
+            }
+        }
+    }
 
     int lyc_cycles = lcd_read(dmg->lcd, REG_LYC) * CYCLES_PER_LINE;
 
@@ -365,7 +379,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
                 if (lcdc & LCDC_ENABLE_BG) {
                     lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
                 }
-                if ((lcdc & LCDC_ENABLE_OBJ) || force_draw_sprites) {
+                if (lcdc & LCDC_ENABLE_OBJ) {
                     lcd_render_objs(dmg);
                 }
                 lcd_draw(dmg->lcd);

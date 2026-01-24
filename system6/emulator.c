@@ -40,7 +40,7 @@
 
 #include "compiler.h"
 
-static void UpdateScaleMenuChecks(void);
+static void UpdateMenuChecks(void);
 
 // Called by dmg.c when ROM bank switches
 static void on_rom_bank_switch(int new_bank)
@@ -62,8 +62,7 @@ struct dmg dmg;
 WindowPtr g_wp;
 unsigned char app_running;
 unsigned char sound_enabled;
-unsigned char force_draw_sprites;
-unsigned char limit_fps = 1;
+unsigned char limit_fps;
 int screen_depth;
 
 static u32 last_frame_count;
@@ -167,8 +166,6 @@ void InitToolbox(void)
   if (!audio_mac_available()) {
     DisableItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND);
   }
-  UpdateScaleMenuChecks();
-  CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
   DrawMenuBar();
 
   app_running = 1;
@@ -271,7 +268,10 @@ void StopEmulation(void)
       DisposePalette(pal);
     }
   }
-  DisposePtr(rom.data);
+  if (rom.data) {
+    DisposePtr((Ptr) rom.data);
+    rom.data = NULL;
+  }
   DisposeWindow(g_wp);
   g_wp = NULL;
 }
@@ -280,10 +280,6 @@ void StartEmulation(void)
 {
   int width, height;
   Rect bounds;
-
-  if (g_wp) {
-    StopEmulation();
-  }
 
   // set up dimensions based on scale
   if (screen_scale == 1) {
@@ -366,9 +362,11 @@ static void CheckSoftResetRelease(void)
   }
 }
 
-static void UpdateScaleMenuChecks(void)
+static void UpdateMenuChecks(void)
 {
   MenuHandle menu = GetMenuHandle(MENU_EDIT);
+  CheckItem(menu, EDIT_SOUND, sound_enabled);
+  CheckItem(menu, EDIT_LIMIT_FPS, limit_fps);
   CheckItem(menu, EDIT_SCALE_1X, screen_scale == 1);
   CheckItem(menu, EDIT_SCALE_2X, screen_scale == 2);
 }
@@ -439,7 +437,8 @@ void SetScreenScale(int scale)
     }
   }
 
-  UpdateScaleMenuChecks();
+  UpdateMenuChecks();
+  SavePreferences();
 }
 
 int LoadRom(Str63 fileName, short vRefNum)
@@ -448,12 +447,9 @@ int LoadRom(Str63 fileName, short vRefNum)
   short fileNo;
   long amtRead;
   FInfo fndrInfo;
-  
-  if(rom.data != NULL) {
-    // unload existing ROM
-    free((char *) rom.data);
-    rom.length = 0;
-  }
+
+  // stop emulation first to free memory before allocating new ROM
+  StopEmulation();
 
   err = FSOpen(fileName, vRefNum, &fileNo);
   
@@ -560,6 +556,7 @@ void OnMenuAction(long action)
         audio_mac_stop();
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_SOUND, sound_enabled);
+      SavePreferences();
     } else if (item == EDIT_LIMIT_FPS) {
       limit_fps = !limit_fps;
       if (limit_fps) {
@@ -568,6 +565,7 @@ void OnMenuAction(long action)
         RemoveVBL();
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
+      SavePreferences();
     } else if (item == EDIT_SCALE_1X) {
       SetScreenScale(1);
     } else if (item == EDIT_SCALE_2X) {
@@ -579,13 +577,6 @@ void OnMenuAction(long action)
     }
   }
 
-  else if (menu == MENU_HACKS) {
-    if (item == HACKS_FORCE_DRAW_SPRITES) {
-      force_draw_sprites = !force_draw_sprites;
-      CheckItem(GetMenuHandle(MENU_HACKS), HACKS_FORCE_DRAW_SPRITES,
-          force_draw_sprites);
-    }
-  }
 }
 
 void OnMouseDown(EventRecord *pEvt)
@@ -699,6 +690,7 @@ int main(int argc, char *argv[])
   DetectScreenDepth();
   LoadKeyMappings();
   LoadPreferences();
+  UpdateMenuChecks();
 
   init_dither_lut();
   lcd_init_lut();

@@ -23,8 +23,6 @@ extern struct lcd lcd;
 extern struct audio audio;
 extern struct dmg dmg;
 
-extern unsigned char force_draw_sprites;
-
 extern char offscreen_buf[];
 extern Rect offscreen_rect;
 extern BitMap offscreen_bmp;
@@ -47,7 +45,6 @@ extern PixMap offscreen_pixmap;
 #define MENU_APPLE 128
 #define MENU_FILE 129
 #define MENU_EDIT 130
-#define MENU_HACKS 131
 
 #define APPLE_ABOUT 1
 
@@ -63,8 +60,6 @@ extern PixMap offscreen_pixmap;
 #define EDIT_SCALE_2X 6
 #define EDIT_PREFERENCES 8
 #define EDIT_KEY_MAPPINGS 9
-
-#define HACKS_FORCE_DRAW_SPRITES 1
 
 #define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
 

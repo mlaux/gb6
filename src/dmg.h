@@ -64,6 +64,9 @@ struct dmg {
     // for DIV evaluation from cycles
     u32 total_cycles;
     u32 div_reset_cycle;
+
+    // for TIMA timer
+    u32 timer_cycles;
 };
 
 void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);
