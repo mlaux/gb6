@@ -117,12 +117,10 @@ interrupts" preference is set and whether or not the game uses the HALT instruct
 ### Check for interrupts
 
 This preference controls how often the emulator exits compiled code and checks for
-interrupts. Three options are available to choose from depending on the speed of
-your Mac: every line (most CPU intensive), every 16 lines, and every frame
+interrupts. Two options are available to choose from depending on the speed of
+your Mac: every 16 lines (more compatible) and every frame
 (fastest). "Every frame" is usually good enough for RPGs, while platform games
-with status bars usually need "every 16 lines". I haven't found any games that
-would both require "every line" and don't just crash the emulator 🙃 but it's
-there just in case.
+with status bars usually need "every 16 lines".
 
 Checking more frequently than every frame enables the emulator to draw the LCD
 at its midpoint, which has the best chance of avoiding glitches due to status
@@ -164,22 +162,6 @@ Copying the Game Boy pixels to your Mac's screen is a pretty expensive operation
 This preference allows one in every 2, 3, 4, or 5 frames to actually be drawn
 to the screen. Skipped frames are still emulated - only the actual drawing is
 skipped. This can drastically increase performance on slow machines.
-
-## Hacks
-
-### Force draw sprites
-
-Turn this on if sprites are invisible when they should be visible.
-
-Developers can configure the Game Boy to fire an interrupt whenever a certain
-Y coordinate is reached when rendering. Games use this to modify scrolling
-mid-frame, create visual effects, or hide sprites on top of text boxes, status
-bars, etc.
-
-In the emulator, this interrupt is useless because of the per-frame rendering
-strategy, and in fact annoying because games can disable sprites and leave them
-disabled for the time when the screen is drawn. "Force draw sprites" makes
-the emulator render sprites even if they're turned off on the Game Boy side.
 
 ## Building
 
