@@ -1,8 +1,8 @@
-# ![icon](icon_2x.png) gb6 - Game Boy emulator for Macintosh System 6
+# ![icon](icon_2x.png) Gray Brick - Game Boy emulator for Macintosh System 6
 
-gb6 is a Game Boy emulator targeting 68k Macintosh with a focus on execution speed.
-The emulator features a JIT compiler that translates Game Boy code into 68k code
-for maximum speed.
+Gray Brick is a Game Boy emulator targeting 68k Macintosh with a focus on
+execution speed. The emulator features a JIT compiler that translates Game Boy
+code into 68k code for maximum speed.
 
 This project does not make any attempt to be particularly accurate to the GB
 hardware - I had to make too many compromises in order to get it working at all.

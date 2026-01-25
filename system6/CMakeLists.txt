@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.9)
-project(GameBoyEmulator)
+cmake_minimum_required(VERSION 3.13)
+project("Gray Brick")
+
+include(add_application.cmake)
 
 include_directories(../src ../compiler)
 
-set(CMAKE_C_FLAGS "-O3")
-
-add_application(Emulator
+add_application("Gray Brick"
     TYPE APPL
     CREATOR MGBE
     ../src/dmg.c
@@ -35,4 +35,15 @@ add_application(Emulator
     audio_mac.c
     emulator.c
     resources.r
+)
+
+target_compile_options(Gray_Brick PRIVATE
+    -O3
+    -ffunction-sections
+    -fdata-sections
+)
+
+target_link_options(Gray_Brick PRIVATE
+    "-Wl,--gc-sections"
+    #"-Wl,--print-gc-sections"
 )
