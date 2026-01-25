@@ -261,10 +261,20 @@ int jit_run(struct dmg *dmg)
       // this means this was the first block to be stored for a given bank, 
       // and the bank cache array couldn't be allocated. unrecoverable OOM?
       // i'm not actually sure...
-      sprintf(buf, "JIT: bank array fail pc=%04x", jit_regs.d3);
-      set_status_bar(buf);
-      jit_halted = 1;
-      return 0;
+      if (!jit_clear_all_blocks()) {
+        return 0;
+      }
+
+      // try again
+      if (!cache_store(jit_regs.d3, jit_ctx.current_rom_bank, block->code)) {
+        // something is really wrong
+        sprintf(buf, "JIT: bank array fail pc=%04x", jit_regs.d3);
+        set_status_bar(buf);
+        jit_halted = 1;
+        return 0;
+      }
+
+      // recovered
     }
 
     if (TrapAvailable(_CacheFlush)) {
