@@ -309,10 +309,6 @@ void StartEmulation(void)
 
   memset(&dmg, 0, sizeof(dmg));
   memset(&cpu, 0, sizeof(cpu));
-
-  if (lcd.pixels) {
-    free(lcd.pixels);
-  }
   memset(&lcd, 0, sizeof(lcd));
   lcd_new(&lcd);
 
