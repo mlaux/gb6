@@ -10,6 +10,7 @@
 #include "audio.h"
 #include "../system6/jit.h"
 #include "../system6/audio_mac.h"
+#include "../system6/settings.h"
 
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
@@ -373,7 +374,9 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         // this, so just do it in the middle of the screen. this could maybe avoid
         // games turning off sprites for text boxes, messing with the scroll for
         // status bars, etc
-        if (dmg->frames_rendered % dmg->frame_skip == 0) {
+
+        // frame skip setting is 0-4
+        if (dmg->frames_rendered % (frame_skip + 1) == 0) {
             int lcdc = lcd_read(dmg->lcd, REG_LCDC);
             if (lcdc & LCDC_ENABLE) {
                 if (lcdc & LCDC_ENABLE_BG) {

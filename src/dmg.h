@@ -41,7 +41,6 @@ struct dmg {
     u8 main_ram[0x2000];
     u8 video_ram[0x2000];
     u32 frames_rendered;
-    u32 frame_skip;
     int joypad_selected;
     int action_selected;
     u8 interrupt_enable;
