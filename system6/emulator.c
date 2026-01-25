@@ -33,6 +33,7 @@
 #include "input.h"
 #include "lcd_mac.h"
 #include "dispatcher_asm.h"
+#include "arena.h"
 #include "cache.h"
 #include "jit.h"
 #include "settings.h"
@@ -261,7 +262,6 @@ void StopEmulation(void)
   audio_mac_shutdown();
   jit_cleanup();
 
-  EnableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
   if (screen_depth > 1) {
     PaletteHandle pal = GetPalette(g_wp);
     if (pal) {
@@ -349,8 +349,6 @@ void StartEmulation(void)
   if (limit_fps) {
     InstallVBL();
   }
-
-  DisableItem(GetMenuHandle(MENU_EDIT), EDIT_PREFERENCES);
 }
 
 static void CheckSoftResetRelease(void)
@@ -573,10 +571,16 @@ void OnMenuAction(long action)
     } else if (item == EDIT_KEY_MAPPINGS) {
       ShowKeyMappingsDialog();
     } else if (item == EDIT_PREFERENCES) {
+      int old_cycles_per_exit = cycles_per_exit;
       ShowPreferencesDialog();
+      if (cycles_per_exit != old_cycles_per_exit && g_wp) {
+        if (!jit_clear_all_blocks()) {
+          // no-op. failure here causes the JIT to stop with a 
+          // status bar message, so no special error handling needed
+        }
+      }
     }
   }
-
 }
 
 void OnMouseDown(EventRecord *pEvt)
@@ -709,7 +713,7 @@ int main(int argc, char *argv[])
 
     if (g_wp) {
       CheckSoftResetRelease();
-      jit_step(&dmg);
+      jit_run(&dmg);
 
       if (limit_fps && dmg.frames_rendered != last_frame_count) {
         last_frame_count = dmg.frames_rendered;

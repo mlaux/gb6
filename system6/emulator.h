@@ -30,7 +30,7 @@ extern BitMap offscreen_bmp;
 extern char offscreen_color_buf[];
 extern PixMap offscreen_pixmap;
 
-#define APP_VERSION "1.1.0 ${GIT_SHA}"
+#define APP_VERSION "1.2.0 ${GIT_SHA}"
 
 #define WINDOW_X 8
 #define WINDOW_Y 40

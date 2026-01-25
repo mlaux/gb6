@@ -321,10 +321,15 @@ void LoadPreferences(void)
   } else {
     cycles_per_exit = cyclesValues[0];
     frame_skip = 4;
-    video_mode = VIDEO_DITHER_COPYBITS;
-    screen_scale = 2;
     sound_enabled = 0;
     limit_fps = 0;
+    if (screen_depth >= 8) {
+      video_mode = VIDEO_INDEXED;
+      screen_scale = 1;
+    } else {
+      video_mode = VIDEO_DITHER_COPYBITS;
+      screen_scale = 2;
+    }
   }
 
   // validate video_mode for current screen depth

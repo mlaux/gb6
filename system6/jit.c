@@ -132,19 +132,94 @@ void jit_init(struct dmg *dmg)
   jit_halted = 0;
 }
 
-int jit_step(struct dmg *dmg)
+int jit_clear_all_blocks(void)
+{
+  arena_reset();
+  if (!cache_init()) {
+    set_status_bar("Cache alloc fail");
+    jit_halted = 1;
+    return 0;
+  }
+  sync_cache_pointers();
+  return 1;
+}
+
+// i moved this out of dmg.c because it needs to mess with the JIT state
+static void check_interrupts(struct dmg *dmg)
+{
+  static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
+  u8 pending = dmg->zero_page[0x7f] & dmg->interrupt_request_mask & 0x1f;
+
+  if (!pending) {
+    return;
+  }
+
+  int k;
+  for (k = 0; k < 5; k++) {
+    if (pending & (1 << k)) {
+      // clear IF bit and disable IME
+      dmg->interrupt_request_mask &= ~(1 << k);
+      dmg->interrupt_enable = 0;
+
+      // push PC to stack using gb_sp (always valid GB address)
+      jit_ctx.gb_sp -= 2;
+      dmg_write16(dmg, jit_ctx.gb_sp, jit_regs.d3);
+      // keep A3 in sync
+      if (jit_ctx.sp_adjust != 0) {
+        // fast mode: A3 is native pointer
+        jit_regs.a3 = (u32) jit_ctx.gb_sp - jit_ctx.sp_adjust;
+      } else {
+        // slow mode: A3 holds GB SP directly
+        jit_regs.a3 = jit_ctx.gb_sp;
+      }
+
+      // Jump to handler
+      jit_regs.d3 = handlers[k];
+      break;
+    }
+  }
+}
+
+static void update_profiling_status_bar(u32 frames_now)
+{
+  char buf[64];
+  static u32 last_jit = 0, last_sync = 0, last_frames_rendered = 0;
+
+  u32 now = TickCount();
+  u32 elapsed = now - last_report_tick;
+  u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
+
+  u32 d_jit = time_in_jit - last_jit;
+  u32 d_sync = time_in_sync - last_sync;
+
+  u32 pct_jit = elapsed > 0 ? (d_jit * 100) / elapsed : 0;
+  u32 pct_sync = elapsed > 0 ? (d_sync * 100) / elapsed : 0;
+
+  u32 frames_delta = frames_now - last_frames_rendered;
+  u32 fps = elapsed > 0 ? (frames_delta * 60) / elapsed : 0;
+  last_frames_rendered = frames_now;
+
+  last_jit = time_in_jit;
+  last_sync = time_in_sync;
+  last_report_tick = now;
+
+  sprintf(buf, "%lu FPS (J: %lu, S: %lu)", fps, pct_jit, pct_sync);
+  set_status_bar(buf);
+}
+
+int jit_run(struct dmg *dmg)
 {
   void *code;
   struct code_block *block;
   char buf[64];
   u32 t0, t1, t2, t3;
-  t0 = TickCount();
 
   if (jit_halted) {
       return 0;
   }
 
-  // Look up or compile block
+  // look up or compile block
+  t0 = TickCount();
   code = cache_lookup(jit_regs.d3, jit_ctx.current_rom_bank);
 
   if (!code) {
@@ -155,21 +230,19 @@ int jit_step(struct dmg *dmg)
       arena_size() / 1024
     );
     set_status_bar(buf);
+
     compile_ctx.current_bank = jit_ctx.current_rom_bank;
     block = compile_block(jit_regs.d3, &compile_ctx);
+
     if (!block) {
       // arena full, reset and retry once
-      arena_reset();
-      if (!cache_init()) {
-        sprintf(buf, "JIT: cache fail pc=%04x", jit_regs.d3);
-        set_status_bar(buf);
-        jit_halted = 1;
+      if (!jit_clear_all_blocks()) {
         return 0;
       }
-      sync_cache_pointers();
+
       block = compile_block(jit_regs.d3, &compile_ctx);
       if (!block) {
-        sprintf(buf, "JIT: alloc fail pc=%04x", jit_regs.d3);
+        sprintf(buf, "JIT: block fail pc=%04x", jit_regs.d3);
         set_status_bar(buf);
         jit_halted = 1;
         return 0;
@@ -188,9 +261,12 @@ int jit_step(struct dmg *dmg)
       // this means this was the first block to be stored for a given bank, 
       // and the bank cache array couldn't be allocated. unrecoverable OOM?
       // i'm not actually sure...
+      sprintf(buf, "JIT: bank array fail pc=%04x", jit_regs.d3);
+      set_status_bar(buf);
+      jit_halted = 1;
+      return 0;
     }
-    sync_cache_pointers();
-    code = block->code;
+
     if (TrapAvailable(_CacheFlush)) {
       // for 68040. 68030 needed a cache flush when blocks were patched, but
       // 040 needs it here too because the caches are copy-back, so the code that
@@ -199,6 +275,8 @@ int jit_step(struct dmg *dmg)
       // see Apple Technical Note HW06: Cache As Cache Can
       FlushCodeCache();
     }
+
+    code = block->code;
   }
 
   t1 = TickCount();
@@ -214,66 +292,18 @@ int jit_step(struct dmg *dmg)
 
   // sync hardware with cycles accumulated by compiled code
   dmg_sync_hw(dmg, jit_regs.d2);
-  jit_regs.d2 = 0;
-
   if (dmg->interrupt_enable) {
-    u8 pending = dmg->zero_page[0x7f] & dmg->interrupt_request_mask & 0x1f;
-    if (pending) {
-      static const u16 handlers[] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
-      int k;
-      for (k = 0; k < 5; k++) {
-        if (pending & (1 << k)) {
-          // clear IF bit and disable IME
-          dmg->interrupt_request_mask &= ~(1 << k);
-          dmg->interrupt_enable = 0;
-
-          // push PC to stack using gb_sp (always valid GB address)
-          jit_ctx.gb_sp -= 2;
-          dmg_write16(dmg, jit_ctx.gb_sp, jit_regs.d3);
-          // keep A3 in sync
-          if (jit_ctx.sp_adjust != 0) {
-            // fast mode: A3 is native pointer
-            jit_regs.a3 = (u32) jit_ctx.gb_sp - jit_ctx.sp_adjust;
-          } else {
-            // slow mode: A3 holds GB SP directly
-            jit_regs.a3 = jit_ctx.gb_sp;
-          }
-
-          // Jump to handler
-          jit_regs.d3 = handlers[k];
-          break;
-        }
-      }
-    }
+    check_interrupts(dmg);
   }
+  jit_regs.d2 = 0;
 
   t3 = TickCount();
   time_in_jit += t2 - t1;
   time_in_sync += t3 - t2;
+
   call_count++;
   if (call_count % 100 == 0) {
-    static u32 last_jit = 0, last_sync = 0, last_frames_rendered = 0;
-    u32 now = TickCount();
-    u32 elapsed = now - last_report_tick;
-    u32 exits_per_sec = elapsed > 0 ? (100 * 60) / elapsed : 0;
-
-    u32 d_jit = time_in_jit - last_jit;
-    u32 d_sync = time_in_sync - last_sync;
-
-    u32 pct_jit = elapsed > 0 ? (d_jit * 100) / elapsed : 0;
-    u32 pct_sync = elapsed > 0 ? (d_sync * 100) / elapsed : 0;
-
-    u32 frames_now = dmg->frames_rendered;
-    u32 frames_delta = frames_now - last_frames_rendered;
-    u32 fps = elapsed > 0 ? (frames_delta * 60) / elapsed : 0;
-    last_frames_rendered = frames_now;
-
-    last_jit = time_in_jit;
-    last_sync = time_in_sync;
-    last_report_tick = now;
-
-    sprintf(buf, "%lu fr/%lu tk = %lu", frames_delta, elapsed, fps);
-    set_status_bar(buf);
+    update_profiling_status_bar(dmg->frames_rendered);
   }
 
   return 1;
