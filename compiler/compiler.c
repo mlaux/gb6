@@ -111,7 +111,12 @@ static void compile_ly_wait(
 
     // load frame_cycles pointer
     emit_movea_l_disp_an_an(block, JIT_CTX_FRAME_CYCLES_PTR, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
+    // load frame_cycles into d0
     emit_move_l_ind_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
+    // add accumulated cycles for this JIT run
+    emit_add_l_dn_dn(block, REG_68K_D_CYCLE_COUNT, REG_68K_D_SCRATCH_0);
+    // write true position back to memory
+    emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_0, 0, REG_68K_A_SCRATCH_1);
 
     // compare frame_cycles to target
     emit_cmpi_l_imm_dn(block, target_cycles, REG_68K_D_SCRATCH_0);
@@ -154,6 +159,10 @@ static void compile_halt(struct code_block *block, int next_pc)
     // load frame_cycles pointer
     emit_movea_l_disp_an_an(block, JIT_CTX_FRAME_CYCLES_PTR, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
     emit_move_l_ind_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
+    // add accumulated cycles for this JIT run
+    emit_add_l_dn_dn(block, REG_68K_D_CYCLE_COUNT, REG_68K_D_SCRATCH_0);
+    // write true position back to memory
+    emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_0, 0, REG_68K_A_SCRATCH_1);
 
     // see if already in vblank
     emit_cmpi_l_imm_dn(block, 65664, REG_68K_D_SCRATCH_0);

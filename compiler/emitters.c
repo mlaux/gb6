@@ -707,6 +707,13 @@ void emit_add_w_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     emit_word(block, 0xd040 | (dest << 9) | src);
 }
 
+// add.l Ds, Dd - ADD data registers (result to Dd)
+void emit_add_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // 1101 ddd 0 10 000 sss
+    emit_word(block, 0xd080 | (dest << 9) | src);
+}
+
 // sub.b Ds, Dd - SUB data registers (result to Dd)
 void emit_sub_b_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
 {

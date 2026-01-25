@@ -12,8 +12,7 @@
 // addr in D1, val_reg specifies value register
 void compile_slow_dmg_write(struct code_block *block, uint8_t val_reg)
 {
-    // store current cycle count for lazy register evaluation, right now
-    // it's just DIV but want to add more like lcd
+    // store current cycle count for lazy register evaluation
     emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX);
     // and push so retro68 doesn't erase
     emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT); // 2
@@ -87,7 +86,7 @@ void compile_call_dmg_write_d0(struct code_block *block)
 // Emit slow path call to dmg_read - expects address in D1, returns in D0
 void compile_slow_dmg_read(struct code_block *block)
 {
-    // store current cycle count for lazy DIV evaluation
+    // store current cycle count for DIV/LY evaluation
     emit_move_l_dn_disp_an(block, REG_68K_D_CYCLE_COUNT, JIT_CTX_READ_CYCLES, REG_68K_A_CTX); // 4
     emit_push_l_dn(block, REG_68K_D_CYCLE_COUNT); // 2
     emit_push_w_dn(block, REG_68K_D_SCRATCH_1); // 2

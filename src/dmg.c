@@ -150,13 +150,9 @@ u8 dmg_read_slow(struct dmg *dmg, u16 address)
     if (address == REG_LY) {
         // the compiler detects "ldh a, [$44]; cp N; jr cc" which is the most
         // common case, and skips to that line, so this actually doesn't run
-        // that much - just give it the value it's waiting for. LY=LYC is handled
-        // in a nicer way below, when the compiled code returns to C
-        dmg->ly_hack++;
-        if (dmg->ly_hack == 154) {
-            dmg->ly_hack = 0;
-        }
-        return dmg->ly_hack;
+        // that much
+        u32 current = (dmg->frame_cycles + jit_ctx.read_cycles) % 70224;
+        return current / 456;
     }
 
     if (address == REG_STAT) {
@@ -405,7 +401,7 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
     // need as a separate check for the case where cycles = 70224. in that case,
     // it needs to execute both the previous block and this one
     if (dmg->frame_cycles >= CYCLES_PER_FRAME) {
-        dmg->frame_cycles -= CYCLES_PER_FRAME;
+        dmg->frame_cycles %= CYCLES_PER_FRAME;
         dmg->sent_vblank_start = 0;
         dmg->sent_ly_interrupt = 0;
         dmg->rendered_this_frame = 0;

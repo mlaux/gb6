@@ -15,6 +15,7 @@ static void compile_shift_flags(struct code_block *block)
 static void compile_swap_flags(struct code_block *block)
 {
     emit_move_sr_dn(block, REG_68K_D_FLAGS);
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xfe);
 }
 
 static void compile_bit_flags(struct code_block *block)
