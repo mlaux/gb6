@@ -60,11 +60,17 @@ static MyDoubleBuffer dbl_buffers[2];
 //     return (hi << 8) | lo;
 // }
 
-static int HasASC(void)
+static int HasSndPlayDoubleBuffer(void)
 {
     long response;
     OSErr err;
 
+    // first check for gestaltSndPlayDoubleBuffer flag (newer Sound Manager)
+    err = Gestalt(gestaltSoundAttr, &response);
+    if (err == noErr && (response & (1L << gestaltSndPlayDoubleBuffer)))
+        return 1;
+
+    // fall back to checking for ASC (older Sound Manager didn't define the flag)
     err = Gestalt(gestaltHardwareAttr, &response);
     if (err == noErr && (response & (1L << gestaltHasASC)))
         return 1;
@@ -74,7 +80,7 @@ static int HasASC(void)
 
 int audio_mac_available(void)
 {
-    return HasASC();
+    return HasSndPlayDoubleBuffer();
 }
 
 // called from main loop (dmg_sync_hw) to generate samples into ring buffer

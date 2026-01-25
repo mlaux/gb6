@@ -19,7 +19,11 @@ static void compile_swap_flags(struct code_block *block)
 
 static void compile_bit_flags(struct code_block *block)
 {
-    emit_move_sr_dn(block, REG_68K_D_FLAGS);
+    // Metroid II (and probably others) depend on bit only affecting Z and not C
+    emit_scc(block, COND_EQ, REG_68K_D_SCRATCH_0);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x04);
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xfb);
+    emit_or_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_FLAGS);
 }
 
 // Get a GB register's value into D1 for modification

@@ -39,6 +39,12 @@
 #define REG_68K_A_READ_PAGE 5
 #define REG_68K_A_WRITE_PAGE 6
 
+#define COND_CC  4   // carry clear (nc)
+#define COND_CS  5   // carry set (c)
+#define COND_NE  6   // not equal/not zero (nz)
+#define COND_EQ  7   // equal/zero (z)
+#define COND_NONE -1 // not a conditional branch
+
 // Runtime context offsets
 #define JIT_CTX_DMG         0
 #define JIT_CTX_READ        4
