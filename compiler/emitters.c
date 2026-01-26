@@ -150,6 +150,20 @@ void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val)
     emit_word(block, 0x5148 | ddd << 9 | areg);
 }
 
+// subq.l #val, An
+void emit_subq_l_an(struct code_block *block, uint8_t areg, uint8_t val)
+{
+    uint16_t ddd;
+
+    // 0101 ddd 1 10 001 rrr
+    if (val == 0 || val > 8) {
+        printf("can only subq values between 1 and 8\n");
+        exit(1);
+    }
+    ddd = val == 8 ? 0 : val;
+    emit_word(block, 0x5188 | ddd << 9 | areg);
+}
+
 // subq.w #val, Dn
 void emit_subq_w_dn(struct code_block *block, uint8_t dreg, uint8_t val)
 {

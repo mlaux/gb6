@@ -25,6 +25,7 @@ void emit_movea_w_imm16(struct code_block *block, uint8_t areg, uint16_t val);
 void emit_subq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val);
 void emit_subq_l_dn(struct code_block *block, uint8_t dreg, uint8_t val);
 void emit_subq_w_an(struct code_block *block, uint8_t areg, uint8_t val);
+void emit_subq_l_an(struct code_block *block, uint8_t areg, uint8_t val);
 void emit_addq_b_dn(struct code_block *block, uint8_t dreg, uint8_t val);
 void emit_addq_w_dn(struct code_block *block, uint8_t dreg, uint8_t val);
 void emit_addq_l_dn(struct code_block *block, uint8_t dreg, uint8_t val);

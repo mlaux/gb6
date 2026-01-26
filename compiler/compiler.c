@@ -306,6 +306,11 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
             emit_subq_w_an(block, REG_68K_A_HL, 1);
             break;
 
+        case 0x3b: // dec sp
+            emit_subq_l_an(block, REG_68K_A_SP, 1);
+            emit_subi_w_disp_an(block, 1, JIT_CTX_GB_SP, REG_68K_A_CTX);
+            break;
+
         case 0x03: // inc bc
             emit_ext_w_dn(block, REG_68K_D_BC);
             emit_addq_l_dn(block, REG_68K_D_BC, 1);
