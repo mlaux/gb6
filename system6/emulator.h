@@ -61,7 +61,10 @@ extern PixMap offscreen_pixmap;
 #define EDIT_PREFERENCES 8
 #define EDIT_KEY_MAPPINGS 9
 
-#define SOFT_RESET_TICKS 30  /* ~0.5 sec at 60Hz */
+// 0.5 sec
+#define SOFT_RESET_TICKS 30
+// 15 sec... maybe too frequent
+#define SAVE_INTERVAL_TICKS 900
 
 #define BASE_MEMORY_REQUIRED (2 * 1024 * 1024) 
 

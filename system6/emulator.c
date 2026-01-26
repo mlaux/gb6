@@ -74,6 +74,8 @@ static VBLTask vbl_task;
 static int vbl_installed;
 
 static unsigned long soft_reset_release_tick;
+static unsigned long last_save_tick;
+
 
 static char save_filename[32];
 // for GetFInfo/SetFInfo
@@ -252,12 +254,25 @@ void InitColorOffscreen(void)
   offscreen_pixmap.pmReserved = 0;
 }
 
+void SaveGame(void)
+{
+  if (mbc_save_ram(dmg.rom->mbc, save_filename)) {
+    FInfo fndrInfo;
+    if (GetFInfo(save_filename_p, 0, &fndrInfo) == noErr) {
+      fndrInfo.fdType = 'SRAM';
+      fndrInfo.fdCreator = 'MGBE';
+      SetFInfo(save_filename_p, 0, &fndrInfo);
+    }
+  }
+}
+
 void StopEmulation(void)
 {
   if (!g_wp) {
     return;
   }
 
+  SaveGame();
   RemoveVBL();
   audio_mac_shutdown();
   jit_cleanup();
@@ -345,12 +360,18 @@ void StartEmulation(void)
   }
 }
 
-static void CheckSoftResetRelease(void)
+static void CheckPendingTasks(void)
 {
-  if (soft_reset_release_tick && TickCount() >= soft_reset_release_tick) {
+  unsigned long now = TickCount();
+  if (soft_reset_release_tick && now >= soft_reset_release_tick) {
     dmg_set_button(&dmg, FIELD_ACTION,
         BUTTON_A | BUTTON_B | BUTTON_SELECT | BUTTON_START, 0);
     soft_reset_release_tick = 0;
+  }
+
+  if (now - last_save_tick > SAVE_INTERVAL_TICKS) {
+      SaveGame();
+      last_save_tick = TickCount();
   }
 }
 
@@ -706,7 +727,7 @@ int main(int argc, char *argv[])
     }
 
     if (g_wp) {
-      CheckSoftResetRelease();
+      CheckPendingTasks();
       jit_run(&dmg);
 
       if (limit_fps && dmg.frames_rendered != last_frame_count) {
@@ -725,15 +746,5 @@ int main(int argc, char *argv[])
     }
   }
   audio_mac_shutdown();
-
-  if (mbc_save_ram(dmg.rom->mbc, save_filename)) {
-    FInfo fndrInfo;
-    if (GetFInfo(save_filename_p, 0, &fndrInfo) == noErr) {
-      fndrInfo.fdType = 'SRAM';
-      fndrInfo.fdCreator = 'MGBE';
-      SetFInfo(save_filename_p, 0, &fndrInfo);
-    }
-  }
-
   return 0;
 }
