@@ -1154,6 +1154,22 @@ void emit_sub_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
     emit_word(block, 0x9080 | (dest << 9) | src);
 }
 
+// mulu.w #imm, Dn
+void emit_mulu_w_imm_dn(struct code_block *block, uint16_t imm, uint8_t dreg)
+{
+    // MULU <ea>,Dn: 1100 ddd 011 <ea>
+    // immediate mode: <ea> = 111 100
+    emit_word(block, 0xc0fc | (dreg << 9));
+    emit_word(block, imm);
+}
+
+// cmp.l Dn,Dn (src - dest comparison, sets flags)
+void emit_cmp_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest)
+{
+    // CMP.L Dn,Dn: 1011 dest 010 000 src
+    emit_word(block, 0xb080 | (dest << 9) | src);
+}
+
 // emit_add_cycles - add GB cycles to context, picks optimal instruction
 void emit_add_cycles(struct code_block *block, int cycles)
 {

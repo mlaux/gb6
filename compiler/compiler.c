@@ -11,6 +11,7 @@
 #include "alu.h"
 #include "stack.h"
 #include "instructions.h"
+#include "timing.h"
 
 // helper for reading GB memory during compilation
 #define READ_BYTE(off) (ctx->read(ctx->dmg, src_address + (off)))
@@ -89,89 +90,6 @@ static void compile_ld_imm16_contiguous(
     uint8_t hibyte = READ_BYTE(*src_ptr + 1);
     *src_ptr += 2;
     emit_movea_w_imm16(block, reg, hibyte << 8 | lobyte);
-}
-
-// synthesize wait for LY to reach target value
-// detects ldh a, [$44]; cp N; jr cc, back
-static void compile_ly_wait(
-    struct code_block *block,
-    uint8_t target_ly,
-    uint8_t jr_opcode,
-    uint16_t next_pc
-) {
-    // jr nz (0x20): loop while LY != N, exit when LY == N -> wait for N
-    // jr z  (0x28): loop while LY == N, exit when LY != N -> wait for N+1
-    // jr c  (0x38): loop while LY < N, exit when LY >= N  -> wait for N
-    uint8_t wait_ly = target_ly;
-    if (jr_opcode == 0x28) {
-        wait_ly = (target_ly + 1) % 154;
-    }
-
-    uint32_t target_cycles = wait_ly * 456;
-
-    // load frame_cycles pointer
-    emit_movea_l_disp_an_an(block, JIT_CTX_FRAME_CYCLES_PTR, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
-    // load frame_cycles into d0
-    emit_move_l_ind_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
-
-    // compare frame_cycles to target
-    emit_cmpi_l_imm_dn(block, target_cycles, REG_68K_D_SCRATCH_0);
-    emit_bcc_s(block, 10);  // if frame_cycles >= target, wait until next frame
-
-    // same frame: d2 = target - frame_cycles
-    emit_move_l_dn(block, REG_68K_D_CYCLE_COUNT, target_cycles);
-    emit_sub_l_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_CYCLE_COUNT);
-    emit_bra_b(block, 8);
-
-    // next frame: d2 = (70224 + target) - frame_cycles
-    emit_move_l_dn(block, REG_68K_D_CYCLE_COUNT, 70224 + target_cycles);
-    emit_sub_l_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_CYCLE_COUNT);
-
-    // set A to the LY value we waited for
-    emit_moveq_dn(block, REG_68K_D_A, wait_ly);
-
-    // exit to C
-    emit_move_l_dn(block, REG_68K_D_NEXT_PC, next_pc);
-    emit_rts(block);
-}
-
-// only good for vblank interrupts for now...
-static void compile_halt(struct code_block *block, int next_pc)
-{
-    //   movea.l JIT_CTX_FRAME_CYCLES_PTR(a4), a0 ; 4 bytes
-    //   move.l (a0), d0                          ; 2 bytes
-    //   cmpi.l #65664, d0                        ; 6 bytes
-    //   bcc.s _frame_end                         ; 2 bytes
-    //   move.l #65664, d2                        ; 6 bytes
-    //   sub.l d0, d2                             ; 2 bytes
-    //   bra.s _exit                              ; 2 bytes
-    // _frame_end
-    //   move.l #70224, d2                        ; 6 bytes
-    //   sub.l d0, d2                             ; 2 bytes
-    // _exit
-    //   move.l #next_pc, d3                      ; 6 bytes
-    //   rts                                      ; 2 bytes
-
-    // load frame_cycles pointer
-    emit_movea_l_disp_an_an(block, JIT_CTX_FRAME_CYCLES_PTR, REG_68K_A_CTX, REG_68K_A_SCRATCH_1);
-    emit_move_l_ind_an_dn(block, REG_68K_A_SCRATCH_1, REG_68K_D_SCRATCH_0);
-
-    // see if already in vblank
-    emit_cmpi_l_imm_dn(block, 65664, REG_68K_D_SCRATCH_0);
-    emit_bcc_s(block, 10);
-
-    // before vblank: d2 = 65664 - frame_cycles
-    emit_move_l_dn(block, REG_68K_D_CYCLE_COUNT, 65664);
-    emit_sub_l_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_CYCLE_COUNT);
-    emit_bra_b(block, 8);
-
-    // in vblank: d2 = (70224 - frame_cycles) + 65664
-    emit_move_l_dn(block, REG_68K_D_CYCLE_COUNT, 70224 + 65664);
-    emit_sub_l_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_CYCLE_COUNT);
-
-    // exit to C
-    emit_move_l_dn(block, REG_68K_D_NEXT_PC, next_pc);
-    emit_rts(block);
 }
 
 struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
@@ -610,20 +528,39 @@ struct code_block *compile_block(uint16_t src_address, struct compile_ctx *ctx)
                 // check for LY polling loop
                 if (addr == 0x44) {
                     uint8_t next0 = READ_BYTE(src_ptr);
-                    uint8_t target_ly = READ_BYTE(src_ptr + 1);
-                    uint8_t jr_op = READ_BYTE(src_ptr + 2);
-                    int8_t offset = (int8_t) READ_BYTE(src_ptr + 3);
 
-                    if (next0 == 0xfe && // cp imm8
-                        // jr z, jr nz, jr c
-                        (jr_op == 0x20 || jr_op == 0x28 || jr_op == 0x38) &&
-                        offset < 0) {
-                        // detected polling loop - synthesize wait
-                        uint16_t next_pc = src_address + src_ptr + 4;
-                        compile_ly_wait(block, target_ly, jr_op, next_pc);
-                        src_ptr += 4;
-                        done = 1;
-                        break;
+                    // check for cp imm8 pattern
+                    if (next0 == 0xfe) {
+                        uint8_t target_ly = READ_BYTE(src_ptr + 1);
+                        uint8_t jr_op = READ_BYTE(src_ptr + 2);
+                        int8_t offset = (int8_t) READ_BYTE(src_ptr + 3);
+
+                        if ((jr_op == 0x20 || jr_op == 0x28 || jr_op == 0x38) &&
+                            offset < 0) {
+                            // detected polling loop - synthesize wait
+                            uint16_t next_pc = src_address + src_ptr + 4;
+                            compile_ly_wait(block, target_ly, jr_op, next_pc);
+                            src_ptr += 4;
+                            done = 1;
+                            break;
+                        }
+                    }
+
+                    // check for cp r pattern (0xb8-0xbe = cp B,C,D,E,H,L,(HL))
+                    if (next0 >= 0xb8 && next0 <= 0xbe) {
+                        int gb_reg = next0 - 0xb8;
+                        uint8_t jr_op = READ_BYTE(src_ptr + 1);
+                        int8_t offset = (int8_t) READ_BYTE(src_ptr + 2);
+
+                        if ((jr_op == 0x20 || jr_op == 0x28 || jr_op == 0x38) &&
+                            offset < 0) {
+                            // detected polling loop with register compare
+                            uint16_t next_pc = src_address + src_ptr + 3;
+                            compile_ly_wait_reg(block, gb_reg, jr_op, next_pc);
+                            src_ptr += 3;
+                            done = 1;
+                            break;
+                        }
                     }
                 }
 

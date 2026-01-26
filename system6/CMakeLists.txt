@@ -23,6 +23,7 @@ add_application("Gray Brick"
     ../compiler/alu.c
     ../compiler/instructions.c
     ../compiler/stack.c
+    ../compiler/timing.c
     arena.c
     cpu_cache.c
     dialogs.c

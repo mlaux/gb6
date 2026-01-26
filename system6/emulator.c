@@ -745,6 +745,7 @@ int main(int argc, char *argv[])
       }
     }
   }
-  audio_mac_shutdown();
+
+  StopEmulation();
   return 0;
 }
