@@ -1120,6 +1120,20 @@ void emit_bne_b(struct code_block *block, int8_t disp)
     emit_word(block, 0x6600 | ((uint8_t) disp));
 }
 
+// bls.b - branch if lower or same (unsigned <=)
+void emit_bls_b(struct code_block *block, int8_t disp)
+{
+    // 0110 0011 dddd dddd
+    emit_word(block, 0x6300 | ((uint8_t) disp));
+}
+
+// bhi.b - branch if higher (unsigned >)
+void emit_bhi_b(struct code_block *block, int8_t disp)
+{
+    // 0110 0010 dddd dddd
+    emit_word(block, 0x6200 | ((uint8_t) disp));
+}
+
 // subi.w #imm16, Dn - subtract immediate word from data register
 void emit_subi_w_dn(struct code_block *block, uint16_t imm, uint8_t dreg)
 {

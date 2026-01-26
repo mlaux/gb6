@@ -133,6 +133,8 @@ void emit_cmpi_w_imm_dn(struct code_block *block, uint16_t imm, uint8_t dreg);
 void emit_cmpa_w_imm_an(struct code_block *block, uint16_t imm, uint8_t areg);
 void emit_bcs_b(struct code_block *block, int8_t disp);
 void emit_bne_b(struct code_block *block, int8_t disp);
+void emit_bls_b(struct code_block *block, int8_t disp);
+void emit_bhi_b(struct code_block *block, int8_t disp);
 void emit_subi_w_dn(struct code_block *block, uint16_t imm, uint8_t dreg);
 void emit_move_l_ind_an_dn(struct code_block *block, uint8_t areg, uint8_t dreg);
 void emit_sub_l_dn_dn(struct code_block *block, uint8_t src, uint8_t dest);
