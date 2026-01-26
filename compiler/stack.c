@@ -19,7 +19,7 @@ void compile_ld_sp_imm16(
     emit_move_w_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_GB_SP, REG_68K_A_CTX);
 
     // compile-time WRAM/HRAM detection
-    if (ctx && ctx->wram_base && gb_sp >= 0xc000 && gb_sp <= 0xdfff) {
+    if (ctx && ctx->wram_base && gb_sp >= 0xc000 && gb_sp <= 0xe000) {
         // WRAM: A3 = wram_base + (gb_sp - 0xC000)
         uint32_t addr = (uint32_t) ctx->wram_base + (gb_sp - 0xc000);
         emit_movea_l_imm32(block, REG_68K_A_SP, addr);

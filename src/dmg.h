@@ -58,7 +58,8 @@ struct dmg {
     u8 sent_ly_interrupt;
     u8 sent_vblank_start;
     u8 rendered_this_frame;
-    u16 ly_hack;
+    u16 lazy_ly;
+    u32 ly_read_cycle;
 
     // for DIV evaluation from cycles
     u32 total_cycles;
