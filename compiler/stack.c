@@ -18,19 +18,24 @@ void compile_ld_sp_imm16(
     emit_move_w_dn(block, REG_68K_D_SCRATCH_1, gb_sp);
     emit_move_w_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_GB_SP, REG_68K_A_CTX);
 
-    // compile-time WRAM detection
+    // compile-time WRAM/HRAM detection
     if (ctx && ctx->wram_base && gb_sp >= 0xc000 && gb_sp <= 0xdfff) {
         // WRAM: A3 = wram_base + (gb_sp - 0xC000)
         uint32_t addr = (uint32_t) ctx->wram_base + (gb_sp - 0xc000);
-        int32_t sp_adjust = 0xc000 - (int32_t) ctx->wram_base;
         emit_movea_l_imm32(block, REG_68K_A_SP, addr);
-        emit_move_l_dn(block, REG_68K_D_SCRATCH_1, sp_adjust);
-        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+        emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 1);
+        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
+    } else if (ctx && ctx->hram_base && gb_sp >= 0xff80 && gb_sp <= 0xfffe) {
+        // HRAM: A3 = hram_base + (gb_sp - 0xFF80)
+        uint32_t addr = (uint32_t) ctx->hram_base + (gb_sp - 0xff80);
+        emit_movea_l_imm32(block, REG_68K_A_SP, addr);
+        emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 1);
+        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
     } else {
-        // slow mode: sp_adjust = 0, A3 holds GB SP value (not a valid pointer)
+        // slow mode: A3 holds GB SP value (not a valid pointer)
         emit_movea_w_imm16(block, REG_68K_A_SP, gb_sp);
         emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
-        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+        emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
     }
 }
 
@@ -85,7 +90,7 @@ int compile_stack_op(
             size_t slow_push, done;
 
             // Check if sp_adjust is 0 (slow mode)
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_push = block->length;
             emit_beq_w(block, 0);  // branch to slow path
 
@@ -120,7 +125,7 @@ int compile_stack_op(
         {
             size_t slow_push, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_push = block->length;
             emit_beq_w(block, 0);
 
@@ -149,7 +154,7 @@ int compile_stack_op(
         {
             size_t slow_push, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_push = block->length;
             emit_beq_w(block, 0);
 
@@ -178,7 +183,7 @@ int compile_stack_op(
         {
             size_t slow_push, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_push = block->length;
             emit_beq_w(block, 0);
 
@@ -209,7 +214,7 @@ int compile_stack_op(
         {
             size_t slow_pop, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_pop = block->length;
             emit_beq_w(block, 0);
 
@@ -244,7 +249,7 @@ int compile_stack_op(
         {
             size_t slow_pop, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_pop = block->length;
             emit_beq_w(block, 0);
 
@@ -278,7 +283,7 @@ int compile_stack_op(
         {
             size_t slow_pop, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_pop = block->length;
             emit_beq_w(block, 0);
 
@@ -308,7 +313,7 @@ int compile_stack_op(
         {
             size_t slow_pop, done;
 
-            emit_tst_l_disp_an(block, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+            emit_tst_l_disp_an(block, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             slow_pop = block->length;
             emit_beq_w(block, 0);
 
@@ -378,18 +383,17 @@ int compile_stack_op(
             emit_move_w_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_GB_SP, REG_68K_A_CTX);
 
             if (ctx && ctx->wram_base) {
-                // Runtime range check for WRAM only
-                // Check WRAM: $C000 <= HL < $E000
-                size_t slow_mode, done;
-                int32_t sp_adjust_wram = 0xc000 - (int32_t) ctx->wram_base;
+                // Runtime range check for WRAM and HRAM
+                size_t not_wram, not_hram, done, done2;
 
+                // Check WRAM: $C000 <= HL < $E000
                 // Check if high byte is in [$C0, $E0)
                 emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
                 emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // get high byte into low position
                 emit_subi_b_dn(block, REG_68K_D_SCRATCH_1, 0xc0);  // high byte - $C0
                 emit_cmp_b_imm_dn(block, REG_68K_D_SCRATCH_1, 0x20);  // < $20 means [$C0, $E0)
-                slow_mode = block->length;
-                emit_bcc_w(block, 0);  // bcc = branch if carry clear (>= $20)
+                not_wram = block->length;
+                emit_bcc_w(block, 0);  // branch if >= $20 (not WRAM)
 
                 // WRAM path: A3 = wram_base + (HL - $C000)
                 // Must use ADDA.L because ADDA.W sign-extends, which breaks for HL >= $8000
@@ -397,26 +401,55 @@ int compile_stack_op(
                 emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
                 emit_movea_l_imm32(block, REG_68K_A_SP, (uint32_t) ctx->wram_base - 0xc000);
                 emit_adda_l_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
-                emit_move_l_dn(block, REG_68K_D_SCRATCH_1, sp_adjust_wram);
-                emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+                emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 1);
+                emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
                 done = block->length;
                 emit_bra_w(block, 0);
 
-                // Slow mode: sp_adjust = 0, A3 = HL (GB SP value)
-                block->code[slow_mode + 2] = (block->length - slow_mode - 2) >> 8;
-                block->code[slow_mode + 3] = (block->length - slow_mode - 2) & 0xff;
+                // Not WRAM - check HRAM: high byte == $FF
+                block->code[not_wram + 2] = (block->length - not_wram - 2) >> 8;
+                block->code[not_wram + 3] = (block->length - not_wram - 2) & 0xff;
+
+                if (ctx->hram_base) {
+                    // Check if high byte is $FF
+                    emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+                    emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // get high byte into low position
+                    emit_cmp_b_imm_dn(block, REG_68K_D_SCRATCH_1, 0xff);
+                    not_hram = block->length;
+                    emit_bne_w(block, 0);  // branch if high byte != $FF
+
+                    // HRAM path: A3 = hram_base + (HL - $FF80)
+                    emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
+                    emit_move_w_an_dn(block, REG_68K_A_HL, REG_68K_D_SCRATCH_1);
+                    emit_movea_l_imm32(block, REG_68K_A_SP, (uint32_t) ctx->hram_base - 0xff80);
+                    emit_adda_l_dn_an(block, REG_68K_D_SCRATCH_1, REG_68K_A_SP);
+                    emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 1);
+                    emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
+                    done2 = block->length;
+                    emit_bra_w(block, 0);
+
+                    // Patch not_hram branch to slow mode
+                    block->code[not_hram + 2] = (block->length - not_hram - 2) >> 8;
+                    block->code[not_hram + 3] = (block->length - not_hram - 2) & 0xff;
+                }
+
+                // Slow mode: A3 = HL (GB SP value)
                 emit_movea_w_an_an(block, REG_68K_A_HL, REG_68K_A_SP);
                 emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
-                emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+                emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
 
-                // Patch done branch
+                // Patch done branches
                 block->code[done + 2] = (block->length - done - 2) >> 8;
                 block->code[done + 3] = (block->length - done - 2) & 0xff;
+                if (ctx->hram_base) {
+                    block->code[done2 + 2] = (block->length - done2 - 2) >> 8;
+                    block->code[done2 + 3] = (block->length - done2 - 2) & 0xff;
+                }
             } else {
                 // No context - simple path for testing
                 emit_movea_w_an_an(block, REG_68K_A_HL, REG_68K_A_SP);
                 emit_moveq_dn(block, REG_68K_D_SCRATCH_1, 0);
-                emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_SP_ADJUST, REG_68K_A_CTX);
+                emit_move_l_dn_disp_an(block, REG_68K_D_SCRATCH_1, JIT_CTX_STACK_IN_RAM, REG_68K_A_CTX);
             }
         }
         return 1;

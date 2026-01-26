@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "compiler.h"
 
-// Compile ld sp, imm16 - sets up SP pointer and sp_adjust
+// Compile ld sp, imm16 - sets up SP pointer and stack_in_ram flag
 void compile_ld_sp_imm16(
     struct compile_ctx *ctx,
     struct code_block *block,

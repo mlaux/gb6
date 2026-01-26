@@ -62,12 +62,12 @@
 #define JIT_CTX_CYCLES        44  // u32: accumulated GB cycles
 #define JIT_CTX_PATCH_HELPER  48  // void *patch_helper routine
 #define JIT_CTX_READ_CYCLES   52  // u32: in-flight cycles at dmg_read call
-#define JIT_CTX_WRAM_BASE     56  // void *wram_base (dmg->main_ram)
+#define JIT_CTX_UNUSED_1      56
 #define JIT_CTX_FRAME_CYCLES_PTR 60  // u32 *frame_cycles_ptr (dmg->frame_cycles)
-#define JIT_CTX_TEMP_1 64
-#define JIT_CTX_TEMP_2 68
+#define JIT_CTX_UNUSED_2    64
+#define JIT_CTX_UNUSED_3    68
 #define JIT_CTX_GB_SP       72  // u16: GB stack pointer value
-#define JIT_CTX_SP_ADJUST   76  // s32: non-zero if A3 points to WRAM (value = 0xC000 - wram_base)
+#define JIT_CTX_STACK_IN_RAM 76  // non-zero if A3 points to native WRAM/HRAM
 
 struct code_block {
     uint8_t code[1024];
@@ -102,6 +102,7 @@ struct compile_ctx {
     alloc_fn alloc;              // NULL uses malloc, otherwise arena_alloc
     uint8_t current_bank;        // current ROM bank for cache_store calls
     void *wram_base;        // dmg->main_ram for compile-time WRAM SP detection
+    void *hram_base;
 };
 
 void compiler_init(void);

@@ -24,13 +24,13 @@ typedef struct {
     /* 2c */ u32 cycles_accumulated;  // GB cycles accumulated by compiled code
     /* 30 */ void *patch_helper;  // patch_helper routine for lazy block patching
     /* 34 */ u32 read_cycles; // in-flight cycles at time of dmg_read call
-    /* 38 */ void *wram_base; // dmg->main_ram for inline high RAM access
+    /* 38 */ u32 _pad2;
     /* 3c */ u32 *frame_cycles_ptr; // pointer to dmg->frame_cycles for HALT
     /* 40 */ u32 temp1;
     /* 44 */ u32 temp2;
     /* 48 */ u16 gb_sp; // GB stack pointer value (always valid)
-    /* 4a */ u16 _pad2;
-    /* 4c */ long sp_adjust; // non-zero if A3 points to WRAM (0xC000 - wram_base)
+    /* 4a */ u16 _pad3;
+    /* 4c */ long stack_in_ram; // non-zero if A3 points to native WRAM/HRAM
 } jit_context;
 
 extern jit_context jit_ctx;

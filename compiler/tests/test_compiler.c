@@ -179,8 +179,6 @@ static void setup_runtime_stubs(void)
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRITE16, STUB_BASE + 0x80);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_PATCH_HELPER, 0);
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_READ_CYCLES, 0);
-    // wram_base points to start of WRAM (0xC000-0xDFFF) in 68k address space
-    m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_WRAM_BASE, GB_MEM_BASE + 0xc000);
     // frame_cycles pointer for HALT/LY wait tests
     m68k_write_memory_32(JIT_CTX_ADDR + JIT_CTX_FRAME_CYCLES_PTR, FRAME_CYCLES_ADDR);
     m68k_write_memory_32(FRAME_CYCLES_ADDR, 0);
