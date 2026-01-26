@@ -112,7 +112,7 @@ static void patch_helper_code_asm(void)
         // 4. later, bank 2 is switched in
         // 5. some other code jumps to 0x1000 - block A is found in bank0_cache and runs
         // 6. block A's patched JMP goes directly to bank 1's code
-
+        // "bra.s .Lpatch_no_patch\n\t" // cacheflush_offset is 66 if using this and commenting out below
         "movea.l 24(%%a4), %%a0\n\t"         // banked_cache
         "moveq #0, %%d0\n\t"
         "move.b 17(%%a4), %%d0\n\t"          // current_rom_bank

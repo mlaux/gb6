@@ -344,34 +344,9 @@ void dmg_write16(void *_dmg, u16 address, u16 data)
     dmg_write(_dmg, address + 1, (data >> 8) & 0xff);
 }
 
-// not accurate at all, but not going for accuracy. i'm FINALLY happy with the
-// logic here. supports arbitrary cycles_per_exit, currently user configurable
-// between every line, every 16 lines, and every 1 frame
-// note that the user configurable setting is less relevant for games that use
-// HALT, because HALT will skip directly to line 144
-void dmg_sync_hw(struct dmg *dmg, int cycles)
+static void lcd_sync(struct dmg *dmg)
 {
-    dmg->total_cycles += cycles;
-    dmg->frame_cycles += cycles;
-
-    // generate audio samples synchronized to GB execution
-    audio_mac_sync(cycles);
-
-    // TIMA timer
-    if (dmg->timer_control & TIMER_CONTROL_ENABLED) {
-        u16 divisor = timer_divisors[dmg->timer_control & 3];
-        dmg->timer_cycles += cycles;
-        while (dmg->timer_cycles >= divisor) {
-            dmg->timer_cycles -= divisor;
-            dmg->timer_count++;
-            if (dmg->timer_count == 0) {
-                // overflow: reload from TMA and request interrupt
-                dmg->timer_count = dmg->timer_mod;
-                dmg_request_interrupt(dmg, INT_TIMER);
-            }
-        }
-    }
-
+    int lcdc = lcd_read(dmg->lcd, REG_LCDC);
     int lyc_cycles = lcd_read(dmg->lcd, REG_LYC) * CYCLES_PER_LINE;
 
     if (dmg->frame_cycles >= lyc_cycles && !dmg->sent_ly_interrupt) {
@@ -393,16 +368,13 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
 
         // frame skip setting is 0-4
         if (dmg->frames_rendered % (frame_skip + 1) == 0) {
-            int lcdc = lcd_read(dmg->lcd, REG_LCDC);
-            if (lcdc & LCDC_ENABLE) {
-                if (lcdc & LCDC_ENABLE_BG) {
-                    lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
-                }
-                if (lcdc & LCDC_ENABLE_OBJ) {
-                    lcd_render_objs(dmg);
-                }
-                lcd_draw(dmg->lcd);
+            if (lcdc & LCDC_ENABLE_BG) {
+                lcd_render_background(dmg, lcdc, lcdc & LCDC_ENABLE_WINDOW);
             }
+            if (lcdc & LCDC_ENABLE_OBJ) {
+                lcd_render_objs(dmg);
+            }
+            lcd_draw(dmg->lcd);
         }
 
         dmg->frames_rendered++;
@@ -417,9 +389,44 @@ void dmg_sync_hw(struct dmg *dmg, int cycles)
         }
         dmg->sent_vblank_start = 1;
     }
+}
 
-    // need as a separate check for the case where cycles = 70224. in that case,
-    // it needs to execute both the previous block and this one
+// TIMA timer
+static void timer_sync(struct dmg *dmg, int cycles)
+{
+    u16 divisor = timer_divisors[dmg->timer_control & 3];
+    dmg->timer_cycles += cycles;
+    while (dmg->timer_cycles >= divisor) {
+        dmg->timer_cycles -= divisor;
+        dmg->timer_count++;
+        if (dmg->timer_count == 0) {
+            // overflow: reload from TMA and request interrupt
+            dmg->timer_count = dmg->timer_mod;
+            dmg_request_interrupt(dmg, INT_TIMER);
+        }
+    }
+}
+
+// not accurate at all, but not going for accuracy. i'm FINALLY happy with the
+// logic here. supports arbitrary cycles_per_exit, currently user configurable
+// between every line, every 16 lines, and every 1 frame
+// note that the user configurable setting is less relevant for games that use
+// HALT, because HALT will skip directly to line 144
+void dmg_sync_hw(struct dmg *dmg, int cycles)
+{
+    dmg->total_cycles += cycles;
+    dmg->frame_cycles += cycles;
+
+    audio_mac_sync(cycles);
+
+    if (lcd_read(dmg->lcd, REG_LCDC) & LCDC_ENABLE) {
+        lcd_sync(dmg);
+    }
+
+    if (dmg->timer_control & TIMER_CONTROL_ENABLED) {
+        timer_sync(dmg, cycles);
+    }
+
     if (dmg->frame_cycles >= CYCLES_PER_FRAME) {
         dmg->frame_cycles %= CYCLES_PER_FRAME;
         dmg->sent_vblank_start = 0;
