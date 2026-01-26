@@ -251,6 +251,75 @@ TEST(test_exec_and_a_a_with_jr)
     ASSERT_EQ(get_dreg(REG_68K_D_BC) & 0xff, 0x22);  // jumped over 0x11
 }
 
+// DAA tests
+TEST(test_daa_add_lower_nibble)
+{
+    // 0x08 + 0x05 = 0x0D, DAA adjusts to 0x13
+    uint8_t rom[] = {
+        0x3e, 0x08,       // ld a, $08
+        0xc6, 0x05,       // add a, $05 -> A = $0D
+        0x27,             // daa -> A = $13
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x13);
+}
+
+TEST(test_daa_add_upper_nibble)
+{
+    // 0x90 + 0x20 = 0xB0, DAA adjusts to 0x10 with C=1
+    uint8_t rom[] = {
+        0x3e, 0x90,       // ld a, $90
+        0xc6, 0x20,       // add a, $20 -> A = $B0
+        0x27,             // daa -> A = $10, C = 1
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x10);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x01, 0x01);  // C set
+}
+
+TEST(test_daa_add_both_nibbles)
+{
+    // 0x99 + 0x01 = 0x9A, DAA adjusts to 0x00 with C=1 (BCD: 99+01=100)
+    uint8_t rom[] = {
+        0x3e, 0x99,       // ld a, $99
+        0xc6, 0x01,       // add a, $01 -> A = $9A
+        0x27,             // daa -> A = $00, C = 1, Z = 1
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x00);
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x01, 0x01);  // C set
+    ASSERT_EQ(get_dreg(REG_68K_D_FLAGS) & 0x04, 0x04);  // Z set
+}
+
+TEST(test_daa_sub_lower_nibble)
+{
+    // 0x10 - 0x05 = 0x0B, DAA adjusts to 0x05 (BCD: 10-05=05)
+    uint8_t rom[] = {
+        0x3e, 0x10,       // ld a, $10
+        0xd6, 0x05,       // sub a, $05 -> A = $0B
+        0x27,             // daa -> A = $05
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x05);
+}
+
+TEST(test_daa_no_adjustment)
+{
+    // 0x12 + 0x34 = 0x46, no adjustment needed
+    uint8_t rom[] = {
+        0x3e, 0x12,       // ld a, $12
+        0xc6, 0x34,       // add a, $34 -> A = $46
+        0x27,             // daa -> A = $46 (no change)
+        0x10              // stop
+    };
+    run_program(rom, 0);
+    ASSERT_EQ(get_dreg(REG_68K_D_A) & 0xff, 0x46);
+}
+
 void register_alu_tests(void)
 {
     printf("\n8-bit inc/dec:\n");
@@ -305,4 +374,11 @@ void register_alu_tests(void)
 
     printf("\nALU with flags:\n");
     RUN_TEST(test_exec_and_a_a_with_jr);
+
+    printf("\nDAA tests:\n");
+    RUN_TEST(test_daa_add_lower_nibble);
+    RUN_TEST(test_daa_add_upper_nibble);
+    RUN_TEST(test_daa_add_both_nibbles);
+    RUN_TEST(test_daa_sub_lower_nibble);
+    RUN_TEST(test_daa_no_adjustment);
 }

@@ -69,6 +69,92 @@ static void compile_daa_track_sub(struct code_block *block)
     emit_move_b_dn_disp_an(block, REG_68K_D_SCRATCH_0, JIT_CTX_DAA_STATE + 1, REG_68K_A_CTX);
 }
 
+// DAA - Decimal Adjust Accumulator
+// Adjusts A for BCD arithmetic based on N, H, C flags from prior ALU op
+static void compile_daa(struct code_block *block)
+{
+    size_t branch_to_sub, branch_add_h_done;
+    size_t branch_to_finish, branch_to_finish2;
+
+    // Save original A lower nibble into D1 for H computation later
+    // (before any DAA adjustments modify A)
+    emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_1);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x0F);  // D1 = original A & 0xF
+
+    // Load N flag into D0 and test it (we'll reload old_A later in each path)
+    emit_move_b_disp_an_dn(block, JIT_CTX_DAA_STATE + 1, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
+    emit_tst_b_dn(block, REG_68K_D_SCRATCH_0);
+    branch_to_sub = block->length;
+    emit_bne_w(block, 0);  // branch to subtraction path if N=1
+
+    // === Addition path (N=0) ===
+    // First check C || A > 0x99 -> add 0x60
+    emit_btst_imm_dn(block, 0, REG_68K_D_FLAGS);  // test C flag (4 bytes)
+    emit_bne_b(block, 6);  // if C set, skip compare and jump to add 0x60 (2 bytes)
+    emit_cmp_b_imm_dn(block, REG_68K_D_A, 0x99);  // (4 bytes)
+    emit_bls_b(block, 8);  // if A <= 0x99, skip add 0x60 and ori (2 bytes)
+    // add 0x60 and set C
+    emit_addi_b_dn(block, REG_68K_D_A, 0x60);  // (4 bytes)
+    emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x01);  // set C (4 bytes)
+
+    // Now check H || (A & 0x0F) > 9 -> add 0x06
+    // Load old_A into D0 for H computation
+    emit_move_b_disp_an_dn(block, JIT_CTX_DAA_STATE, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
+    // D0 = old_A, D1 = original A & 0xF
+    // Compute H: D1 < (D0 & 0xF)?
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x0F);  // D0 = old_A & 0xF
+    emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // cmp D0, D1
+    emit_bcc_s(block, 8);  // if D1 >= D0 (carry clear), H=0, check nibble value
+    // H=1, add 0x06
+    emit_addi_b_dn(block, REG_68K_D_A, 0x06);
+    branch_add_h_done = block->length;
+    emit_bra_w(block, 0);  // skip to finish
+
+    // H=0, check if original (A & 0x0F) > 9 (D1 still has this value)
+    emit_cmp_b_imm_dn(block, REG_68K_D_SCRATCH_1, 0x09);
+    emit_bls_b(block, 4);  // if <= 9, skip
+    emit_addi_b_dn(block, REG_68K_D_A, 0x06);
+
+    branch_to_finish = block->length;
+    emit_bra_w(block, 0);  // jump to finish
+
+    // === Subtraction path (N=1) ===
+    // Patch branch_to_sub
+    block->code[branch_to_sub + 2] = (block->length - branch_to_sub - 2) >> 8;
+    block->code[branch_to_sub + 3] = (block->length - branch_to_sub - 2) & 0xff;
+
+    // Check C -> sub 0x60
+    emit_btst_imm_dn(block, 0, REG_68K_D_FLAGS);
+    emit_beq_b(block, 4);  // if C clear, skip
+    emit_subi_b_dn(block, REG_68K_D_A, 0x60);
+
+    // Compute H: D1 > (old_A & 0xF) for subtraction
+    // Load old_A & 0xF into D0
+    emit_move_b_disp_an_dn(block, JIT_CTX_DAA_STATE, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
+    emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x0F);  // D0 = old_A & 0xF
+    emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // cmp D0, D1
+    emit_bls_b(block, 4);  // if D1 <= D0 (lower or same), no H, skip
+    emit_subi_b_dn(block, REG_68K_D_A, 0x06);
+
+    branch_to_finish2 = block->length;
+    emit_bra_w(block, 0);
+
+    // === Finish: set Z flag ===
+    // Patch forward branches
+    block->code[branch_add_h_done + 2] = (block->length - branch_add_h_done - 2) >> 8;
+    block->code[branch_add_h_done + 3] = (block->length - branch_add_h_done - 2) & 0xff;
+    block->code[branch_to_finish + 2] = (block->length - branch_to_finish - 2) >> 8;
+    block->code[branch_to_finish + 3] = (block->length - branch_to_finish - 2) & 0xff;
+    block->code[branch_to_finish2 + 2] = (block->length - branch_to_finish2 - 2) >> 8;
+    block->code[branch_to_finish2 + 3] = (block->length - branch_to_finish2 - 2) & 0xff;
+
+    // Set Z flag based on A, preserve C
+    emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x01);  // keep only C
+    emit_tst_b_dn(block, REG_68K_D_A);
+    emit_bne_b(block, 4);  // if not zero, skip setting Z
+    emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x04);  // set Z
+}
+
 // ADC core: expects operand already in D1.b
 // Does A = A + D1 + carry using 16-bit arithmetic
 static void compile_adc_core(struct code_block *block)
@@ -263,95 +349,7 @@ int compile_alu_op(
 
     // misc ALU ops
     case 0x27: // daa - decimal adjust accumulator
-        // DAA adjusts A for BCD arithmetic based on N, H, C flags
-        // We stored old_A and N flag in context before the last ALU op
-        // H is computed: for add, H = (A & 0xF) < (old_A & 0xF)
-        //                for sub, H = (A & 0xF) > (old_A & 0xF)
-        {
-            size_t branch_to_sub, branch_add_h_done;
-            size_t branch_to_finish, branch_to_finish2;
-
-            // Load old_A into D0
-            emit_move_b_disp_an_dn(block, JIT_CTX_DAA_STATE, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
-
-            // Save original A lower nibble into D1 for H computation later
-            // (before any DAA adjustments modify A)
-            emit_move_b_dn_dn(block, REG_68K_D_A, REG_68K_D_SCRATCH_1);
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_1, 0x0F);  // D1 = original A & 0xF
-
-            // Load N flag and test it (use stack to preserve D1)
-            emit_push_w_dn(block, REG_68K_D_SCRATCH_1);  // save D1
-            emit_move_b_disp_an_dn(block, JIT_CTX_DAA_STATE + 1, REG_68K_A_CTX, REG_68K_D_SCRATCH_1);
-            emit_tst_b_dn(block, REG_68K_D_SCRATCH_1);
-            emit_pop_w_dn(block, REG_68K_D_SCRATCH_1);  // restore D1
-            branch_to_sub = block->length;
-            emit_bne_w(block, 0);  // branch to subtraction path if N=1
-
-            // === Addition path (N=0) ===
-            // First check C || A > 0x99 -> add 0x60
-            emit_btst_imm_dn(block, 0, REG_68K_D_FLAGS);  // test C flag (4 bytes)
-            emit_bne_b(block, 6);  // if C set, skip compare and jump to add 0x60 (2 bytes)
-            emit_cmp_b_imm_dn(block, REG_68K_D_A, 0x99);  // (4 bytes)
-            emit_bls_b(block, 8);  // if A <= 0x99, skip add 0x60 and ori (2 bytes)
-            // add 0x60 and set C
-            emit_addi_b_dn(block, REG_68K_D_A, 0x60);  // (4 bytes)
-            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x01);  // set C (4 bytes)
-
-            // Now check H || (A & 0x0F) > 9 -> add 0x06
-            // D0 = old_A (full), D1 = original A & 0xF (saved before adjustments)
-            // Compute H: D1 < (D0 & 0xF)?
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x0F);  // D0 = old_A & 0xF
-            emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // cmp D0, D1
-            emit_bcc_s(block, 8);  // if D1 >= D0 (carry clear), H=0, check nibble value
-            // H=1, add 0x06
-            emit_addi_b_dn(block, REG_68K_D_A, 0x06);
-            branch_add_h_done = block->length;
-            emit_bra_w(block, 0);  // skip to finish
-
-            // H=0, check if original (A & 0x0F) > 9 (D1 still has this value)
-            emit_cmp_b_imm_dn(block, REG_68K_D_SCRATCH_1, 0x09);
-            emit_bls_b(block, 4);  // if <= 9, skip
-            emit_addi_b_dn(block, REG_68K_D_A, 0x06);
-
-            branch_to_finish = block->length;
-            emit_bra_w(block, 0);  // jump to finish
-
-            // === Subtraction path (N=1) ===
-            // Patch branch_to_sub
-            block->code[branch_to_sub + 2] = (block->length - branch_to_sub - 2) >> 8;
-            block->code[branch_to_sub + 3] = (block->length - branch_to_sub - 2) & 0xff;
-
-            // Check C -> sub 0x60
-            emit_btst_imm_dn(block, 0, REG_68K_D_FLAGS);
-            emit_beq_b(block, 4);  // if C clear, skip
-            emit_subi_b_dn(block, REG_68K_D_A, 0x60);
-
-            // Compute H: D1 > (old_A & 0xF) for subtraction
-            // D1 still has original A & 0xF, reload old_A & 0xF into D0
-            emit_move_b_disp_an_dn(block, JIT_CTX_DAA_STATE, REG_68K_A_CTX, REG_68K_D_SCRATCH_0);
-            emit_andi_b_dn(block, REG_68K_D_SCRATCH_0, 0x0F);  // D0 = old_A & 0xF
-            emit_cmp_b_dn_dn(block, REG_68K_D_SCRATCH_0, REG_68K_D_SCRATCH_1);  // cmp D0, D1
-            emit_bls_b(block, 4);  // if D1 <= D0 (lower or same), no H, skip
-            emit_subi_b_dn(block, REG_68K_D_A, 0x06);
-
-            branch_to_finish2 = block->length;
-            emit_bra_w(block, 0);
-
-            // === Finish: set Z flag ===
-            // Patch forward branches
-            block->code[branch_add_h_done + 2] = (block->length - branch_add_h_done - 2) >> 8;
-            block->code[branch_add_h_done + 3] = (block->length - branch_add_h_done - 2) & 0xff;
-            block->code[branch_to_finish + 2] = (block->length - branch_to_finish - 2) >> 8;
-            block->code[branch_to_finish + 3] = (block->length - branch_to_finish - 2) & 0xff;
-            block->code[branch_to_finish2 + 2] = (block->length - branch_to_finish2 - 2) >> 8;
-            block->code[branch_to_finish2 + 3] = (block->length - branch_to_finish2 - 2) & 0xff;
-
-            // Set Z flag based on A, preserve C
-            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0x01);  // keep only C
-            emit_tst_b_dn(block, REG_68K_D_A);
-            emit_bne_b(block, 4);  // if not zero, skip setting Z
-            emit_ori_b_dn(block, REG_68K_D_FLAGS, 0x04);  // set Z
-        }
+        compile_daa(block);
         return 1;
 
     case 0x2f: // cpl - complement A
