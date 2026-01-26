@@ -336,12 +336,14 @@ int compile_alu_op(
         return 1;
 
     case 0x3c: // inc a
+        compile_daa_track_add(block);  // Track for DAA (games use INC A + DAA)
         emit_addq_b_dn(block, REG_68K_D_A, 1);
         compile_set_z_flag(block);
         try_fuse_branch(block, ctx, src_ptr, src_address, 0);
         return 1;
 
     case 0x3d: // dec a
+        compile_daa_track_sub(block);  // Track for DAA (games use DEC A + DAA)
         emit_subq_b_dn(block, REG_68K_D_A, 1);
         compile_set_z_flag(block);
         try_fuse_branch(block, ctx, src_ptr, src_address, 0);

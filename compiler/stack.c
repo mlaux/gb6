@@ -320,6 +320,8 @@ int compile_stack_op(
             // Fast path: sets A and F directly
             emit_move_b_disp_an_dn(block, 1, REG_68K_A_SP, REG_68K_D_A);  // A = [SP+1]
             emit_move_b_ind_an_dn(block, REG_68K_A_SP, REG_68K_D_FLAGS);  // F = [SP]
+            // GB F register lower 4 bits are always 0
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xF0);
             emit_addq_w_an(block, REG_68K_A_SP, 2);
             emit_addi_w_disp_an(block, 2, JIT_CTX_GB_SP, REG_68K_A_CTX);
             done = block->length;
@@ -331,6 +333,8 @@ int compile_stack_op(
             compile_slow_pop_to_d1(block);
             // D1.w = 0xAAFF, A = high byte, F = low byte
             emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_FLAGS);  // F = low
+            // GB F register lower 4 bits are always 0
+            emit_andi_b_dn(block, REG_68K_D_FLAGS, 0xF0);
             emit_rol_w_8(block, REG_68K_D_SCRATCH_1);  // D1.b = A
             emit_move_b_dn_dn(block, REG_68K_D_SCRATCH_1, REG_68K_D_A);  // A = high
 
