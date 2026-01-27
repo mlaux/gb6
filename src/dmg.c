@@ -328,10 +328,6 @@ void dmg_write(void *_dmg, u16 address, u8 data)
     dmg_writes++;
     if (page) {
         page[address & 0xff] = data;
-        // Mark SRAM dirty (0xa000-0xbfff)
-        if ((address >> 13) == 5) {
-            dmg->rom->mbc->ram_dirty = 1;
-        }
         return;
     }
     dmg_write_slow(dmg, address, data);

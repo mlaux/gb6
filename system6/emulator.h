@@ -56,7 +56,7 @@ extern PixMap offscreen_pixmap;
 
 #define EDIT_SOUND 1
 #define EDIT_LIMIT_FPS 2
-#define EDIT_AUTOSAVE 3
+#define EDIT_WRITE_SAVE 3
 #define EDIT_SCALE_1X 6
 #define EDIT_SCALE_2X 7
 #define EDIT_PREFERENCES 9
@@ -64,8 +64,6 @@ extern PixMap offscreen_pixmap;
 
 // 0.5 sec
 #define SOFT_RESET_TICKS 30
-// 1 minute
-#define SAVE_INTERVAL_TICKS 3600
 
 #define BASE_MEMORY_REQUIRED (2 * 1024 * 1024) 
 
