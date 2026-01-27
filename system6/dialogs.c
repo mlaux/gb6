@@ -310,7 +310,7 @@ void LoadPreferences(void)
   int incompatibleDirect, incompatibleIndexed;
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
-  if (h != nil && GetHandleSize(h) >= sizeof(int) * 6) {
+  if (h != nil && GetHandleSize(h) >= sizeof(int) * 7) {
     prefs = (int *) *h;
     cycles_per_exit = prefs[0];
     frame_skip = prefs[1];
@@ -318,11 +318,7 @@ void LoadPreferences(void)
     screen_scale = prefs[3];
     sound_enabled = prefs[4];
     limit_fps = prefs[5];
-    if (GetHandleSize(h) >= sizeof(int) * 7) {
-      autosave_enabled = prefs[6];
-    } else {
-      autosave_enabled = 1;
-    }
+    autosave_enabled = prefs[6];
   } else {
     cycles_per_exit = cyclesValues[0];
     frame_skip = 4;
