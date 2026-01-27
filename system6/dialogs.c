@@ -318,11 +318,17 @@ void LoadPreferences(void)
     screen_scale = prefs[3];
     sound_enabled = prefs[4];
     limit_fps = prefs[5];
+    if (GetHandleSize(h) >= sizeof(int) * 7) {
+      autosave_enabled = prefs[6];
+    } else {
+      autosave_enabled = 1;
+    }
   } else {
     cycles_per_exit = cyclesValues[0];
     frame_skip = 4;
     sound_enabled = 0;
     limit_fps = 0;
+    autosave_enabled = 1;
     if (screen_depth >= 8) {
       video_mode = VIDEO_INDEXED;
       screen_scale = 1;
@@ -346,7 +352,7 @@ void SavePreferences(void)
 {
   Handle h;
   int *prefs;
-  Size needed = sizeof(int) * 6;
+  Size needed = sizeof(int) * 7;
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
   if (h == nil) {
@@ -366,6 +372,7 @@ void SavePreferences(void)
   prefs[3] = screen_scale;
   prefs[4] = sound_enabled;
   prefs[5] = limit_fps;
+  prefs[6] = autosave_enabled;
   ChangedResource(h);
   WriteResource(h);
 }

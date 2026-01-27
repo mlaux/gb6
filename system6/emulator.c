@@ -64,6 +64,7 @@ WindowPtr g_wp;
 unsigned char app_running;
 unsigned char sound_enabled;
 unsigned char limit_fps;
+unsigned char autosave_enabled;
 int screen_depth;
 
 static u32 last_frame_count;
@@ -369,9 +370,12 @@ static void CheckPendingTasks(void)
     soft_reset_release_tick = 0;
   }
 
-  if (now - last_save_tick > SAVE_INTERVAL_TICKS) {
+  if (autosave_enabled && dmg.rom && dmg.rom->mbc->ram_dirty) {
+    if (now - last_save_tick > SAVE_INTERVAL_TICKS) {
       SaveGame();
-      last_save_tick = TickCount();
+      last_save_tick = now;
+      dmg.rom->mbc->ram_dirty = 0;
+    }
   }
 }
 
@@ -380,6 +384,7 @@ static void UpdateMenuChecks(void)
   MenuHandle menu = GetMenuHandle(MENU_EDIT);
   CheckItem(menu, EDIT_SOUND, sound_enabled);
   CheckItem(menu, EDIT_LIMIT_FPS, limit_fps);
+  CheckItem(menu, EDIT_AUTOSAVE, autosave_enabled);
   CheckItem(menu, EDIT_SCALE_1X, screen_scale == 1);
   CheckItem(menu, EDIT_SCALE_2X, screen_scale == 2);
 }
@@ -578,6 +583,10 @@ void OnMenuAction(long action)
         RemoveVBL();
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
+      SavePreferences();
+    } else if (item == EDIT_AUTOSAVE) {
+      autosave_enabled = !autosave_enabled;
+      CheckItem(GetMenuHandle(MENU_EDIT), EDIT_AUTOSAVE, autosave_enabled);
       SavePreferences();
     } else if (item == EDIT_SCALE_1X) {
       SetScreenScale(1);

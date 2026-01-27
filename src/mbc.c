@@ -343,6 +343,7 @@ int mbc_ram_write(struct mbc *mbc, u16 addr, u8 data)
     // MBC2: 512×4 bits, only bottom 9 bits of address used
     int index = addr & 0x1ff;
     mbc->ram[index] = data & 0x0f;  // Only lower 4 bits stored
+    mbc->ram_dirty = 1;
     return 1;
   }
 

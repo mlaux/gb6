@@ -33,6 +33,9 @@ struct mbc {
   u8  rtc_base_m;     // Minute at reference point
   u8  rtc_base_s;     // Second at reference point
   u8  rtc_halted;     // 1 if halt flag (bit 6 of rtc_dh) is set
+
+  // Save-on-write tracking
+  int ram_dirty;      // 1 if RAM was written since last check
 };
 
 struct mbc *mbc_new(int type);
