@@ -451,7 +451,12 @@ int mbc_load_ram(struct mbc *mbc, const char *filename)
     }
     return 0;
   }
-
+  
+  // Get file size to check for RTC data
+  fseek(fp, 0, SEEK_END);
+  file_size = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+  
   if (fread(mbc->ram, 1, RAM_SIZE, fp) < RAM_SIZE) {
     fclose(fp);
     return 0;
