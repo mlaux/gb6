@@ -452,11 +452,6 @@ int mbc_load_ram(struct mbc *mbc, const char *filename)
     return 0;
   }
 
-  // Check file size to detect old vs new format
-  fseek(fp, 0, SEEK_END);
-  file_size = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-
   if (fread(mbc->ram, 1, RAM_SIZE, fp) < RAM_SIZE) {
     fclose(fp);
     return 0;
@@ -488,15 +483,6 @@ int mbc_load_ram(struct mbc *mbc, const char *filename)
       mbc->rtc_base_h = mbc->rtc_h;
       mbc->rtc_base_m = mbc->rtc_m;
       mbc->rtc_base_s = mbc->rtc_s;
-    } else {
-      // Old format without RTC - initialize to midnight
-      mbc->rtc_s = 0;
-      mbc->rtc_m = 0;
-      mbc->rtc_h = 0;
-      mbc->rtc_dl = 0;
-      mbc->rtc_dh = 0;
-      mbc->rtc_halted = 0;
-      mbc3_reset_rtc_reference(mbc);
     }
   }
 
