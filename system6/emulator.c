@@ -74,7 +74,6 @@ static VBLTask vbl_task;
 static int vbl_installed;
 
 static unsigned long soft_reset_release_tick;
-static unsigned long last_save_tick;
 
 
 static char save_filename[32];
@@ -368,11 +367,6 @@ static void CheckPendingTasks(void)
         BUTTON_A | BUTTON_B | BUTTON_SELECT | BUTTON_START, 0);
     soft_reset_release_tick = 0;
   }
-
-  if (now - last_save_tick > SAVE_INTERVAL_TICKS) {
-      SaveGame();
-      last_save_tick = TickCount();
-  }
 }
 
 static void UpdateMenuChecks(void)
@@ -579,6 +573,10 @@ void OnMenuAction(long action)
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
       SavePreferences();
+    } else if (item == EDIT_WRITE_SAVE) {
+      if (g_wp && dmg.rom) {
+        SaveGame();
+      }
     } else if (item == EDIT_SCALE_1X) {
       SetScreenScale(1);
     } else if (item == EDIT_SCALE_2X) {

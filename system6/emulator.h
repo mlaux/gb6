@@ -56,15 +56,14 @@ extern PixMap offscreen_pixmap;
 
 #define EDIT_SOUND 1
 #define EDIT_LIMIT_FPS 2
-#define EDIT_SCALE_1X 5
-#define EDIT_SCALE_2X 6
-#define EDIT_PREFERENCES 8
-#define EDIT_KEY_MAPPINGS 9
+#define EDIT_WRITE_SAVE 3
+#define EDIT_SCALE_1X 6
+#define EDIT_SCALE_2X 7
+#define EDIT_PREFERENCES 9
+#define EDIT_KEY_MAPPINGS 10
 
 // 0.5 sec
 #define SOFT_RESET_TICKS 30
-// 15 sec... maybe too frequent
-#define SAVE_INTERVAL_TICKS 900
 
 #define BASE_MEMORY_REQUIRED (2 * 1024 * 1024) 
 
