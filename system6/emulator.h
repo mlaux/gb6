@@ -30,7 +30,7 @@ extern BitMap offscreen_bmp;
 extern char offscreen_color_buf[];
 extern PixMap offscreen_pixmap;
 
-#define APP_VERSION "1.2.1 ${GIT_SHA}"
+#define APP_VERSION "1.3.0 ${GIT_SHA}"
 
 #define WINDOW_X 8
 #define WINDOW_Y 40
@@ -49,18 +49,18 @@ extern PixMap offscreen_pixmap;
 #define APPLE_ABOUT 1
 
 #define FILE_OPEN 1
-#define FILE_SCREENSHOT 3
-#define FILE_SOFT_RESET 4
-#define FILE_CLOSE 6
-#define FILE_QUIT 7
+#define FILE_SAVE_GAME 3
+#define FILE_SCREENSHOT 4
+#define FILE_SOFT_RESET 5
+#define FILE_CLOSE 7
+#define FILE_QUIT 8
 
 #define EDIT_SOUND 1
 #define EDIT_LIMIT_FPS 2
-#define EDIT_WRITE_SAVE 3
-#define EDIT_SCALE_1X 6
-#define EDIT_SCALE_2X 7
-#define EDIT_PREFERENCES 9
-#define EDIT_KEY_MAPPINGS 10
+#define EDIT_SCALE_1X 5
+#define EDIT_SCALE_2X 6
+#define EDIT_PREFERENCES 8
+#define EDIT_KEY_MAPPINGS 9
 
 // 0.5 sec
 #define SOFT_RESET_TICKS 30

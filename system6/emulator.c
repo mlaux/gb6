@@ -41,7 +41,7 @@
 
 #include "compiler.h"
 
-static void UpdateMenuChecks(void);
+static void UpdateMenuItems(void);
 
 // Called by dmg.c when ROM bank switches
 static void on_rom_bank_switch(int new_bank)
@@ -288,6 +288,7 @@ void StopEmulation(void)
   }
   DisposeWindow(g_wp);
   g_wp = NULL;
+  UpdateMenuItems();
 }
 
 void StartEmulation(void)
@@ -357,6 +358,8 @@ void StartEmulation(void)
   if (limit_fps) {
     InstallVBL();
   }
+
+  UpdateMenuItems();
 }
 
 static void CheckPendingTasks(void)
@@ -369,9 +372,27 @@ static void CheckPendingTasks(void)
   }
 }
 
-static void UpdateMenuChecks(void)
+// called on init, on emulation start, on scale change, and on emulation stop
+static void UpdateMenuItems(void)
 {
-  MenuHandle menu = GetMenuHandle(MENU_EDIT);
+  MenuHandle menu;
+
+  menu = GetMenuHandle(MENU_FILE);
+  if (g_wp) {
+    if (dmg.rom->mbc->has_battery) {
+      EnableItem(menu, FILE_SAVE_GAME);
+    } else {
+      DisableItem(menu, FILE_SAVE_GAME);
+    }
+    EnableItem(menu, FILE_SCREENSHOT);
+    EnableItem(menu, FILE_SOFT_RESET);
+  } else {
+    DisableItem(menu, FILE_SAVE_GAME);
+    DisableItem(menu, FILE_SCREENSHOT);
+    DisableItem(menu, FILE_SOFT_RESET);
+  }
+
+  menu = GetMenuHandle(MENU_EDIT);
   CheckItem(menu, EDIT_SOUND, sound_enabled);
   CheckItem(menu, EDIT_LIMIT_FPS, limit_fps);
   CheckItem(menu, EDIT_SCALE_1X, screen_scale == 1);
@@ -444,7 +465,7 @@ void SetScreenScale(int scale)
     }
   }
 
-  UpdateMenuChecks();
+  UpdateMenuItems();
   SavePreferences();
 }
 
@@ -534,6 +555,11 @@ void OnMenuAction(long action)
       if(ShowOpenBox())
         StartEmulation();
     }
+    else if (item == FILE_SAVE_GAME) {
+      if (g_wp) {
+        SaveGame();
+      }
+    } 
     else if(item == FILE_SCREENSHOT) {
       if (g_wp) {
         SaveScreenshot();
@@ -573,10 +599,6 @@ void OnMenuAction(long action)
       }
       CheckItem(GetMenuHandle(MENU_EDIT), EDIT_LIMIT_FPS, limit_fps);
       SavePreferences();
-    } else if (item == EDIT_WRITE_SAVE) {
-      if (g_wp && dmg.rom) {
-        SaveGame();
-      }
     } else if (item == EDIT_SCALE_1X) {
       SetScreenScale(1);
     } else if (item == EDIT_SCALE_2X) {
@@ -707,7 +729,7 @@ int main(int argc, char *argv[])
   DetectScreenDepth();
   LoadKeyMappings();
   LoadPreferences();
-  UpdateMenuChecks();
+  UpdateMenuItems();
 
   init_dither_lut();
   lcd_init_lut();
