@@ -1,0 +1,43 @@
+Determining if SndPlayDoubleBuffer is available
+
+The routine SndPlayDoubleBuffer is not always available. The Macintosh Plus for
+example does not support this routine, yet. Unfortunately, older versions of the
+Sound Manager produced undesirable results when calling this routine on such a
+machine. To further complicate matters, Inside Mac does not mention how to
+determine if this routine is available.
+
+The documentation does state that playing sound files from disk is supported by
+machines that have the Apple Sound Chip. This feature is supported internally in
+the Sound Manager by using SndPlayDoubleBuffer. Therefore if SndPlayDoubleBuffer
+is present then so is. SndStartFilePlay But, testing for the Apple Sound Chip is
+not sufficient.
+
+There are new machines that do not have the Apple Sound Chip (according to
+Gestalt) but do support these routines. To test if either of these routines are
+available, you can test for the gestaltSndPlayDoubleBuffer flag of
+gestaltSoundAttr. If this flag is set then both routines are supported. But
+older versions of the Sound Manager did not define this flag, so it may not be
+set in cases where these routines are actually available. If the
+gestaltSndPlayDoubleBuffer flag is not set, then a final check for gestaltHasASC
+is necessary. Confused? Sure you are, and here's the code you need to use.
+
+Boolean HasSndPlayDoubleBuffer(void)
+{
+  OSErr     err;
+  long      response;
+  Boolean   result;
+
+  result = false;
+  err = Gestalt(gestaltSoundAttr, &response);
+  if ((err == noErr) && (response & (1 <<
+gestaltSndPlayDoubleBuffer)))
+    result = true;
+  else
+  {
+    err = Gestalt(gestaltHardwareAttr, &response);
+    if ((err == noErr) && (response & (1 <<
+  gestaltHasASC)))
+      result = true;
+  }
+  return (result);
+}
