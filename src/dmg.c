@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "cpu.h"
 #include "rom.h"
 #include "lcd.h"
 #include "dmg.h"
@@ -12,6 +11,13 @@
 #include "../system6/audio_mac.h"
 #include "../system6/settings.h"
 
+#define INT_VBLANK  (1 << 0)
+#define INT_LCDSTAT (1 << 1)
+#define INT_TIMER   (1 << 2)
+#define INT_SERIAL  (1 << 3)
+#define INT_JOYPAD  (1 << 4)
+#define NUM_INTERRUPTS 5
+
 #define CYCLES_PER_FRAME 70224
 #define CYCLES_PER_LINE 456
 #define CYCLES_MIDDLE (CYCLES_LINE_144 / 2)
@@ -20,9 +26,8 @@
 // TAC clock select -> cycles per TIMA increment
 static const u16 timer_divisors[] = { 1024, 16, 64, 256 };
 
-void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd)
+void dmg_new(struct dmg *dmg, struct rom *rom, struct lcd *lcd)
 {
-    dmg->cpu = cpu;
     dmg->rom = rom;
     dmg->lcd = lcd;
 

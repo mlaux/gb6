@@ -22,7 +22,6 @@
 
 #define TIMER_CONTROL_ENABLED (1 << 2)
 
-struct cpu;
 struct rom;
 struct lcd;
 struct audio;
@@ -33,7 +32,6 @@ struct dmg {
     u8 *read_page[256];
     u8 *write_page[256];
 
-    struct cpu *cpu;
     struct rom *rom;
     struct lcd *lcd;
     struct audio *audio;
@@ -69,7 +67,7 @@ struct dmg {
     u32 timer_cycles;
 };
 
-void dmg_new(struct dmg *dmg, struct cpu *cpu, struct rom *rom, struct lcd *lcd);
+void dmg_new(struct dmg *dmg, struct rom *rom, struct lcd *lcd);
 void dmg_set_button(struct dmg *dmg, int field, int button, int pressed);
 
 u8 dmg_read(void *dmg, u16 address);

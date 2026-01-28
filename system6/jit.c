@@ -7,7 +7,6 @@
 #include "types.h"
 #include "jit.h"
 #include "compiler.h"
-#include "cpu.h"
 #include "dmg.h"
 #include "cache.h"
 #include "lcd.h"

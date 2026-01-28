@@ -11,13 +11,11 @@
 #include "dmg.h"
 #include "lcd.h"
 #include "rom.h"
-#include "cpu.h"
 #include "audio.h"
 
 extern WindowPtr g_wp;
 extern int screen_depth;
 
-extern struct cpu cpu;
 extern struct rom rom;
 extern struct lcd lcd;
 extern struct audio audio;

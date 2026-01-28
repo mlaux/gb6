@@ -21,7 +21,6 @@
 
 #include "emulator.h"
 
-#include "cpu.h"
 #include "dmg.h"
 #include "lcd.h"
 #include "rom.h"
@@ -52,9 +51,6 @@ static void on_rom_bank_switch(int new_bank)
     // or call afterwards...
 }
 
-// this is pretty much hollowed out and a lot of it can go.
-// from the interpreter version
-struct cpu cpu;
 struct rom rom;
 struct lcd lcd;
 struct audio audio;
@@ -323,17 +319,14 @@ void StartEmulation(void)
   SetPort(g_wp);
 
   memset(&dmg, 0, sizeof(dmg));
-  memset(&cpu, 0, sizeof(cpu));
   memset(&lcd, 0, sizeof(lcd));
   lcd_new(&lcd);
 
-  dmg_new(&dmg, &cpu, &rom, &lcd);
+  dmg_new(&dmg, &rom, &lcd);
   dmg.rom_bank_switch_hook = on_rom_bank_switch;
   mbc_load_ram(dmg.rom->mbc, save_filename);
   audio_init(&audio);
   dmg.audio = &audio;
-
-  cpu.dmg = &dmg;
 
   offscreen_bmp.baseAddr = offscreen_buf;
   // bounds is full buffer size (168 or 336 pixels wide for scroll offset handling)
