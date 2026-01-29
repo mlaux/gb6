@@ -43,6 +43,7 @@ extern PixMap offscreen_pixmap;
 #define MENU_APPLE 128
 #define MENU_FILE 129
 #define MENU_EDIT 130
+#define MENU_PALETTES 131
 
 #define APPLE_ABOUT 1
 
@@ -59,6 +60,8 @@ extern PixMap offscreen_pixmap;
 #define EDIT_SCALE_2X 6
 #define EDIT_PREFERENCES 8
 #define EDIT_KEY_MAPPINGS 9
+
+#define RES_MDEF_ID 128
 
 // 0.5 sec
 #define SOFT_RESET_TICKS 30

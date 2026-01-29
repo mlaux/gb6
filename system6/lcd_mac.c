@@ -10,6 +10,9 @@
 #include "lcd_mac.h"
 #include "settings.h"
 
+#include "gb_palettes.h"
+int current_palette = 0;
+
 // packed byte bits:  [7-6]  [5-4]  [3-2]  [1-0]
 // GB pixel:           p0     p1     p2     p3
 
@@ -30,18 +33,6 @@ static unsigned long color_lut_1x[256];
 // 2x: 8 pixels per packed byte (each GB pixel doubled), split into two 32-bit values
 static unsigned long color_lut_2x_lo[256];  // pixels 0,0,1,1
 static unsigned long color_lut_2x_hi[256];  // pixels 2,2,3,3
-
-static const RGBColor palettes[][4] = {
-  // blk-aqu4
-  { { 0x9f9f, 0xf4f4, 0xe5e5 }, { 0x0000, 0xb9b9, 0xbebe },
-    { 0x0000, 0x5f5f, 0x8c8c }, { 0x0000, 0x2b2b, 0x5959 } },
-  // bgb default
-  { { 0x7575, 0x9898, 0x3333 }, { 0x5959, 0x8e8e, 0x5050 },
-    { 0x3b3b, 0x7474, 0x6060 }, { 0x2e2e, 0x6161, 0x5a5a } },
-  // velvet-cherry-gb
-  { { 0x9797, 0x7575, 0xa6a6 }, { 0x6868, 0x3a3a, 0x6868 },
-    { 0x4141, 0x2727, 0x5252 }, { 0x2d2d, 0x1616, 0x2c2c } },
-};
 
 void init_dither_lut(void)
 {
@@ -84,7 +75,7 @@ void init_indexed_lut(WindowPtr wp)
   pal = NewPalette(4, nil, pmTolerant, 0);
 
   for (k = 0; k < 4; k++) {
-    SetEntryColor(pal, k, &palettes[0][k]);
+    SetEntryColor(pal, k, &gb_palettes[current_palette].colors[k]);
   }
 
   SetPalette(wp, pal, true);

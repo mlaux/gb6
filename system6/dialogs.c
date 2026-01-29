@@ -9,6 +9,7 @@
 #include "emulator.h"
 #include "dialogs.h"
 #include "settings.h"
+#include "gb_palettes.h"
 
 // default mappings: up=W, down=S, left=A, right=D, a=L, b=K, select=N, start=M
 static unsigned char defaultMappings[8] = { 0x0d, 0x01, 0x00, 0x02, 0x25, 0x28, 0x2d, 0x2e };
@@ -310,7 +311,7 @@ void LoadPreferences(void)
   int incompatibleDirect, incompatibleIndexed;
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
-  if (h != nil && GetHandleSize(h) >= sizeof(int) * 6) {
+  if (h != nil && GetHandleSize(h) >= sizeof(int) * 7) {
     prefs = (int *) *h;
     cycles_per_exit = prefs[0];
     frame_skip = prefs[1];
@@ -318,11 +319,16 @@ void LoadPreferences(void)
     screen_scale = prefs[3];
     sound_enabled = prefs[4];
     limit_fps = prefs[5];
+    current_palette = prefs[6];
+    if (current_palette < 0 || current_palette >= gb_palette_count) {
+      current_palette = 0;
+    }
   } else {
     cycles_per_exit = cyclesValues[0];
     frame_skip = 4;
     sound_enabled = 0;
     limit_fps = 0;
+    current_palette = 0;
     if (screen_depth >= 8) {
       video_mode = VIDEO_INDEXED;
       screen_scale = 1;
@@ -346,7 +352,7 @@ void SavePreferences(void)
 {
   Handle h;
   int *prefs;
-  Size needed = sizeof(int) * 6;
+  Size needed = sizeof(int) * 7;
 
   h = GetResource(RES_PREFS_TYPE, RES_PREFS_ID);
   if (h == nil) {
@@ -366,6 +372,7 @@ void SavePreferences(void)
   prefs[3] = screen_scale;
   prefs[4] = sound_enabled;
   prefs[5] = limit_fps;
+  prefs[6] = current_palette;
   ChangedResource(h);
   WriteResource(h);
 }

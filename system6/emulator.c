@@ -17,6 +17,7 @@
 #include <Files.h>
 #include <SegLoad.h>
 #include <Palettes.h>
+#include <Resources.h>
 #include <Retrace.h>
 
 #include "emulator.h"
@@ -37,6 +38,8 @@
 #include "jit.h"
 #include "settings.h"
 #include "audio_mac.h"
+#include "palette_menu.h"
+#include "gb_palettes.h"
 
 #include "compiler.h"
 
@@ -136,7 +139,6 @@ static void RemoveVBL(void)
   VRemove((QElemPtr)&vbl_task);
   vbl_installed = 0;
 }
-
 
 void InitToolbox(void)
 {
@@ -573,6 +575,21 @@ void OnMenuAction(long action)
     }
   }
 
+  else if (menu == MENU_PALETTES) {
+    if (item >= 1 && item <= gb_palette_count) {
+      current_palette = item - 1;
+      if (g_wp) {
+        PaletteHandle pal;
+        pal = GetPalette(g_wp);
+        if (pal) {
+          DisposePalette(pal);
+        }
+        init_indexed_lut(g_wp);
+      }
+      SavePreferences();
+    }
+  }
+
   else if (menu == MENU_EDIT) {
     if (item == EDIT_SOUND) {
       sound_enabled = !sound_enabled;
@@ -720,6 +737,10 @@ int main(int argc, char *argv[])
 
   InitToolbox();
   DetectScreenDepth();
+  if (screen_depth > 1) {
+    InstallPalettesMenu();
+    DrawMenuBar();
+  }
   LoadKeyMappings();
   LoadPreferences();
   UpdateMenuItems();

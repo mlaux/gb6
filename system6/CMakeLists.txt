@@ -35,6 +35,8 @@ add_application("Gray Brick"
     cache.c
     audio_mac.c
     emulator.c
+    palette_menu.c
+    gb_palettes.c
     resources.r
 )
 
